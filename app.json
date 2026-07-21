@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Moj Ljubimac",
+    "slug": "moj-ljubimac",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "mojljubimac",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "com.mojljubimac.app",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Kamera se koristi za fotografisanje ljubimca, hrane i veterinarskih nalaza.",
+        "NSPhotoLibraryUsageDescription": "Pristup galeriji se koristi za dodavanje fotografija ljubimca i trenutaka.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.mojljubimac.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "permissions": ["android.permission.CAMERA", "android.permission.POST_NOTIFICATIONS"],
+      "predictiveBackGestureEnabled": false
+    },
+    "web": { "output": "static", "favicon": "./assets/images/favicon.png" },
+    "plugins": [
+      "expo-router",
+      ["expo-splash-screen", { "backgroundColor": "#FFFFFF", "image": "./assets/images/splash-icon.png", "imageWidth": 180 }],
+      ["expo-notifications", { "color": "#5C3A21" }],
+      ["expo-image-picker", { "cameraPermission": "Kamera se koristi za fotografisanje ljubimca, hrane i nalaza." }]
+    ],
+    "experiments": { "typedRoutes": true, "reactCompiler": true }
+  }
+}
