@@ -6,7 +6,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Btn, Card, EmptyState, H1, Row, Screen, SectionTitle, Sub, Tag } from '@/components/ui';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDate } from '@/lib/dates';
-import { useActivePet, useApp } from '@/lib/store';
+import { exportKartonPdf } from '@/lib/pdf';
+import {
+  useActivePet,
+  useApp,
+  usePetCheckups,
+  usePetFood,
+  usePetMedications,
+  usePetStools,
+  usePetVaccinations,
+  usePetWeights,
+} from '@/lib/store';
 import { SPECIES_LABEL } from '@/lib/types';
 
 export default function ProfileScreen() {
@@ -17,6 +27,25 @@ export default function ProfileScreen() {
   const premium = useApp((s) => s.premium);
   const setPremium = useApp((s) => s.setPremium);
   const deletePet = useApp((s) => s.deletePet);
+  const weights = usePetWeights(pet?.id);
+  const vaccinations = usePetVaccinations(pet?.id);
+  const medications = usePetMedications(pet?.id);
+  const checkups = usePetCheckups(pet?.id);
+  const food = usePetFood(pet?.id);
+  const stools = usePetStools(pet?.id);
+
+  const exportPdf = async () => {
+    if (!pet) return;
+    if (!premium) {
+      router.push('/paywall');
+      return;
+    }
+    try {
+      await exportKartonPdf({ pet, weights, vaccinations, medications, checkups, food, stools });
+    } catch {
+      Alert.alert('Greška', 'PDF nije mogao da se napravi. Pokušaj ponovo.');
+    }
+  };
 
   const invite = async () => {
     /* Pravo deljenje profila traži backend (nalozi + sinhronizacija).
@@ -74,6 +103,17 @@ export default function ProfileScreen() {
             <Text style={{ fontSize: 12, color: t.muted, marginTop: 10, lineHeight: 17 }}>
               Sinhronizacija u realnom vremenu se uključuje sa nalogom u sledećoj verziji (backend).
             </Text>
+          </Card>
+
+          <SectionTitle>Zdravstveni karton</SectionTitle>
+          <Card>
+            <Row
+              icon="document"
+              title="Izvoz kartona u PDF"
+              desc="Ceo karton — vakcine, terapije, pregledi, težina — spreman za slanje veterinaru."
+              right={premium ? undefined : <Tag tone="gold">🔒 Premium</Tag>}
+            />
+            <Btn label="Napravi PDF" icon="download" onPress={exportPdf} />
           </Card>
 
           <SectionTitle>Moj Ljubimac Premium</SectionTitle>
