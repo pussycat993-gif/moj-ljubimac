@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { MilestonePopup } from '@/components/milestone-popup';
 import { useTheme } from '@/hooks/use-theme';
 import { ensureNotificationPermission } from '@/lib/notifications';
+import { initBilling } from '@/lib/purchases';
 import { useApp } from '@/lib/store';
 
 SplashScreen.preventAutoHideAsync();
@@ -17,6 +18,7 @@ export default function RootLayout() {
   useEffect(() => {
     seedIfEmpty();
     ensureNotificationPermission();
+    initBilling();
     SplashScreen.hideAsync();
   }, [seedIfEmpty]);
 
