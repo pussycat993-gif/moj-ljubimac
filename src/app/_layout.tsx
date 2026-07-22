@@ -32,6 +32,7 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: t.bg },
         }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="nearby" options={{ title: 'U blizini' }} />
         <Stack.Screen name="pet-form" options={{ presentation: 'modal', title: 'Ljubimac' }} />
         <Stack.Screen name="paywall" options={{ presentation: 'modal', title: 'Moj Ljubimac Premium' }} />
         <Stack.Screen name="entry/weight" options={{ presentation: 'modal', title: 'Novo merenje' }} />

@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Text, View } from 'react-native';
@@ -23,6 +24,7 @@ const logo = require('../../../assets/images/logo.png');
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const theme = useTheme();
   const pet = useActivePet();
   const weights = usePetWeights(pet?.id);
   const vaccinations = usePetVaccinations(pet?.id);
@@ -123,12 +125,12 @@ export default function HomeScreen() {
           <Btn label="Novi podsetnik" kind="ghost" icon="add" onPress={() => router.push('/entry/reminder')} />
 
           <SectionTitle>U blizini</SectionTitle>
-          <Card style={{ opacity: 0.8 }}>
+          <Card onPress={() => router.push('/nearby')}>
             <Row
               icon="location"
               title="Veterinari i pet shopovi blizu vas"
-              desc="Stiže u sledećoj verziji — lista po lokaciji sa radnim vremenom."
-              right={<Tag tone="gold">uskoro</Tag>}
+              desc="Pronađi mesta oko svoje trenutne lokacije."
+              right={<Ionicons name="chevron-forward" size={20} color={theme.muted} />}
             />
           </Card>
         </>
