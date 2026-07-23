@@ -146,9 +146,11 @@ alter table public.stools            enable row level security;
 alter table public.milestones        enable row level security;
 alter table public.reminders         enable row level security;
 
--- households: član vidi svoj household; svako prijavljen može da napravi novi (kao vlasnik).
+-- households: član (ili tvorac) vidi svoj household; svako prijavljen može da napravi novi.
+-- `created_by = auth.uid()` je obavezan: insert...returning mora da prođe SELECT politiku,
+-- a članstvo se upisuje TEK posle kreiranja household-a (vidi ensureHousehold u sync.ts).
 create policy "households_select" on public.households
-  for select using (public.is_household_member(id));
+  for select using (public.is_household_member(id) or created_by = auth.uid());
 create policy "households_insert" on public.households
   for insert with check (created_by = auth.uid());
 

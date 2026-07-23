@@ -181,6 +181,34 @@ async function pushLocal(hid: string): Promise<void> {
   ]);
 }
 
+type StoreState = ReturnType<typeof useApp.getState>;
+
+/**
+ * Prenosi na cloud TAČNO one zapise koje je korisnik lokalno obrisao (diff prev->next).
+ * Precizno (ne "mirror svega") da push sa zastarelog uređaja ne bi obrisao tuđe nove zapise.
+ */
+async function propagateDeletes(prev: StoreState, next: StoreState): Promise<void> {
+  if (!supabase || !householdId) return;
+  const sb = supabase;
+  const hid = householdId;
+  const jobs: PromiseLike<unknown>[] = [];
+  const del = <T,>(table: string, col: string, before: T[], after: T[], key: (x: T) => string) => {
+    const keep = new Set(after.map(key));
+    const ids = before.filter((x) => !keep.has(key(x))).map(key);
+    if (ids.length) jobs.push(sb.from(table).delete().eq('household_id', hid).in(col, ids));
+  };
+  del('pets', 'id', prev.pets, next.pets, (p) => p.id);
+  del('weights', 'id', prev.weights, next.weights, (w) => w.id);
+  del('vaccinations', 'id', prev.vaccinations, next.vaccinations, (v) => v.id);
+  del('medications', 'id', prev.medications, next.medications, (m) => m.id);
+  del('checkups', 'id', prev.checkups, next.checkups, (c) => c.id);
+  del('food_profiles', 'pet_id', prev.foodProfiles, next.foodProfiles, (f) => f.petId);
+  del('stools', 'id', prev.stools, next.stools, (s) => s.id);
+  del('milestones', 'id', prev.milestones, next.milestones, (m) => m.id);
+  del('reminders', 'id', prev.reminders, next.reminders, (r) => r.id);
+  await Promise.all(jobs);
+}
+
 async function pullAll(hid: string): Promise<void> {
   if (!supabase) return;
   const sb = supabase; // lokalni alias — TS zadržava narrowing u ugnježdenim funkcijama
@@ -200,18 +228,25 @@ async function pullAll(hid: string): Promise<void> {
       q<ReminderRow>('reminders'),
     ]);
 
+  // notifId / birthdayNotifId su lokalni za uređaj (nisu kolone) — sačuvaj ih pri pull-u,
+  // inače bi zakazane notifikacije ostale "siročići" bez ID-a za otkazivanje.
+  const prev = useApp.getState();
+  const petNotif = new Map(prev.pets.map((p) => [p.id, p.birthdayNotifId]));
+  const medNotif = new Map(prev.medications.map((m) => [m.id, m.notifId]));
+  const remNotif = new Map(prev.reminders.map((r) => [r.id, r.notifId]));
+
   // setState je sinhron: subscribe listener vidi applyingRemote=true i preskače push.
   applyingRemote = true;
   useApp.setState({
-    pets: pets.map(rowToPet),
+    pets: pets.map((r) => ({ ...rowToPet(r), birthdayNotifId: petNotif.get(r.id) })),
     weights: weights.map(rowToWeight),
     vaccinations: vaccinations.map(rowToVax),
-    medications: medications.map(rowToMed),
+    medications: medications.map((r) => ({ ...rowToMed(r), notifId: medNotif.get(r.id) })),
     checkups: checkups.map(rowToCheckup),
     foodProfiles: food.map(rowToFood),
     stools: stools.map(rowToStool),
     milestones: milestones.map(rowToMilestone),
-    reminders: reminders.map(rowToReminder),
+    reminders: reminders.map((r) => ({ ...rowToReminder(r), notifId: remNotif.get(r.id) })),
   });
   applyingRemote = false;
 }
@@ -235,6 +270,8 @@ let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let applyingRemote = false;
 // Sprečava preklapanje dva startSync poziva (mount + INITIAL_SESSION event).
 let starting = false;
+// Korisnik za koga je sync već aktivan — da TOKEN_REFRESHED ne pokreće pun re-sync svaki put.
+let syncedUserId: string | null = null;
 
 function subscribeRealtime(hid: string): () => void {
   if (!supabase) return () => {};
@@ -267,6 +304,8 @@ export async function startSync(): Promise<void> {
   try {
     const session = await getSession();
     if (!session) return;
+    // Već sinhronizovano za istog korisnika (npr. TOKEN_REFRESHED) — ne ponavljaj pun sync.
+    if (householdId && syncedUserId === session.user.id) return;
 
     const hid = await ensureHousehold(session.user.id);
     if (!hid) return;
@@ -280,9 +319,12 @@ export async function startSync(): Promise<void> {
     await pullAll(hid);
 
     unsubRealtime = subscribeRealtime(hid);
-    unsubStore = useApp.subscribe(() => {
-      if (!applyingRemote) schedulePush();
+    unsubStore = useApp.subscribe((nextState, prevState) => {
+      if (applyingRemote) return;
+      propagateDeletes(prevState, nextState);
+      schedulePush();
     });
+    syncedUserId = session.user.id;
   } finally {
     starting = false;
   }
@@ -299,4 +341,5 @@ export function stopSync(): void {
     pushTimer = null;
   }
   householdId = null;
+  syncedUserId = null;
 }
