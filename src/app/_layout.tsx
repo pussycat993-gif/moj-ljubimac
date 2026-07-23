@@ -7,6 +7,8 @@ import { MilestonePopup } from '@/components/milestone-popup';
 import { useTheme } from '@/hooks/use-theme';
 import { ensureNotificationPermission } from '@/lib/notifications';
 import { useApp } from '@/lib/store';
+import { onAuthStateChange } from '@/lib/supabase';
+import { startSync, stopSync } from '@/lib/sync';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -18,6 +20,9 @@ export default function RootLayout() {
     seedIfEmpty();
     ensureNotificationPermission();
     SplashScreen.hideAsync();
+    // Sinhronizacija se pokreće samo ako je cloud podešen i korisnik prijavljen.
+    startSync();
+    return onAuthStateChange((session) => (session ? startSync() : stopSync()));
   }, [seedIfEmpty]);
 
   return (
@@ -32,6 +37,7 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: t.bg },
         }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="auth" options={{ presentation: 'modal', title: 'Nalog' }} />
         <Stack.Screen name="pet-form" options={{ presentation: 'modal', title: 'Ljubimac' }} />
         <Stack.Screen name="paywall" options={{ presentation: 'modal', title: 'Moj Ljubimac Premium' }} />
         <Stack.Screen name="entry/weight" options={{ presentation: 'modal', title: 'Novo merenje' }} />

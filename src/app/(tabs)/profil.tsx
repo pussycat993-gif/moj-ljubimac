@@ -1,12 +1,16 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
+import { useMemo } from 'react';
 import { Alert, Share, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Btn, Card, EmptyState, H1, Row, Screen, SectionTitle, Sub, Tag } from '@/components/ui';
+import { useSession } from '@/hooks/use-session';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDate } from '@/lib/dates';
 import { useActivePet, useApp } from '@/lib/store';
+import { isCloudConfigured, signOut } from '@/lib/supabase';
+import { stopSync } from '@/lib/sync';
 import { SPECIES_LABEL } from '@/lib/types';
 
 export default function ProfileScreen() {
@@ -17,6 +21,13 @@ export default function ProfileScreen() {
   const premium = useApp((s) => s.premium);
   const setPremium = useApp((s) => s.setPremium);
   const deletePet = useApp((s) => s.deletePet);
+  const cloud = useMemo(() => isCloudConfigured(), []);
+  const session = useSession();
+
+  const doSignOut = async () => {
+    await signOut();
+    stopSync();
+  };
 
   const invite = async () => {
     /* Pravo deljenje profila traži backend (nalozi + sinhronizacija).
@@ -62,18 +73,45 @@ export default function ProfileScreen() {
             <Btn label="Izmeni podatke" kind="ghost" onPress={() => router.push({ pathname: '/pet-form', params: { id: pet.id } })} />
           </Card>
 
-          <SectionTitle>Deljenje profila</SectionTitle>
+          <SectionTitle>Deljenje i sinhronizacija</SectionTitle>
           <Card>
-            <Row
-              icon="people"
-              title="Deli sa porodicom"
-              desc="Supružnik ili ukućani vode isti karton, svako na svom telefonu."
-              right={<Tag tone="ok">besplatno</Tag>}
-            />
-            <Btn label="Pozovi člana porodice" kind="ghost" icon="person-add" onPress={invite} />
-            <Text style={{ fontSize: 12, color: t.muted, marginTop: 10, lineHeight: 17 }}>
-              Sinhronizacija u realnom vremenu se uključuje sa nalogom u sledećoj verziji (backend).
-            </Text>
+            {!cloud ? (
+              <>
+                <Row
+                  icon="people"
+                  title="Deli sa porodicom"
+                  desc="Supružnik ili ukućani vode isti karton, svako na svom telefonu."
+                  right={<Tag tone="ok">besplatno</Tag>}
+                />
+                <Btn label="Pozovi člana porodice" kind="ghost" icon="person-add" onPress={invite} />
+                <Text style={{ fontSize: 12, color: t.muted, marginTop: 10, lineHeight: 17 }}>
+                  Sinhronizacija u realnom vremenu se uključuje sa nalogom u sledećoj verziji (backend).
+                </Text>
+              </>
+            ) : session ? (
+              <>
+                <Row
+                  icon="cloud-done"
+                  title="Sinhronizacija je uključena"
+                  desc={`Prijavljen kao ${session.user.email}`}
+                  right={<Tag tone="ok">uključeno</Tag>}
+                />
+                <Btn label="Odjavi se" kind="ghost" icon="log-out" onPress={doSignOut} />
+              </>
+            ) : (
+              <>
+                <Row
+                  icon="cloud-upload"
+                  title="Sinhronizuj i deli karton"
+                  desc="Prijavi se da karton deliš sa ukućanima na drugim telefonima."
+                />
+                <Btn
+                  label="Prijavi se ili napravi nalog"
+                  icon="person-add"
+                  onPress={() => router.push('/auth')}
+                />
+              </>
+            )}
           </Card>
 
           <SectionTitle>Moj Ljubimac Premium</SectionTitle>

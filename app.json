@@ -34,6 +34,12 @@
       ["expo-notifications", { "color": "#5C3A21" }],
       ["expo-image-picker", { "cameraPermission": "Kamera se koristi za fotografisanje ljubimca, hrane i nalaza." }]
     ],
-    "experiments": { "typedRoutes": true, "reactCompiler": true }
+    "experiments": { "typedRoutes": true, "reactCompiler": true },
+    "extra": {
+      "supabase": {
+        "url": "",
+        "anonKey": ""
+      }
+    }
   }
 }
