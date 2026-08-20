@@ -35,6 +35,7 @@ Zatim:
 | Podsetnici sa lokalnim notifikacijama + rođendanska notifikacija | ✅ |
 | Premium ograničenja (1 ljubimac besplatno, analitika, prilozi…) | ✅ (lokalni fleg) |
 | Podaci trajno na uređaju (AsyncStorage) i fotografije u app folderu | ✅ |
+| PDF izvoz celog kartona (Premium) — `expo-print` + share | ✅ |
 
 ## Šta je svesno ostavljeno kao sledeći korak (i gde se kači)
 
@@ -46,7 +47,6 @@ Zatim:
    i preslikava se 1:1 u tabele; `src/lib/store.ts` je jedino mesto koje treba proširiti sync logikom.
 3. **Veterinari/pet shopovi u blizini** — placeholder kartica na početnom ekranu.
    Produkcija: lokacija (`expo-location`) + vaša baza partnera (B2B monetizacija).
-4. **PDF izvoz kartona** — `expo-print` generiše PDF iz HTML šablona; podaci su već svi u store-u.
 
 ## Arhitektura (kratko)
 

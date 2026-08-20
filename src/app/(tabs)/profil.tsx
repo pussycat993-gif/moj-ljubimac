@@ -8,7 +8,17 @@ import { Btn, Card, EmptyState, H1, Row, Screen, SectionTitle, Sub, Tag } from '
 import { useSession } from '@/hooks/use-session';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDate } from '@/lib/dates';
-import { useActivePet, useApp } from '@/lib/store';
+import { exportKartonPdf } from '@/lib/pdf';
+import {
+  useActivePet,
+  useApp,
+  usePetCheckups,
+  usePetFood,
+  usePetMedications,
+  usePetStools,
+  usePetVaccinations,
+  usePetWeights,
+} from '@/lib/store';
 import { isCloudConfigured, signOut } from '@/lib/supabase';
 import { stopSync } from '@/lib/sync';
 import { SPECIES_LABEL } from '@/lib/types';
@@ -21,12 +31,31 @@ export default function ProfileScreen() {
   const premium = useApp((s) => s.premium);
   const setPremium = useApp((s) => s.setPremium);
   const deletePet = useApp((s) => s.deletePet);
+  const weights = usePetWeights(pet?.id);
+  const vaccinations = usePetVaccinations(pet?.id);
+  const medications = usePetMedications(pet?.id);
+  const checkups = usePetCheckups(pet?.id);
+  const food = usePetFood(pet?.id);
+  const stools = usePetStools(pet?.id);
   const cloud = useMemo(() => isCloudConfigured(), []);
   const session = useSession();
 
   const doSignOut = async () => {
     await signOut();
     stopSync();
+  };
+
+  const exportPdf = async () => {
+    if (!pet) return;
+    if (!premium) {
+      router.push('/paywall');
+      return;
+    }
+    try {
+      await exportKartonPdf({ pet, weights, vaccinations, medications, checkups, food, stools });
+    } catch {
+      Alert.alert('Greška', 'PDF nije mogao da se napravi. Pokušaj ponovo.');
+    }
   };
 
   const invite = async () => {
@@ -112,6 +141,17 @@ export default function ProfileScreen() {
                 />
               </>
             )}
+          </Card>
+
+          <SectionTitle>Zdravstveni karton</SectionTitle>
+          <Card>
+            <Row
+              icon="document"
+              title="Izvoz kartona u PDF"
+              desc="Ceo karton — vakcine, terapije, pregledi, težina — spreman za slanje veterinaru."
+              right={premium ? undefined : <Tag tone="gold">🔒 Premium</Tag>}
+            />
+            <Btn label="Napravi PDF" icon="download" onPress={exportPdf} />
           </Card>
 
           <SectionTitle>Moj Ljubimac Premium</SectionTitle>
