@@ -36,6 +36,9 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# arhive sa isporučenim izmenama (kod se raspakuje, zip ne ide u repo)
+*.zip
+
 example
 
 # generated native folders

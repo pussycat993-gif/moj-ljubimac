@@ -5,7 +5,7 @@
 
 ---
 
-## 📍 CHECKPOINT — trenutno stanje (22. jul 2026)
+## 📍 CHECKPOINT — trenutno stanje (20. avgust 2026)
 
 **Urađeno do sada:**
 - [x] Klikabilan HTML prototip (izgled i tok aplikacije)
@@ -17,16 +17,18 @@
 - [x] Skeniranje hrane uklonjeno (odluka)
 - [x] Premium ograničenja (lokalni demo fleg)
 - [x] Projekat na GitHub-u: `pussycat993-gif/moj-ljubimac`
-- [x] PDF izvoz kartona (Premium) — kod isporučen u `pdf-izvoz-izmene.zip`
+- [x] PDF izvoz kartona (Premium) — u repou (`src/lib/pdf.ts`), spojeno sa sync-om
+- [x] Sync sloj za Supabase napisan (`src/lib/supabase.ts`, `src/lib/sync.ts`, `supabase/schema.sql`)
+      — **ali još nije uključen**: `app.json → extra.supabase` je prazan, vidi 3.1
 
-**SLEDEĆI KORAK → Faza 1, tačka 1.1 (terminal).**
+**SLEDEĆI KORAK → Faza 1, tačka 1.3.**
 
 ---
 
 ## Faza 1 — Lokalno testiranje na telefonu (ova nedelja)
 
-- [ ] 1.1 Prekopirati `pdf-izvoz-izmene.zip` preko projekta (4 fajla)
-- [ ] 1.2 Terminal: `npm install` pa `npx expo start` → skenirati QR Expo Go aplikacijom
+- [x] 1.1 Prekopirati `pdf-izvoz-izmene.zip` preko projekta (4 fajla)
+- [x] 1.2 Terminal: `npm install` pa `npx expo start` → skenirati QR Expo Go aplikacijom
 - [ ] 1.3 Proći kroz SVE ekrane sa pravim podacima (unesi svog ljubimca, obriši demo Lunu)
 - [ ] 1.4 Test PDF: Profil → demo Premium → „Napravi PDF" → pošalji sebi na Viber
 - [ ] 1.5 Test deljenja trenutka (WhatsApp/Viber/sistemski share)
@@ -43,11 +45,29 @@ Zašto: Expo Go ne pokazuje notifikacije 100% verno; development build je „pra
 
 ## Faza 3 — Backend: nalozi + deljenje sa porodicom
 
+Kod je napisan (`src/lib/supabase.ts`, `src/lib/sync.ts`, `supabase/schema.sql`), ali faza
+nije završena — ostalo je da se poveže pravi projekat i doda pozivnica. Detalji po tački:
+
 - [ ] 3.1 Supabase projekat (besplatan tier je dovoljan za start)
+      → FALI: `app.json → extra.supabase.url` i `.anonKey` su prazni, pa `isCloudConfigured()`
+        vraća `false` i cela prijava/sync je isključena u aplikaciji. Napravi projekat,
+        pokreni `supabase/schema.sql`, upiši URL i anon ključ.
 - [ ] 3.2 Tabele = model iz `src/lib/types.ts` (1:1) + Auth (email/Google/Apple)
-- [ ] 3.3 Sync sloj u `src/lib/store.ts` (lokalno ostaje, backend dodaje sinhronizaciju)
+      → URAĐENO: tabele 1:1 u `supabase/schema.sql` (pets, weights, vaccinations, medications,
+        checkups, food_profiles, stools, milestones, reminders) + RLS + realtime.
+      → FALI: Auth ima samo email/lozinku (`src/app/auth.tsx`). Google i Apple prijava nisu urađene.
+        Apple prijava je obavezna na iOS-u ako postoji bilo koja druga socijalna prijava.
+- [x] 3.3 Sync sloj (lokalno ostaje, backend dodaje sinhronizaciju)
+      → Urađeno u `src/lib/sync.ts` (ne u `store.ts`): pull + realtime + debounce push + prenos
+        brisanja. Poznato ograničenje: fotografije/prilozi se ne sinhronizuju (treba Storage).
 - [ ] 3.4 Pozivnica supružniku → oba telefona vide isti karton u realnom vremenu
+      → FALI: dugme „Pozovi člana porodice" samo deli reklamni link (`Share.share`), nema
+        pozivnicu ni pristupanje household-u. `ensureHousehold()` svakom novom korisniku pravi
+        SVOJ household, pa se supružnik sa svojim nalogom NE bi video isti karton.
+        Danas radi samo deljenje preko istog naloga na dva telefona.
 - [ ] 3.5 Brisanje naloga iz aplikacije (obavezno za obe prodavnice!)
+      → NIJE urađeno i NE štiklirati dok se ne napravi. Bez ovoga App Store i Google Play
+        odbijaju aplikaciju koja ima naloge. (`deletePet` briše samo ljubimca, ne nalog.)
 
 ## Faza 4 — Naplata (pravi Premium)
 
