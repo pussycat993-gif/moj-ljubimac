@@ -21,6 +21,29 @@ async function persistCopy(sourceUri: string, preferredName: string): Promise<st
   return target.uri;
 }
 
+/**
+ * Briše ceo „media" folder (sve kopirane fotografije i PDF nalaze).
+ * Poziva se pri brisanju naloga/podataka — bez ovoga bi fajlovi ostali na
+ * telefonu i posle brisanja zapisa koji su na njih pokazivali.
+ */
+export function deleteAllMedia(): void {
+  try {
+    const dir = new Directory(Paths.document, 'media');
+    if (!dir.exists) return;
+    // Prvo sadržaj, pa folder — sigurnije od jednog rekurzivnog delete-a.
+    for (const entry of dir.list()) {
+      try {
+        entry.delete();
+      } catch {
+        // pojedinačni fajl je zaključan/nedostupan — nastavi sa ostalim
+      }
+    }
+    dir.delete();
+  } catch {
+    // folder ne postoji ili ga OS drži — nije razlog da brisanje naloga padne
+  }
+}
+
 function extensionOf(uri: string, fallback: string): string {
   const clean = uri.split('?')[0];
   const dot = clean.lastIndexOf('.');

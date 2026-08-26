@@ -11,7 +11,10 @@
 create table if not exists public.households (
   id uuid primary key default gen_random_uuid(),
   name text not null default 'Moja porodica',
-  created_by uuid not null references auth.users (id) on delete cascade,
+  -- NAMERNO "set null", a NE "cascade": da je cascade, brisanje naloga tvorca
+  -- obrisalo bi ceo household — a sa njim i karton koji vodi ostatak porodice.
+  -- Ko preuzima vlasništvo pri brisanju naloga: supabase/functions/delete-account.
+  created_by uuid references auth.users (id) on delete set null,
   created_at timestamptz not null default now()
 );
 

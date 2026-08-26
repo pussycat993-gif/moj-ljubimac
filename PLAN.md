@@ -65,7 +65,12 @@ nije završena — ostalo je da se poveže pravi projekat i doda pozivnica. Deta
         pozivnicu ni pristupanje household-u. `ensureHousehold()` svakom novom korisniku pravi
         SVOJ household, pa se supružnik sa svojim nalogom NE bi video isti karton.
         Danas radi samo deljenje preko istog naloga na dva telefona.
-- [ ] 3.5 Brisanje naloga iz aplikacije (obavezno za obe prodavnice!)
+- [ ] 3.5 Brisanje naloga iz aplikacije (obavezno za obe prodavnice!) — kod napisan
+  - [ ] 3.5a Posle 3.1: `supabase functions deploy delete-account` (bez `--no-verify-jwt`!)
+  - [ ] 3.5b Samo ako je stari `schema.sql` već pokrenut: `supabase/patch-brisanje-naloga.sql`
+  - [ ] 3.5c Zameniti placeholder email u `docs/brisanje-naloga.html` pravom adresom
+  - [ ] 3.5d Objaviti tu stranu na GitHub Pages → URL ide u Google Data Safety (5.2)
+  - [ ] 3.5e Test: probni nalog → obriši ga → proveri da nema reda u `auth.users`
       → NIJE urađeno i NE štiklirati dok se ne napravi. Bez ovoga App Store i Google Play
         odbijaju aplikaciju koja ima naloge. (`deletePet` briše samo ljubimca, ne nalog.)
 

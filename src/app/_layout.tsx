@@ -40,6 +40,7 @@ export default function RootLayout() {
         <Stack.Screen name="auth" options={{ presentation: 'modal', title: 'Nalog' }} />
         <Stack.Screen name="pet-form" options={{ presentation: 'modal', title: 'Ljubimac' }} />
         <Stack.Screen name="paywall" options={{ presentation: 'modal', title: 'Moj Ljubimac Premium' }} />
+        <Stack.Screen name="delete-account" options={{ presentation: 'modal', title: 'Brisanje naloga' }} />
         <Stack.Screen name="entry/weight" options={{ presentation: 'modal', title: 'Novo merenje' }} />
         <Stack.Screen name="entry/vaccination" options={{ presentation: 'modal', title: 'Vakcinacija' }} />
         <Stack.Screen name="entry/medication" options={{ presentation: 'modal', title: 'Terapija / lek' }} />

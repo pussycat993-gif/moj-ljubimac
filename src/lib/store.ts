@@ -59,6 +59,7 @@ interface AppState {
 
   setPremium: (v: boolean) => void;
   seedIfEmpty: () => void;
+  resetAll: () => void;
 }
 
 const notPet = (petId: string) => (x: { petId: string }) => x.petId !== petId;
@@ -156,6 +157,32 @@ export const useApp = create<AppState>()(
         set((s) => ({ reminders: s.reminders.filter((r) => r.id !== id) })),
 
       setPremium: (v) => set({ premium: v }),
+
+      /**
+       * Prazni SVE lokalne podatke (brisanje naloga / brisanje podataka sa telefona).
+       *
+       * `seeded: true` je namerno: bez toga bi seedIfEmpty() pri sledećem
+       * pokretanju vratio demo Lunu, pa bi korisnik posle „obriši sve" opet
+       * video tuđeg ljubimca.
+       *
+       * Ne poziva persist.clearStorage(): ovaj set() sam prepiše sačuvano
+       * stanje praznim, a brisanje ključa bi vratilo seeded: false.
+       */
+      resetAll: () =>
+        set({
+          pets: [],
+          activePetId: null,
+          weights: [],
+          vaccinations: [],
+          medications: [],
+          checkups: [],
+          foodProfiles: [],
+          stools: [],
+          milestones: [],
+          reminders: [],
+          premium: false,
+          seeded: true,
+        }),
 
       /** Demo podaci pri prvom pokretanju, da aplikacija ne bude prazna. */
       seedIfEmpty: () => {

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="sr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Brisanje naloga i podataka — Moj Ljubimac</title>
+    <meta
+      name="description"
+      content="Kako da obrišeš nalog i sve podatke u aplikaciji Moj Ljubimac." />
+    <style>
+      :root {
+        --brand: #5c3a21;
+        --text: #2b2320;
+        --muted: #6f6259;
+        --line: #e7ded6;
+        --bg: #fbf8f5;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 32px 20px 64px;
+        font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+      main { max-width: 680px; margin: 0 auto; }
+      h1 { font-size: 26px; line-height: 1.25; margin: 0 0 6px; color: var(--brand); }
+      h2 { font-size: 18px; margin: 32px 0 8px; }
+      p, li { color: var(--text); }
+      .lead { color: var(--muted); margin: 0 0 28px; }
+      ol, ul { padding-left: 22px; }
+      li { margin: 6px 0; }
+      .box {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 18px 20px;
+        margin: 18px 0;
+      }
+      table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+      th, td {
+        text-align: left;
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--line);
+        font-size: 15px;
+        vertical-align: top;
+      }
+      th { color: var(--muted); font-weight: 600; width: 46%; }
+      a { color: var(--brand); }
+      footer { margin-top: 40px; color: var(--muted); font-size: 13.5px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Brisanje naloga i podataka</h1>
+      <p class="lead">Aplikacija „Moj Ljubimac" — zdravstveni karton za kućne ljubimce</p>
+
+      <h2>Brisanje iz aplikacije (najbrži način)</h2>
+      <ol>
+        <li>Otvori aplikaciju i idi na tab <strong>Profil</strong>.</li>
+        <li>Spusti se do sekcije <strong>Nalog</strong>.</li>
+        <li>Dodirni <strong>Obriši nalog i sve podatke</strong>.</li>
+        <li>Napiši reč <strong>BRIŠEM</strong> i potvrdi.</li>
+      </ol>
+      <p>Brisanje je trenutno i trajno — nema koša za smeće i podaci se ne mogu vratiti.</p>
+
+      <div class="box">
+        <strong>Savet:</strong> ako želiš kopiju kartona pre brisanja, u sekciji
+        <em>Zdravstveni karton</em> izvezi ga u PDF i pošalji sebi.
+      </div>
+
+      <h2>Šta se briše</h2>
+      <table>
+        <tr>
+          <th>Briše se odmah i trajno</th>
+          <td>
+            Nalog (email i lozinka), podaci o ljubimcima, težina, vakcine, terapije,
+            veterinarski pregledi i prilozi, ishrana, trenuci, fotografije, podsetnici.
+          </td>
+        </tr>
+        <tr>
+          <th>Ostaje</th>
+          <td>
+            Ako karton deliš sa ukućanima, njihov nalog i zajednički karton ostaju —
+            briše se tvoj nalog i tvoj pristup. Ako si jedini član, briše se sve.
+          </td>
+        </tr>
+        <tr>
+          <th>Rok zadržavanja</th>
+          <td>
+            Podaci se ne zadržavaju posle brisanja. Rezervne kopije baze se ciklično
+            prepisuju najkasnije u roku od 30 dana.
+          </td>
+        </tr>
+      </table>
+
+      <h2>Nemaš više pristup aplikaciji?</h2>
+      <p>
+        Ako si obrisao/obrisala aplikaciju ili ne možeš da se prijaviš, pošalji zahtev sa
+        email adrese kojom je nalog napravljen na:
+        <!-- ZAMENI ovom adresom koju stvarno čitaš pre objave u prodavnicama. -->
+        <strong><a href="mailto:podrska@example.com">podrska@example.com</a></strong>
+      </p>
+      <p>Zahtev obrađujemo u roku od 30 dana i potvrđujemo brisanje istim mejlom.</p>
+
+      <footer>
+        Moj Ljubimac · <a href="./politika-privatnosti.html">Politika privatnosti</a>
+      </footer>
+    </main>
+  </body>
+</html>

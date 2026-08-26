@@ -66,6 +66,19 @@ export async function cancelScheduled(id?: string) {
   }
 }
 
+/**
+ * Otkazuje SVE zakazane notifikacije ovog uređaja.
+ * Koristi se pri brisanju naloga/podataka — inače bi podsetnici za obrisane
+ * ljubimce nastavili da zvone i posle brisanja.
+ */
+export async function cancelAllScheduled(): Promise<void> {
+  try {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+  } catch {
+    // nema dozvole ili nema zakazanih — nije greška
+  }
+}
+
 /** Zakazuje čestitku za sledeći rođendan ljubimca (09:00). */
 export async function scheduleBirthday(pet: Pick<Pet, 'name' | 'dob'>): Promise<string | null> {
   const when = nextBirthday(pet.dob);

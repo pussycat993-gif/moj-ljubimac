@@ -176,34 +176,50 @@ export default function ProfileScreen() {
             )}
           </Card>
 
-          <SectionTitle>Nalog</SectionTitle>
-          <Card>
-            <Row
-              icon="shield-checkmark"
-              title="Privatnost i podaci"
-              desc="Podaci se čuvaju samo na ovom uređaju dok se ne uključi nalog."
-            />
-            <Btn
-              label="Obriši ljubimca i sve zapise"
-              kind="danger"
-              onPress={() =>
-                Alert.alert(
-                  'Obriši ljubimca?',
-                  `Svi zapisi za ${pet.name} (težina, vakcine, trenuci…) biće trajno obrisani.`,
-                  [
-                    { text: 'Otkaži', style: 'cancel' },
-                    { text: 'Obriši sve', style: 'destructive', onPress: () => deletePet(pet.id) },
-                  ]
-                )
-              }
-            />
-          </Card>
-
-          <Text style={{ fontSize: 12, color: t.muted, textAlign: 'center', marginTop: 20 }}>
-            Moj Ljubimac v1.0.0
-          </Text>
         </>
       )}
+
+      {/* Sekcija „Nalog" je NAMERNO van provere za ljubimca: brisanje naloga
+          mora da bude dostupno i kad nema ni jednog ljubimca — to je izričit
+          zahtev App Store-a (5.1.1(v)) i Google Play-a. */}
+      <SectionTitle>Nalog</SectionTitle>
+      <Card>
+        <Row
+          icon="shield-checkmark"
+          title="Privatnost i podaci"
+          desc={
+            session
+              ? `Podaci se sinhronizuju sa nalogom ${session.user.email}.`
+              : 'Podaci se čuvaju samo na ovom uređaju dok se ne uključi nalog.'
+          }
+        />
+        {pet ? (
+          <Btn
+            label="Obriši ljubimca i sve zapise"
+            kind="danger"
+            onPress={() =>
+              Alert.alert(
+                'Obriši ljubimca?',
+                `Svi zapisi za ${pet.name} (težina, vakcine, trenuci…) biće trajno obrisani.`,
+                [
+                  { text: 'Otkaži', style: 'cancel' },
+                  { text: 'Obriši sve', style: 'destructive', onPress: () => deletePet(pet.id) },
+                ]
+              )
+            }
+          />
+        ) : null}
+        <Btn
+          label={session ? 'Obriši nalog i sve podatke' : 'Obriši sve podatke iz aplikacije'}
+          kind="danger"
+          icon="trash"
+          onPress={() => router.push('/delete-account')}
+        />
+      </Card>
+
+      <Text style={{ fontSize: 12, color: t.muted, textAlign: 'center', marginTop: 20 }}>
+        Moj Ljubimac v1.0.0
+      </Text>
     </Screen>
   );
 }
