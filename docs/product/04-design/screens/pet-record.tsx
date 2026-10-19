@@ -10,6 +10,7 @@ import {
   FileDown,
   FileText,
   ImageIcon,
+  MapPin,
   MoreVertical,
   Pencil,
   Phone,
@@ -71,11 +72,13 @@ import { StatusBadge, type Status } from "../components/status-badge"
 
 /* ---------- states ---------- */
 
-type ViewState = "D" | "M" | "L" | "E" | "G" | "R"
+// V = pet without "moj veterinar" → vet suggestion card (top 2 vet partners, EP-64, CR-22)
+type ViewState = "D" | "M" | "V" | "L" | "E" | "G" | "R"
 
 const states: { value: ViewState; label: string }[] = [
   { value: "D", label: "Podrazumevano (Luna)" },
   { value: "M", label: "Drugi ljubimac (Maks)" },
+  { value: "V", label: "Bez veterinara (predlog)" },
   { value: "L", label: "Učitavanje" },
   { value: "E", label: "Prazno" },
   { value: "G", label: "Premium zaključano (PDF)" },
@@ -167,7 +170,7 @@ type PetData = {
   passport: string
   neutered: string
   unit: "kg" | "g"
-  vet: { name: string; phone: string }
+  vet?: { name: string; phone: string }
   note: string
   reminders: ReminderRowData[]
   vaccines: Vaccine[]
@@ -419,6 +422,26 @@ const maksData: PetData = {
   ],
 }
 
+const maksNoVet: PetData = { ...maksData, vet: undefined }
+
+// Top 2 vet partners near the owner's city (featured first, then distance) — from EP-64.
+const suggestedVets = [
+  {
+    id: "p4",
+    name: "Veterinarska ambulanta „Detelinara”",
+    address: "Rumenačka 90, Novi Sad",
+    distance: "0,8 km",
+    phone: "+381 21 300 900",
+  },
+  {
+    id: "p1",
+    name: "Veterinarska ambulanta „Dr Vet”",
+    address: "Bulevar oslobođenja 45, Novi Sad",
+    distance: "1,2 km",
+    phone: "+381 21 455 100",
+  },
+]
+
 const emptyLuna: PetData = { ...lunaData, reminders: [], vaccines: [], treatments: [], visits: [], weights: [] }
 
 /* ---------- small building blocks ---------- */
@@ -600,7 +623,7 @@ export default function PetRecordScreen() {
     setView(v)
     setStatusMessage("")
     setPdfLockOpen(v === "G")
-    setPet(v === "M" ? maksData : v === "E" ? emptyLuna : lunaData)
+    setPet(v === "M" ? maksData : v === "V" ? maksNoVet : v === "E" ? emptyLuna : lunaData)
   }
 
   const isFree = view === "G"
@@ -1145,16 +1168,54 @@ export default function PetRecordScreen() {
                 )}
               </Card>
 
-              <Card className="gap-3 p-4 md:p-6">
-                <h2 className="font-heading text-lg font-bold">Moj veterinar</h2>
-                <p className="text-sm">{pet.vet.name}</p>
-                <Button asChild variant="outline" className="h-11 md:h-9">
-                  <a href={`tel:${pet.vet.phone.replace(/\s/g, "")}`}>
-                    <Phone className="size-4" aria-hidden />
-                    Pozovi {pet.vet.phone}
-                  </a>
-                </Button>
-              </Card>
+              {pet.vet ? (
+                <Card className="gap-3 p-4 md:p-6">
+                  <h2 className="font-heading text-lg font-bold">Moj veterinar</h2>
+                  <p className="text-sm">{pet.vet.name}</p>
+                  <Button asChild variant="outline" className="h-11 md:h-9">
+                    <a href={`tel:${pet.vet.phone.replace(/\s/g, "")}`}>
+                      <Phone className="size-4" aria-hidden />
+                      Pozovi {pet.vet.phone}
+                    </a>
+                  </Button>
+                </Card>
+              ) : (
+                <Card className="gap-3 p-4 md:p-6">
+                  <div className="min-w-0">
+                    <h2 className="font-heading text-lg font-bold">Predlog veterinara u blizini</h2>
+                    <p className="text-sm text-muted-foreground">{pet.name} nema upisanog veterinara.</p>
+                  </div>
+                  <ul className="space-y-2">
+                    {suggestedVets.map((v) => (
+                      <li key={v.id} className="flex items-center gap-3 rounded-sm bg-foreground/5 p-3">
+                        <Stethoscope className="size-5 shrink-0 text-pet-accent" aria-hidden />
+                        <div className="min-w-0 flex-1">
+                          <Link
+                            href={`/partneri/${v.id}`}
+                            className="block rounded-sm break-words text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                          >
+                            {v.name}
+                          </Link>
+                          <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+                            <MapPin className="size-3.5 shrink-0" aria-hidden />
+                            <span className="truncate">
+                              {v.distance} · {v.address}
+                            </span>
+                          </p>
+                        </div>
+                        <Button asChild variant="outline" size="icon" className="size-11 shrink-0 md:size-9">
+                          <a href={`tel:${v.phone.replace(/\s/g, "")}`} aria-label={`Pozovi: ${v.name}`}>
+                            <Phone className="size-4" aria-hidden />
+                          </a>
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                  <Button asChild variant="link" className="justify-start px-0">
+                    <Link href="/partneri">Svi partneri →</Link>
+                  </Button>
+                </Card>
+              )}
 
               <Card className="gap-2 p-4 md:p-6">
                 <h2 className="font-heading text-lg font-bold">Još o ljubimcu</h2>

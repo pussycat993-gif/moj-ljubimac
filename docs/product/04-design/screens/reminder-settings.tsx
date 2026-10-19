@@ -19,8 +19,9 @@ import { StatusBadge } from "../components/status-badge"
 // S12 — Podešavanja podsetnika · /podesavanja/podsetnici · FR-22, FR-23, FR-25
 // D = Premium user (WhatsApp available, monthly counter) · G = Free user (WhatsApp Premium-locked)
 // Channel variants: ON = push on + WhatsApp connected · BLK = push blocked in the browser
+// SOON = Premium user before WhatsApp goes live (CR-13): WhatsApp shown as "Uskoro dostupno", disabled
 
-type ViewState = "D" | "ON" | "BLK" | "G"
+type ViewState = "D" | "ON" | "BLK" | "SOON" | "G"
 type PushState = "off" | "on" | "blocked"
 type WaStep = "number" | "code" | "connected"
 
@@ -149,6 +150,7 @@ export default function ReminderSettingsScreen() {
   const [waError, setWaError] = useState("")
 
   const isFree = view === "G"
+  const waSoon = view === "SOON"
 
   function changeView(v: ViewState) {
     setView(v)
@@ -318,6 +320,7 @@ export default function ReminderSettingsScreen() {
           { value: "D", label: "Podrazumevano (Premium)" },
           { value: "ON", label: "Push uključen, WhatsApp povezan" },
           { value: "BLK", label: "Push blokiran" },
+          { value: "SOON", label: "WhatsApp uskoro (Premium)" },
           { value: "G", label: "Premium zaključano (Free)" },
         ]}
         value={view}
@@ -404,9 +407,15 @@ export default function ReminderSettingsScreen() {
                     WhatsApp
                   </h3>
                   <StatusBadge status="premium" />
+                  {waSoon && <Badge variant="outline" className="bg-card">Uskoro dostupno</Badge>}
                 </div>
               </div>
-              {isFree ? (
+              {waSoon ? (
+                <p className="rounded-sm bg-foreground/5 p-3 text-sm text-muted-foreground">
+                  WhatsApp podsetnici stižu uskoro. Javićemo ti mejlom kad budeš mogao/la da povežeš broj — do tada
+                  podsetnici stižu mejlom i push-om.
+                </p>
+              ) : isFree ? (
                 <PremiumLock description="Poveži broj telefona i primaj važne podsetnike i na WhatsApp-u, pored mejla i push obaveštenja.">
                   <div className="min-h-64">{waForm}</div>
                 </PremiumLock>
@@ -419,7 +428,7 @@ export default function ReminderSettingsScreen() {
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {/* WhatsApp monthly counter for Premium (BR-14a) */}
-          {!isFree && (
+          {!isFree && !waSoon && (
             <Card className="gap-3 p-4 md:p-6">
               <div className="flex items-center gap-3">
                 <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-foreground/5">
@@ -531,22 +540,28 @@ export default function ReminderSettingsScreen() {
                     {channels.map((c) => {
                       const Icon = c.icon
                       const locked = c.premium && isFree
-                      const checked = !locked && s.channels.includes(c.key)
+                      const soon = c.key === "whatsapp" && waSoon
+                      const checked = !locked && !soon && s.channels.includes(c.key)
                       const id = `ch-${s.key}-${c.key}`
                       return (
                         <div key={c.key} className="flex min-h-11 items-center gap-3 rounded-sm bg-foreground/5 px-3">
                           <Checkbox
                             id={id}
                             checked={checked}
-                            disabled={locked}
+                            disabled={locked || soon}
                             onCheckedChange={(v) => toggleChannel(s, c.key, v === true)}
-                            aria-describedby={locked ? `${id}-lock` : undefined}
+                            aria-describedby={locked ? `${id}-lock` : soon ? `${id}-soon` : undefined}
                           />
                           <Label htmlFor={id} className="flex min-w-0 flex-1 items-center gap-2">
                             <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                             <span className="truncate">{c.label}</span>
                           </Label>
-                          {c.key === "whatsapp" && !isFree && !waConnected && (
+                          {soon && (
+                            <span id={`${id}-soon`} className="shrink-0 text-xs font-medium text-muted-foreground">
+                              Uskoro dostupno
+                            </span>
+                          )}
+                          {c.key === "whatsapp" && !isFree && !soon && !waConnected && (
                             <span className="shrink-0 text-xs font-medium text-muted-foreground">Broj nije povezan</span>
                           )}
                           {c.premium && isFree && (
@@ -561,7 +576,7 @@ export default function ReminderSettingsScreen() {
                       )
                     })}
                   </div>
-                  {!isFree && s.channels.length === 0 && (
+                  {!isFree && s.channels.filter((c) => !(waSoon && c === "whatsapp")).length === 0 && (
                     <p className="text-sm text-destructive">Izaberi bar jedan kanal.</p>
                   )}
                   {isFree && s.channels.filter((c) => c !== "whatsapp").length === 0 && (

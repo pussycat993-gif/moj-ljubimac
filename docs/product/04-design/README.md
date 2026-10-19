@@ -1,6 +1,6 @@
 # 04-design — Living mockup screens
 
-Mock screens for Moj Ljubimac. Binding rules: `../04-design-system.md`. UI copy in Serbian (Latin); inline mock data only; every screen has a dev-only **Prikaz stanja** switcher to preview its states.
+Mock screens for Moj Ljubimac. Binding rules: `../04-design-system.md`. UI copy in Serbian (Latin); inline mock data only; every screen with more than one state has a dev-only **Prikaz stanja** switcher to preview them (S30 / S31 have one state).
 
 ## How to run
 1. In the Next.js project (ADR-01, ADR-14), install the shadcn components listed in design system §6 and apply the two overrides in `ui-overrides/`.
@@ -11,8 +11,8 @@ Mock screens for Moj Ljubimac. Binding rules: `../04-design-system.md`. UI copy 
 ## Verification (2026-10-19)
 Ran in a throwaway Next.js 16 / Tailwind v4 / shadcn preview app:
 - `tsc --noEmit`: 0 errors.
-- `next build`: all 29 routes built.
-- Headless Chromium at **375 px** and **1440 px**, every state of every screen's switcher: no horizontal overflow, exactly one `h1`, no runtime errors (only expected 404s from links prefetching real app routes that don't exist in the preview).
+- `next build`: all 31 routes built.
+- Headless Chromium at **375 px** and **1440 px**, every state of every screen's switcher (activated with real pointer clicks and checked to be active — since v1.5; Radix tabs ignore a synthetic `element.click()`): no horizontal overflow, exactly one `h1`, no runtime errors (only expected 404s from links prefetching real app routes that don't exist in the preview).
 - Tokens bind: pet accent resolves (`rgb(190 24 93)` for a female pet), `bg-foreground/5` emits a `color-mix` 5 % overlay, `shadow-soft` / `shadow-raised` generated.
 - Fixed during verification: implicit grid tracks overflowing phones (system now requires `grid-cols-1`), large avatar initial size.
 - Not verified: real screen-reader pass and keyboard-only walkthrough (NFR-04) — do one before launch.
@@ -50,3 +50,5 @@ Ran in a throwaway Next.js 16 / Tailwind v4 / shadcn preview app:
 | S24 | EPIC-07 | Partneri u blizini | `/partneri` | FR-52, FR-53, FR-55, FR-56 | A | `partners.tsx` |
 | S25 | EPIC-07 | Profil partnera | `/partneri/[id]` | FR-54, FR-55 | A | `partner-profile.tsx` |
 | S26 | EPIC-07 | Admin | `/admin` | FR-42, FR-57, FR-58 (+ BR-14b switch) | D | `admin.tsx` |
+| S30 | EPIC-05 | Politika privatnosti | `/privatnost` | Release Criterion 4 | P | `privacy.tsx` |
+| S31 | EPIC-05 | Uslovi korišćenja | `/uslovi` | Release Criterion 4 | P | `terms.tsx` |

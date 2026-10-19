@@ -6,10 +6,10 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 03 — Technical Constraints |
-| Version | 1.5 |
+| Version | 1.6 |
 | Date | 2026-10-19 |
 | Author | Keti Vrtunić (interview facilitated by "Iva", Staff Engineer persona) |
-| Traces to | `01-product-brief.md` v1.6 · `02-prd.md` v1.5 (both 2026-10-19) |
+| Traces to | `01-product-brief.md` v1.6 · `02-prd.md` v1.6 · `04-design-system.md` v1.5 · `05-api-integration-contract.md` v1.2 (all 2026-10-19) |
 | Status | Draft — awaiting owner review (Data Model in particular) |
 
 **Change log**
@@ -22,6 +22,7 @@
 | 1.3 | 2026-10-19 | Data-model additions from the API Contract field audit: `data_exports`, `organisation_invitations`, `partner_hours`; new columns on organisations, partners, households, litters, pets, subscriptions, profiles; declined state for invitations and transfers. |
 | 1.4 | 2026-10-19 | OQ-13: `r2_deletion_queue`, `payment_webhook_events`, `subscriptions.last_notice_days`, nullable `created_by` (on delete set null), unique indexes for meal schedule and dose logs. |
 | 1.5 | 2026-10-19 | Change requests from the Build Plan: ADR-15 test strategy, ADR-16 repository and folder layout. |
+| 1.6 | 2026-10-19 | Owner-approved change requests CR-01 … CR-20 (Build Plan review): ADR-17 approved libraries; ADR-18 no edge caching of public pages (reverses the 5-minute cache); Next.js 16.x pinned and request-interception file rule (ADR-01); ADR-10 amended (no preview deployments, CI applies migrations); ADR-11 cities seed; ADR-13 backup and export mechanics; ADR-16 amended (`lib/server/`, `scripts/`, `public/sw.js`, page + client files); tables `idempotency_keys` and `rate_limit_counters`; `TERMS_VERSION` constant; database error format; §8.1 environment variables; pg_cron → `pg_net` dispatch via Vault secrets. |
 
 ---
 
@@ -62,6 +63,7 @@ This document defines how Moj Ljubimac is built: thirteen architecture decisions
 - **Decision:** one Next.js (App Router, TypeScript) application containing both the user interface and server-side logic, using Supabase for database, authentication, and scheduled jobs.
 - **Alternatives considered:** separate backend API (e.g., Laravel or Node) plus a separate frontend — rejected: two codebases and two deployments to maintain for a single person, with no PRD requirement that needs the split.
 - **Consequences:** all server logic lives in the Next.js server runtime and in database functions; the owner already knows Next.js and Supabase from earlier work.
+- **Version pin (v1.6, CR-02):** Next.js 16.x. Request interception (session refresh, route protection) lives in the file name that both Next.js 16 and the OpenNext Cloudflare adapter support — Next.js 16 renamed `middleware.ts` to `proxy.ts`. The build step that introduces it must verify which name the adapter supports and stop (raise a change request) if neither works.
 
 ### ADR-02 — New Supabase project and a new schema derived from this PRD
 - **Context:** the mobile app's Supabase schema was never put into production and lacks organisations, partners, transfers, and public pages.
@@ -113,15 +115,16 @@ This document defines how Moj Ljubimac is built: thirteen architecture decisions
 
 ### ADR-10 — Environments: local and production
 - **Context:** one builder, no deadline.
-- **Decision:** local development (Supabase running locally) and production. Every push to `main` deploys to production automatically; every other branch gets a temporary preview link on Cloudflare.
-- **Alternatives considered:** a dedicated staging environment — rejected: a second full environment is maintenance a single person cannot justify for v1.
-- **Consequences:** previews use the local/dev database configuration, never production data.
+- **Decision:** local development (Supabase running locally) and production. Only `main` deploys: every push to `main` that passes CI first applies pending database migrations to production (`supabase db push`) and then deploys the app to production. Other branches run CI only (type-check, lint, tests, build); there are no preview deployments in v1 (amended in v1.6, CR-04, CR-05).
+- **Alternatives considered:** a dedicated staging environment — rejected: a second full environment is maintenance a single person cannot justify for v1. Per-branch Cloudflare preview links (the original v1.0 decision) — rejected in v1.6: a preview needs its own database and secrets to be safe, which is the same maintenance as staging.
+- **Consequences:** changes are checked locally before merging to `main`; a migration that fails on production stops the deploy, so the app never runs against a schema it does not expect.
 
 ### ADR-11 — Partner location without paid map services
 - **Context:** "nearby" partners and vet suggestions (FR-52, FR-53, FR-56).
 - **Decision:** when the Operator saves a partner, its address is converted once to coordinates through OpenStreetMap Nominatim; user profile cities come from a preloaded table of Serbian cities with coordinates; current location comes from the browser with permission; distance is computed in the database.
 - **Alternatives considered:** Google Maps APIs — rejected: billed and requires a card on the account.
 - **Consequences:** low-volume geocoding only in the admin area; the Operator can correct coordinates manually if geocoding fails.
+- **Cities seed (v1.6, CR-06):** the `cities` table holds every town that is the seat of a municipality or city in Serbia, with names in Serbian Latin and English. Coordinates are fetched once from Nominatim by a one-off script in `scripts/` and committed as seed SQL (`supabase/seed/cities.sql`); the app never geocodes cities at runtime.
 
 ### ADR-12 — PDF export generated in the browser
 - **Context:** Premium PDF export of the full record (FR-10).
@@ -131,9 +134,10 @@ This document defines how Moj Ljubimac is built: thirteen architecture decisions
 
 ### ADR-13 — Nightly backups and data export via GitHub Actions
 - **Context:** Supabase Free has no automatic backups; FR-41 requires a full personal data archive.
-- **Decision:** a nightly GitHub Actions job exports the database to R2 and keeps the last 14 days; the same mechanism builds per-user data archives on request.
+- **Decision:** a nightly GitHub Actions job exports the database to R2 and keeps the last 14 days; per-user data archives are built on request inside the app (amended in v1.6 — see Mechanics).
 - **Alternatives considered:** rely on Supabase Pro backups — rejected for launch on cost (ADR-03).
 - **Consequences:** up to 24 hours of data could be lost in a disaster; restores are manual.
+- **Mechanics (v1.6, CR-20):** *Backups* — a nightly GitHub Actions workflow runs `scripts/backup.sh`, which runs `pg_dump` against `SUPABASE_DB_URL` and uploads the dump to the separate backup bucket (`R2_BACKUP_BUCKET`) with the AWS CLI (S3-compatible endpoint), then deletes objects older than 14 days. *Data export archives* — built inside the app, not in GitHub Actions: pg_cron calls the internal route `/api/internal/exports` every 5 minutes (same `pg_net` + Vault pattern as reminder dispatch, §8), which builds pending archives with `fflate` and uploads them to `R2_BUCKET` under `exports/`.
 
 ### ADR-14 — UI components and styling: shadcn/ui, Tailwind CSS, lucide-react
 - **Context:** the design system needs an approved component and styling foundation; the original document did not name one (raised in Design Mock).
@@ -153,10 +157,44 @@ This document defines how Moj Ljubimac is built: thirteen architecture decisions
   - `app/` — routes matching the Design System screen inventory (`app/(app)/…` signed-in, `app/(org)/…` organisation, `app/(auth)/…`, `app/(public)/…`, `app/admin/…`, `app/api/…` route handlers)
   - `components/ui/` — shadcn primitives (project-owned); `components/app/` — composites from `04-design/components`
   - `lib/supabase/` — server, browser, and service-role clients plus generated types; `lib/actions/<resource>.ts` — server actions per resource; `lib/integrations/` — Resend, WhatsApp, R2, web push, Nominatim, payments adapter; `lib/i18n/` — Serbian and English strings
-  - `supabase/migrations/` — SQL migrations; `supabase/tests/` — pgTAP tests; `supabase/seed.sql` — seed data
+  - `lib/server/` — shared server-only utilities (action tokens, `ApiError` / `ActionResult` helpers, idempotency, rate limits, database error mapping); every module imports `server-only` (v1.6, CR-16)
+  - `lib/legal.ts` — `TERMS_VERSION` constant (v1.6, CR-09)
+  - `supabase/migrations/` — SQL migrations; `supabase/tests/` — pgTAP tests; `supabase/seed.sql` — seed data; `supabase/seed/cities.sql` — cities seed (ADR-11)
+  - `scripts/` — one-off and CI scripts (e.g. cities fetch, `backup.sh`) (v1.6, CR-16)
+  - `public/sw.js` — the Web Push service worker (ADR-05) (v1.6, CR-16)
   - `tests/` — Vitest; `e2e/` — Playwright
+  - Route convention (v1.6, CR-16): each route is a server `page.tsx` plus a colocated `*-client.tsx` client component ported from the matching mockup screen in `04-design/`.
 - **Alternatives considered:** a folder inside the existing mobile repository — rejected: the schema is new and the mobile app is on hold, so a shared repository adds coupling without shared code.
 - **Consequences:** mobile reuse of types, if revived, happens by generating types from the same Supabase project.
+
+### ADR-17 — Approved libraries
+- **Context:** build steps install packages; without an approved list each step would choose its own, and some popular packages do not run on Cloudflare Workers (Node-only crypto, file system, native binaries) (raised as CR-01).
+- **Decision:** only the packages below (and their own dependencies) may be added. Anything else needs a Technical Constraints change first.
+
+| Package | Purpose | ADR |
+|---|---|---|
+| `next` (16.x), `react`, `react-dom`, `typescript` | Application framework | ADR-01 |
+| `@opennextjs/cloudflare`, `wrangler` | Cloudflare Workers adapter and deploy | ADR-03 |
+| `@supabase/supabase-js`, `@supabase/ssr` | Database, auth, and session cookies | ADR-02, ADR-06 |
+| `server-only` | Guards server-only modules (`lib/server/`) from client import | ADR-16 |
+| `tailwindcss`, `tw-animate-css`, `lucide-react`, and whatever `npx shadcn@latest add` installs for the components in Design System §6 | UI components and styling | ADR-14 |
+| `react-day-picker`, `date-fns` | Date picker and date arithmetic/formatting | ADR-14 |
+| `aws4fetch` | R2 S3-compatible presigned URLs; runs on Workers | ADR-07 |
+| `@pushforge/builder` | Web Push with VAPID on Workers; zero dependencies | ADR-05 |
+| `@react-pdf/renderer` | Browser-side PDF export | ADR-12 |
+| `html-to-image` | Moment share-as-image, in the browser | — (FR-18) |
+| `fflate` | ZIP for data export archives on Workers | ADR-13 |
+| `vitest`, `@vitejs/plugin-react`, `jsdom`, Testing Library | Unit and component tests | ADR-15 |
+| `@playwright/test`, `@axe-core/playwright` | End-to-end and accessibility checks (NFR-04) | ADR-15 |
+
+- **Alternatives considered:** `web-push` (Node crypto, does not run on Workers); `@aws-sdk/client-s3` (large bundle, Node-oriented); `jszip` (heavier than `fflate`); server-side PDF/image rendering (ADR-12) — all rejected for Workers compatibility or size; an open "any package" policy — rejected: unreviewed packages are the most likely cause of Workers runtime failures (RISK-11).
+- **Consequences:** a step that needs a package not on the list stops and raises a change request; the list is the reference for dependency review.
+
+### ADR-18 — No edge caching of public pages in v1
+- **Context:** API Contract v1.1 cached public organisation pages and public moment pages for 5 minutes at the edge, which required purging the cache whenever a listing, organisation, or link changed (raised as CR-17).
+- **Decision:** public pages (API EP-24, EP-62) render on every request; no edge cache and no purge mechanism in v1. This reverses the 5-minute cache.
+- **Alternatives considered:** 5-minute edge cache with purge on change — rejected: purge calls from several write paths add complexity and failure modes (stale "available" animals after adoption, revoked links still visible) for traffic v1 does not have.
+- **Consequences:** changes (status, revoked link) are visible immediately; every public view costs one database read — revisit if public traffic threatens Free-plan limits (RISK-12).
 
 ---
 
@@ -164,21 +202,23 @@ This document defines how Moj Ljubimac is built: thirteen architecture decisions
 
 | Layer | Choice | ADR |
 |---|---|---|
-| Application (UI + server logic) | Next.js (App Router, TypeScript) | ADR-01 |
+| Application (UI + server logic) | Next.js 16.x (App Router, TypeScript) | ADR-01 |
+| Approved libraries | Fixed package list; anything else needs a TC change | ADR-17 |
 | UI components & styling | shadcn/ui, Tailwind CSS, lucide-react | ADR-14 |
 | App hosting | Cloudflare Workers (via OpenNext adapter) | ADR-03 |
 | Database | Supabase Postgres (Free plan at launch) | ADR-02, ADR-03 |
 | Authentication | Supabase Auth — email + password, Google | ADR-06 |
-| Scheduled jobs | Supabase pg_cron (every minute; nightly deletions) | ADR-04 |
-| File storage | Cloudflare R2 | ADR-07 |
+| Scheduled jobs | Supabase pg_cron → `pg_net` calls to internal routes (every minute: dispatch; every 5 min: data exports; nightly: occurrence generation, deletions) | ADR-04, ADR-13 |
+| File storage | Cloudflare R2 (`aws4fetch` presigned URLs); separate backup bucket | ADR-07, ADR-17 |
 | Email | Resend | ADR-08 |
-| Push | Web Push (VAPID, service worker) | ADR-05 |
+| Push | Web Push (VAPID, `public/sw.js`, `@pushforge/builder`) | ADR-05, ADR-17 |
+| Public page caching | None in v1 (render on request) | ADR-18 |
 | WhatsApp / Viber | WhatsApp Business Platform (Cloud API); Viber chatbot (off until enabled) | ADR-04, §6 |
 | Payments | Monri (tokenised recurring) | ADR-09 |
 | Geocoding | OpenStreetMap Nominatim (admin only) | ADR-11 |
-| PDF | Browser-side generation | ADR-12 |
-| Backups & data export | GitHub Actions → R2 | ADR-13 |
-| CI/CD | Cloudflare deploy on push to `main`; branch previews | ADR-10 |
+| PDF | Browser-side generation (`@react-pdf/renderer`) | ADR-12, ADR-17 |
+| Backups & data export | Backups: GitHub Actions `pg_dump` → R2 backup bucket (14 days); exports: in-app route with `fflate` → R2 | ADR-13 |
+| CI/CD | CI on every branch; push to `main` → `supabase db push` then Cloudflare deploy; no preview deployments | ADR-10 |
 | Tests | Vitest + Testing Library, pgTAP (Supabase CLI), Playwright | ADR-15 |
 | Repository layout | `pussycat993-gif/moj-ljubimac`, folders per ADR-16 | ADR-16 |
 
@@ -210,7 +250,7 @@ Postgres (Supabase). Conventions for every table unless stated otherwise:
 | deletion_requested_at | timestamptz | null unless deletion pending (BR-31) |
 | deletion_due_at | timestamptz | `deletion_requested_at + 30 days`; indexed for the nightly job |
 | terms_accepted_at | timestamptz | not null; set at registration |
-| terms_version | text | not null; version of terms accepted |
+| terms_version | text | not null; version of terms accepted — registration stores the `TERMS_VERSION` constant from `lib/legal.ts` (v1.6, CR-09) |
 
 **subscriptions** (Subscription)
 | Column | Type | Notes |
@@ -503,7 +543,29 @@ Postgres (Supabase). Conventions for every table unless stated otherwise:
 
 **data_exports** — technical necessity: personal data archives (FR-41) — `user_id` FK, `status enum preparing/ready/failed/expired`, `r2_key text`, `size_bytes bigint`, `requested_at`, `ready_at`, `expires_at` (7 days after ready).
 
-**cities** — technical necessity: preloaded Serbian cities — `name_sr text`, `name_en text`, `latitude`, `longitude`.
+**cities** — technical necessity: preloaded Serbian cities — `name_sr text`, `name_en text`, `latitude`, `longitude`. Seeded from `supabase/seed/cities.sql` (ADR-11).
+
+**idempotency_keys** — technical necessity: replay-safe writes (API Contract §3.3 idempotency rule) (v1.6, CR-08)
+| Column | Type | Notes |
+|---|---|---|
+| user_id | uuid FK → profiles | not null; on delete cascade |
+| key | uuid | not null; client-supplied idempotency key |
+| operation | text | not null; e.g. `pets.create` |
+| result | jsonb | the stored result returned on replay |
+| created_at | timestamptz | not null default now() |
+- Unique (`user_id`, `key`). Rows older than 24 hours are purged by the nightly job (§5.9).
+
+**rate_limit_counters** — technical necessity: per-user rate limits (API Contract §11) (v1.6, CR-08)
+| Column | Type | Notes |
+|---|---|---|
+| user_id | uuid FK → profiles | not null; on delete cascade |
+| operation | text | not null; e.g. `invitations.send` |
+| window_start | timestamptz | not null; start of the counting window |
+| count | integer | not null default 0 |
+- Unique (`user_id`, `operation`, `window_start`). Expired windows are purged by the nightly job (§5.9).
+
+### 5.7.1 Database error format (v1.6, CR-07)
+Triggers and RPC functions that reject a write raise an exception whose `MESSAGE` is either `'<code>'` or `'<code>:<detail>'` (e.g. `premium_required:pets`). `lib/server` maps it to `ApiError { code, details }`, putting the detail under the key the code defines (e.g. `details.limit = 'pets'`); unknown messages map to `internal_error`. The code list and mapping are in API Contract §7.1.
 
 ### 5.8 Traceability (PRD entity → table)
 
@@ -538,11 +600,12 @@ Postgres (Supabase). Conventions for every table unless stated otherwise:
 | Partner | partners |
 | Partner Click | partner_clicks |
 
-All 28 PRD entities map to exactly one table. Additional technical tables: `r2_deletion_queue`, `payment_webhook_events`, `data_exports`, `organisation_invitations`, `partner_hours`, `subscription_payments`, `plans`, `household_invitations`, `household_pets` (many-to-many join), `reminder_occurrences`, `reminder_preferences`, `push_subscriptions`, `user_channels`, `app_settings`, `pet_status_history`, `cities`.
+All 28 PRD entities map to exactly one table. Additional technical tables: `idempotency_keys`, `rate_limit_counters`, `r2_deletion_queue`, `payment_webhook_events`, `data_exports`, `organisation_invitations`, `partner_hours`, `subscription_payments`, `plans`, `household_invitations`, `household_pets` (many-to-many join), `reminder_occurrences`, `reminder_preferences`, `push_subscriptions`, `user_channels`, `app_settings`, `pet_status_history`, `cities`.
 
 ### 5.9 Deletion and retention jobs
 - **Nightly:** permanently delete accounts whose `deletion_due_at` has passed — database rows and their R2 files (BR-31, NFR-06); transfer household ownership first (BR-27).
 - **Nightly:** purge `reminder_deliveries` older than 12 months (NFR-08); expire unaccepted invitations and transfers.
+- **Nightly:** purge `idempotency_keys` older than 24 hours and `rate_limit_counters` whose window has ended.
 - **Pet deletion (FR-13):** cascade deletes rows; R2 keys are queued and removed by the same nightly job.
 
 ---
@@ -587,9 +650,47 @@ All 28 PRD entities map to exactly one table. Additional technical tables: `r2_d
 
 - **Local:** Next.js dev server with Supabase running locally; seed data for all account types.
 - **Production:** Cloudflare Workers + Supabase project + R2 bucket + Resend domain.
-- **No staging** (ADR-10). Each non-`main` branch gets a Cloudflare preview link using non-production configuration.
-- **CI/CD:** on every push, type-check, lint, and tests run; a push to `main` that passes deploys to production automatically. Database changes are versioned migration files applied to production as part of the release.
-- **Scheduled jobs:** pg_cron (every minute: reminder dispatch and 30-minute re-send; nightly: occurrence generation, deletions, retention, invitation/transfer expiry, subscription renewals and expiry notices). GitHub Actions nightly: database backup to R2 (14-day retention).
+- **No staging and no preview deployments** (ADR-10, amended v1.6). Non-`main` branches run CI only.
+- **CI/CD:** on every push, type-check, lint, tests, and build run. On a push to `main` that passes, CI applies pending migrations to production (`supabase db push`) and then deploys the app to Cloudflare. Database changes are versioned migration files in `supabase/migrations/`.
+- **Scheduled jobs:** pg_cron (every minute: reminder dispatch and 30-minute re-send; every 5 minutes: data export archives (ADR-13); nightly: occurrence generation — scheduled in the reminders build step — deletions, retention, idempotency/rate-limit purge, invitation/transfer expiry, subscription renewals and expiry notices). GitHub Actions nightly: database backup to the R2 backup bucket (14-day retention, ADR-13).
+- **pg_cron → app calls (v1.6, CR-15):** pg_cron calls the app's internal routes (reminder dispatch, `/api/internal/exports`) through `pg_net`, reading the target URL and the shared secret from Supabase Vault secrets `dispatch_url` and `dispatch_secret`, set per environment; the route rejects requests without a matching `DISPATCH_SECRET`. Locally, pg_cron can be disabled and dispatch run manually.
+
+### 8.1 Environment variables and secrets (v1.6, CR-03)
+
+**Application (Cloudflare Workers; `.env.local` locally)**
+
+| Name | Purpose |
+|---|---|
+| `NEXT_PUBLIC_SITE_URL` | Public base URL for links in emails and messages |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous (public) key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service-role key, server only |
+| `R2_ACCOUNT_ID` | Cloudflare account id for the R2 endpoint |
+| `R2_ACCESS_KEY_ID` | R2 access key |
+| `R2_SECRET_ACCESS_KEY` | R2 secret key |
+| `R2_BUCKET` | Files bucket (attachments, photos, logos, `exports/`) |
+| `R2_BACKUP_BUCKET` | Backups bucket — a separate bucket (ADR-13) |
+| `RESEND_API_KEY` | Resend API key |
+| `EMAIL_FROM` | Sender address |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | VAPID public key for push subscription |
+| `VAPID_PRIVATE_KEY_JWK` | VAPID private key (JWK) |
+| `VAPID_SUBJECT` | VAPID subject (`mailto:` or site URL) |
+| `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp Cloud API phone number id |
+| `WHATSAPP_ACCESS_TOKEN` | WhatsApp Cloud API access token |
+| `WHATSAPP_APP_SECRET` | Webhook signature verification |
+| `WHATSAPP_VERIFY_TOKEN` | Webhook subscription verification |
+| `DISPATCH_SECRET` | Shared secret for pg_cron → internal routes (matches Vault `dispatch_secret`) |
+| `ACTION_TOKEN_SECRET` | Signing key for one-click action tokens (e.g. `dn_`) |
+| `OPERATOR_ALERT_EMAIL` | Recipient of Operator alerts (RISK-14) |
+
+**GitHub Actions secrets**
+
+| Name | Purpose |
+|---|---|
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | App deploy |
+| `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_REF` | `supabase db push` on `main` |
+| `SUPABASE_DB_URL` | `pg_dump` for nightly backups |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BACKUP_BUCKET` | Backup upload and 14-day cleanup |
 
 ---
 
@@ -601,7 +702,8 @@ All 28 PRD entities map to exactly one table. Additional technical tables: `r2_d
 | A message queue | The every-minute job meets NFR-01 at the expected volume. |
 | Real-time live updates | The PRD does not require instant updates; members see changes on the next page load. |
 | Offline mode | Not required by the PRD. |
-| Staging environment | Maintenance a single person cannot justify (ADR-10). |
+| Staging environment and preview deployments | Maintenance a single person cannot justify (ADR-10). |
+| Edge caching of public pages | Not needed at v1 traffic; avoids purge logic (ADR-18). |
 | External analytics (e.g., PostHog) | The north-star is counted from the database. |
 | Apple sign-in | Requires a paid Apple Developer account (ADR-06). |
 | Storing card data | Only Monri token references are kept (ADR-09). |
@@ -650,7 +752,7 @@ _No technical assumptions were recorded during this interview._
 | Token reference | Monri's identifier for a stored card; the only payment detail kept in our database. |
 | R2 key | The identifier of a file stored on Cloudflare R2. |
 | Operator switch | A setting only the Operator can change, e.g. turning the Viber channel on. |
-| Preview link | A temporary deployment of a non-`main` branch for checking changes. |
+| Preview link | A temporary deployment of a non-`main` branch — not used in v1 (ADR-10, amended v1.6). |
 
 ---
 

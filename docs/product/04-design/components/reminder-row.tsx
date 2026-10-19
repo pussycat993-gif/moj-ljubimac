@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { Mail, MessageCircle, Smartphone } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { PetSex } from "./pet-avatar"
@@ -19,6 +20,8 @@ export type ReminderRowData = {
   channels: Channel[]
   type?: ReminderType
   pet?: { name: string; sex: PetSex }
+  /** When set, the title links here — manual reminders open S11 in edit mode (`/podsetnici/[id]`). */
+  href?: string
 }
 
 export function ReminderRow({ reminder, onDone }: { reminder: ReminderRowData; onDone?: (id: string) => void }) {
@@ -26,7 +29,16 @@ export function ReminderRow({ reminder, onDone }: { reminder: ReminderRowData; o
     <div className="flex items-center gap-3 rounded-sm bg-foreground/5 p-3">
       <ReminderTypeIcon type={reminder.type} sex={reminder.pet?.sex} forMe={!reminder.pet} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{reminder.title}</p>
+        {reminder.href ? (
+          <Link
+            href={reminder.href}
+            className="block truncate rounded-sm text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            {reminder.title}
+          </Link>
+        ) : (
+          <p className="truncate text-sm font-medium">{reminder.title}</p>
+        )}
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>{reminder.pet ? reminder.pet.name : "Za mene"}</span>
           <span aria-hidden>·</span>

@@ -6,10 +6,10 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 02 — Product Requirements Document |
-| Version | 1.5 |
+| Version | 1.6 |
 | Date | 2026-10-19 |
 | Author | Keti Vrtunić (interview facilitated by "Đura", Senior PM persona) |
-| Traces to | `01-product-brief.md` v1.4 (2026-10-19) |
+| Traces to | `01-product-brief.md` v1.6 (2026-10-19); downstream: Technical Constraints v1.6 · Design System v1.5 · API Contract v1.2 |
 | Status | Draft — awaiting owner review |
 
 **Change log**
@@ -22,12 +22,13 @@
 | 1.3 | 2026-10-19 | Cap set to 30 messages per Premium user per month; Viber channel is built but stays switched off until the Operator enables it (Brief v1.5). |
 | 1.4 | 2026-10-19 | Pet hotels (boarding) added as a partner type (Brief v1.6): FR-52, FR-54, FR-56, BR-43. |
 | 1.5 | 2026-10-19 | FR-59 pet search; FR-21 covers editing and deleting manual reminders; FR-34 covers password reset; BR-46 organisation ownership when the last admin leaves; FR-60 organisation public profile editing; defaults confirmed in API Contract OQ-12 recorded as BR-47 … BR-52. |
+| 1.6 | 2026-10-19 | Owner-approved change requests from the Build Plan review: CR-23 requirement count corrected to 60 (FR-01 … FR-60) in §1, §11 and Release Criterion 1; CR-18 BR-53 — a person invited to an organisation team keeps their own account type. |
 
 ---
 
 ## 1. Executive Summary
 
-This PRD turns the seven v1 capabilities of the Moj Ljubimac Product Brief (v1.4) into 58 testable functional requirements (FR-01 … FR-58), grouped into seven epics: the pet health record, care log and moments, multi-channel reminders, household sharing, accounts and subscriptions, shelter and breeder organisation accounts, and local partners with an operator admin area. Each requirement carries a user story, Given/When/Then acceptance criteria, and a priority. The owner chose a single public launch with all seven capabilities complete, so every requirement is P0. During the interview, four Brief change requests were raised and applied to the Brief (v1.2 to v1.4).
+This PRD turns the seven v1 capabilities of the Moj Ljubimac Product Brief (v1.4) into 60 testable functional requirements (FR-01 … FR-60), grouped into seven epics: the pet health record, care log and moments, multi-channel reminders, household sharing, accounts and subscriptions, shelter and breeder organisation accounts, and local partners with an operator admin area. Each requirement carries a user story, Given/When/Then acceptance criteria, and a priority. The owner chose a single public launch with all seven capabilities complete, so every requirement is P0. During the interview, four Brief change requests were raised and applied to the Brief (v1.2 to v1.4).
 
 ---
 
@@ -106,7 +107,7 @@ erDiagram
 ```
 
 **Notes**
-- A user has exactly one account type: Owner, Shelter, or Breeder.
+- A user has exactly one account type: Owner, Shelter, or Breeder. Team membership in an organisation is separate from account type (BR-53).
 - An owner owns at most one household. A user may be a member of several households.
 - A pet belongs to exactly one owner account or one organisation. An organisation account has no personal pets.
 - A litter references a mother (required) and a father (optional), both pets of the same breeder.
@@ -566,7 +567,7 @@ Fields: name\*, type\* (vet / pet shop / grooming salon / pet hotel), address\*,
 
 **Accounts and data**
 - BR-29: Registration via email + password or Google; email verification is mandatory. Apple sign-in is deferred beyond v1.
-- BR-30: Each user has one account type: Owner, Shelter, or Breeder.
+- BR-30: Each user has one account type: Owner, Shelter, or Breeder (team membership does not change it, BR-53).
 - BR-31: Account deletion takes effect after a 30-day grace period during which it can be cancelled.
 
 **Organisations**
@@ -588,6 +589,7 @@ Fields: name\*, type\* (vet / pet shop / grooming salon / pet hotel), address\*,
 
 **Organisations**
 - BR-46: When an organisation's last Admin deletes their account, the earliest-joined remaining team member becomes Admin; if no member remains, the organisation and its animals are deleted after the same 30-day grace period.
+- BR-53: A person invited to an organisation team keeps their own account type; team membership (Admin or Volunteer) is separate from account type, so the same person can own pets and volunteer for a shelter.
 
 **Confirmed defaults**
 - BR-47: Household and team invitations are valid for 7 days.
@@ -659,11 +661,11 @@ The owner chose a **single public launch with all seven capabilities complete** 
 
 | Priority | FRs | Count |
 |---|---|---|
-| P0 (Must) | FR-01 … FR-58 | 58 |
+| P0 (Must) | FR-01 … FR-60 | 60 |
 | P1 (Should) | — | 0 |
 | P2 (Could) | — | 0 |
 
-> ⚠️ **Mismatch with constraints:** 58 P0 requirements for a single builder with no deadline means launch only happens when everything is done (see RISK-08). Internal build order is decided in the Build Plan; it does not change the launch bar.
+> ⚠️ **Mismatch with constraints:** 60 P0 requirements for a single builder with no deadline means launch only happens when everything is done (see RISK-08). Internal build order is decided in the Build Plan; it does not change the launch bar.
 
 ---
 
@@ -671,7 +673,7 @@ The owner chose a **single public launch with all seven capabilities complete** 
 
 v1 is shippable when all of the following are true:
 
-1. All 58 P0 requirements are implemented and every acceptance criterion in §6 is verified.
+1. All 60 P0 requirements (FR-01 … FR-60) are implemented and every acceptance criterion in §6 is verified.
 2. Payments are tested end to end: trial, renewal, cancellation, expiry, downgrade, and breeder plan.
 3. Account deletion (with grace period) and full data download work.
 4. Privacy policy and terms of use are published at public URLs, in Serbian and English.
@@ -690,7 +692,7 @@ _No new assumptions were recorded during this interview. Brief assumptions ASM-0
 
 | ID | Risk | Severity | Mitigation idea |
 |---|---|---|---|
-| RISK-08 | Single big-bang launch with 58 P0 requirements delays any user feedback and any revenue until everything is built. | High | Build in internal waves (Build Plan) and run private testing with a small group before the public launch. |
+| RISK-08 | Single big-bang launch with 60 P0 requirements delays any user feedback and any revenue until everything is built. | High | Build in internal waves (Build Plan) and run private testing with a small group before the public launch. |
 | RISK-09 | Push notifications to a web product on iPhone work only after the user saves the site to the home screen, so iPhone users may expect push that never arrives. | Medium | Explain this to iPhone users when they choose push; email remains available to everyone. |
 | RISK-10 | Organisation features (adoption, litters, transfers, public pages, approvals) roughly double the product surface for segments with unvalidated demand (ASM-05, ASM-06). | Medium | Pilot with one shelter and one breeder during private testing. |
 

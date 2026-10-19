@@ -10,12 +10,16 @@ import { AppShell } from "../components/shells"
 import { StateSwitcher } from "../components/state-switcher"
 import { StatusBadge } from "../components/status-badge"
 
-type ViewState = "default" | "trialUsed"
+// S17 — Premium · /premium · FR-36, FR-37
+// "unavailable" = before payments go live (CR-22): plans listed without prices (EP-44 price fields null),
+// EP-45 returns 503 payment_provider_unavailable → prices hidden, CTA disabled.
+type ViewState = "default" | "trialUsed" | "unavailable"
 type Billing = "monthly" | "yearly"
 
 const states: { value: ViewState; label: string }[] = [
   { value: "default", label: "D" },
   { value: "trialUsed", label: "Probni period iskorišćen" },
+  { value: "unavailable", label: "Plaćanje uskoro dostupno" },
 ]
 
 const prices: Record<Billing, { amount: string; period: string; note?: string }> = {
@@ -66,6 +70,7 @@ export default function PremiumScreen() {
   const [billing, setBilling] = useState<Billing>("yearly")
   const price = prices[billing]
   const trialUsed = state === "trialUsed"
+  const unavailable = state === "unavailable"
 
   return (
     <AppShell variant="owner" active="profil">
@@ -79,12 +84,25 @@ export default function PremiumScreen() {
           </p>
         </div>
 
-        <Tabs value={billing} onValueChange={(v) => setBilling(v as Billing)}>
-          <TabsList aria-label="Period naplate">
-            <TabsTrigger value="monthly">Mesečno</TabsTrigger>
-            <TabsTrigger value="yearly">Godišnje</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {unavailable ? (
+          <Card role="status" className="flex-row items-start gap-3 p-4 md:p-6">
+            <CreditCard className="size-5 shrink-0 text-primary" aria-hidden />
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm font-medium">Plaćanje uskoro dostupno</p>
+              <p className="text-sm text-muted-foreground">
+                Još podešavamo plaćanje karticom. Do tada koristiš Free plan bez ograničenja vremena — javićemo ti
+                mejlom kad Premium bude spreman.
+              </p>
+            </div>
+          </Card>
+        ) : (
+          <Tabs value={billing} onValueChange={(v) => setBilling(v as Billing)}>
+            <TabsList aria-label="Period naplate">
+              <TabsTrigger value="monthly">Mesečno</TabsTrigger>
+              <TabsTrigger value="yearly">Godišnje</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Card className="gap-4 p-4 md:p-6">
@@ -109,18 +127,24 @@ export default function PremiumScreen() {
               </div>
               <StatusBadge status="premium" className="shrink-0" />
             </div>
-            <div>
-              <p className="font-heading text-[22px] leading-7 font-bold">
-                {price.amount} <span className="font-sans text-sm font-normal text-muted-foreground">{price.period}</span>
-              </p>
-              {price.note && <p className="text-sm text-muted-foreground">{price.note}</p>}
-            </div>
-            <Button className="h-11 md:h-9">
+            {unavailable ? (
+              <p className="text-sm text-muted-foreground">Cena će biti objavljena uskoro.</p>
+            ) : (
+              <div>
+                <p className="font-heading text-[22px] leading-7 font-bold">
+                  {price.amount} <span className="font-sans text-sm font-normal text-muted-foreground">{price.period}</span>
+                </p>
+                {price.note && <p className="text-sm text-muted-foreground">{price.note}</p>}
+              </div>
+            )}
+            <Button className="h-11 md:h-9" disabled={unavailable}>
               <Sparkles className="size-5" aria-hidden />
-              {trialUsed ? "Pretplati se" : "Probaj 7 dana besplatno"}
+              {unavailable ? "Plaćanje uskoro dostupno" : trialUsed ? "Pretplati se" : "Probaj 7 dana besplatno"}
             </Button>
             <p className="text-xs text-muted-foreground">
-              {trialUsed
+              {unavailable
+                ? "Prvih 7 dana biće besplatno, a otkazuješ bilo kad u profilu."
+                : trialUsed
                 ? `Probni period je već iskorišćen na ovom nalogu, pa se ${price.amount} naplaćuje odmah. Obnavlja se automatski — otkaži bilo kad u profilu.`
                 : `Prvih 7 dana besplatno, zatim ${price.amount} ${price.period}. Obnavlja se automatski — otkaži bilo kad u profilu.`}
             </p>
@@ -153,15 +177,17 @@ export default function PremiumScreen() {
           </Table>
         </Card>
 
-        <Card className="flex-row items-start gap-3 p-4 md:p-6">
-          <CreditCard className="size-5 shrink-0 text-primary" aria-hidden />
-          <div className="min-w-0 space-y-1">
-            <p className="text-sm font-medium">Plaćanje karticom preko Monri-ja</p>
-            <p className="text-sm text-muted-foreground">
-              Visa, Mastercard i DinaCard. Podatke o kartici čuva Monri, ne mi.
-            </p>
-          </div>
-        </Card>
+        {!unavailable && (
+          <Card className="flex-row items-start gap-3 p-4 md:p-6">
+            <CreditCard className="size-5 shrink-0 text-primary" aria-hidden />
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm font-medium">Plaćanje karticom preko Monri-ja</p>
+              <p className="text-sm text-muted-foreground">
+                Visa, Mastercard i DinaCard. Podatke o kartici čuva Monri, ne mi.
+              </p>
+            </div>
+          </Card>
+        )}
       </div>
     </AppShell>
   )

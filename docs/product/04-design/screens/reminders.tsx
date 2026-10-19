@@ -13,6 +13,7 @@ import { ReminderRow, type ReminderRowData } from "../components/reminder-row"
 import { StateSwitcher } from "../components/state-switcher"
 
 // S10 — Podsetnici · /podsetnici · FR-20, FR-24
+// Manual reminder rows link to /podsetnici/[id] (S11 edit). Count badge = today's pending reminders.
 
 type ViewState = "D" | "L" | "E"
 type TabKey = "danas" | "uskoro" | "propusteno" | "uradjeno"
@@ -258,7 +259,11 @@ export default function RemindersScreen() {
                     <ul className="space-y-2">
                       {items.map((r) => (
                         <li key={r.id} className="min-w-0">
-                          <ReminderRow reminder={r} onDone={markDone} />
+                          {/* CR-12: manual reminders open S11 in edit mode */}
+                          <ReminderRow
+                            reminder={r.type === "manual" ? { ...r, href: `/podsetnici/${r.id}` } : r}
+                            onDone={markDone}
+                          />
                         </li>
                       ))}
                     </ul>

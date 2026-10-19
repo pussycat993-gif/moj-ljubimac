@@ -85,7 +85,8 @@ export function AppShell({
   user?: { name: string }
   /** Overrides initials derived from `user.name`. */
   userInitials?: string
-  /** Count badges per nav key, e.g. `{ podsetnici: 3 }`. Zero or missing → no badge. */
+  /** Count badges per nav key, e.g. `{ podsetnici: 3 }` (today's pending reminders). Shown in the sidebar and on the
+   *  phone bottom nav. Zero or missing → no badge. */
   counts?: Record<string, number>
   topBarExtra?: ReactNode
   children: ReactNode
@@ -174,6 +175,7 @@ export function AppShell({
         {mobileItems.map((item) => {
           const Icon = item.icon
           const isActive = item.key === active
+          const count = counts?.[item.key]
           return (
             <Link
               key={item.key}
@@ -184,7 +186,15 @@ export function AppShell({
                 isActive ? "text-primary" : "text-muted-foreground",
               )}
             >
-              <Icon className="size-6" aria-hidden />
+              <span className="relative">
+                <Icon className="size-6" aria-hidden />
+                {count ? (
+                  <span className="absolute -top-1 left-4 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-xs leading-none font-medium text-primary-foreground">
+                    {count}
+                    <span className="sr-only"> novih</span>
+                  </span>
+                ) : null}
+              </span>
               <span className="max-w-full truncate">{item.label}</span>
             </Link>
           )
@@ -206,12 +216,12 @@ export function PublicShell({ children }: { children: ReactNode }) {
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 md:py-8">{children}</main>
       <footer className="border-t border-border">
         <div className="mx-auto flex w-full max-w-3xl flex-wrap gap-4 px-4 py-4 text-sm text-muted-foreground">
-          <a href="#" className="hover:text-foreground">
+          <Link href="/privatnost" className="hover:text-foreground">
             Politika privatnosti
-          </a>
-          <a href="#" className="hover:text-foreground">
+          </Link>
+          <Link href="/uslovi" className="hover:text-foreground">
             Uslovi korišćenja
-          </a>
+          </Link>
         </div>
       </footer>
     </div>

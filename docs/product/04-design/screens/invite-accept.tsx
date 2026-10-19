@@ -13,6 +13,8 @@ import {
   Home,
   Paperclip,
   Syringe,
+  UserRound,
+  Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -24,11 +26,16 @@ import { PetAvatar } from "../components/pet-avatar"
 import { PremiumLock } from "../components/premium-lock"
 import { StateSwitcher } from "../components/state-switcher"
 
-type ViewState = "household" | "transfer" | "declined" | "signin" | "expired" | "slot" | "loading"
+// S14 — Prihvati poziv / karton · /poziv/[token] · FR-26, FR-50, FR-51
+// Invitation kinds (EP-39/EP-40): household (hh_), organisation team (og_, CR-18), record transfer.
+type ViewState = "household" | "team" | "teamAdmin" | "transfer" | "declined" | "signin" | "expired" | "slot" | "loading"
+type InviteKind = "household" | "team" | "transfer"
 type Decision = "pending" | "accepted" | "declined"
 
 const states: { value: ViewState; label: string }[] = [
   { value: "household", label: "Domaćinstvo" },
+  { value: "team", label: "Tim (Volonter)" },
+  { value: "teamAdmin", label: "Tim (Admin)" },
   { value: "transfer", label: "Prenos kartona" },
   { value: "declined", label: "Odbijeno" },
   { value: "signin", label: "Nije prijavljen" },
@@ -64,6 +71,30 @@ const transfer = {
     { icon: ClipboardList, label: "2 pregleda" },
     { icon: Paperclip, label: "5 priloga" },
   ],
+}
+
+const team = {
+  organisation: "Udruženje „Druga šansa”",
+  kind: "Azil",
+  city: "Novi Sad",
+  inviter: "Ana Nikolić",
+  members: "6 / 20 članova",
+  validUntil: "26. 10. 2026.",
+}
+
+const roleCopy: Record<"Volonter" | "Admin", { can: string[]; cannot: string }> = {
+  Volonter: {
+    can: ["da vidiš sve životinje i njihove kartone", "da unosiš negu, težinu i preglede", "da dodaješ nove životinje na prijemu"],
+    cannot: "Zahteve za udomljavanje vidiš, ali ih prihvata ili odbija samo Admin.",
+  },
+  Admin: {
+    can: [
+      "sve što može i volonter",
+      "da prihvataš i odbijaš zahteve i šalješ kartone",
+      "da pozivaš članove tima i menjaš javni profil",
+    ],
+    cannot: "Pretplatu i brisanje organizacije menja samo vlasnik naloga organizacije.",
+  },
 }
 
 const signedInAs = { name: "Marko Jovanović", email: "marko.jovanovic@gmail.com", initials: "MJ" }
@@ -124,7 +155,7 @@ export default function InviteAcceptScreen() {
   const [state, setState] = useState<ViewState>("household")
   const [decision, setDecision] = useState<Decision>("pending")
   // Which invitation the "Odbijeno" confirmation refers to (both kinds can be declined).
-  const [declinedKind, setDeclinedKind] = useState<"household" | "transfer">("household")
+  const [declinedKind, setDeclinedKind] = useState<InviteKind>("household")
 
   function changeState(v: ViewState) {
     if (v === "declined") {
@@ -137,12 +168,14 @@ export default function InviteAcceptScreen() {
     setDecision("pending")
   }
 
-  function decline(kind: "household" | "transfer") {
+  function decline(kind: InviteKind) {
     setDeclinedKind(kind)
     setDecision("declined")
   }
 
-  const isInvite = state === "household" || state === "transfer"
+  const isTeam = state === "team" || state === "teamAdmin"
+  const role: "Volonter" | "Admin" = state === "teamAdmin" ? "Admin" : "Volonter"
+  const isInvite = state === "household" || state === "transfer" || isTeam
   const switcherValue: ViewState = isInvite && decision === "declined" ? "declined" : state
 
   return (
@@ -233,6 +266,68 @@ export default function InviteAcceptScreen() {
         </Card>
       )}
 
+      {/* Organisation team invitation (CR-18) — the invitee keeps their own account type (BR-53) */}
+      {isTeam && decision === "pending" && (
+        <Card className="gap-6 p-4 md:p-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Users className="size-4" aria-hidden />
+              <span>Poziv u tim organizacije</span>
+            </div>
+            <h1 className="font-heading text-[28px] leading-9 font-bold">{team.organisation}</h1>
+            <p className="text-sm text-muted-foreground">
+              {team.kind} · {team.city} · Poziva te: {team.inviter}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 rounded-sm bg-foreground/5 p-3">
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-card">
+              <UserRound className="size-5 text-primary" aria-hidden />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-muted-foreground">Tvoja uloga</p>
+              <p className="truncate font-heading text-lg font-bold">{role}</p>
+            </div>
+            <p className="shrink-0 text-xs font-medium text-muted-foreground">{team.members}</p>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">Kao {role === "Admin" ? "admin" : "volonter"} možeš</p>
+            <ul className="space-y-2 text-sm">
+              {roleCopy[role].can.map((t) => (
+                <li key={t} className="flex items-start gap-2">
+                  <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                  <span className="min-w-0">{t}</span>
+                </li>
+              ))}
+              <li className="flex items-start gap-2 text-muted-foreground">
+                <Eye className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <span className="min-w-0">{roleCopy[role].cannot}</span>
+              </li>
+              <li className="flex items-start gap-2 text-muted-foreground">
+                <Home className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <span className="min-w-0">Tvoj nalog ostaje kakav je — i dalje vodiš i svoje ljubimce.</span>
+              </li>
+              <li className="flex items-start gap-2 text-muted-foreground">
+                <CalendarClock className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <span className="min-w-0">Poziv važi do {team.validUntil}</span>
+              </li>
+            </ul>
+          </div>
+
+          <SignedInAs />
+
+          <div className="flex flex-col gap-2 md:flex-row-reverse">
+            <Button className="h-11 md:h-9 md:flex-1" onClick={() => setDecision("accepted")}>
+              Pridruži se timu
+            </Button>
+            <Button variant="outline" className="h-11 md:h-9 md:flex-1" onClick={() => decline("team")}>
+              Odbij
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {/* Record transfer from a shelter (FR-50) */}
       {state === "transfer" && decision === "pending" && (
         <Card className="gap-6 p-4 md:p-6">
@@ -281,15 +376,21 @@ export default function InviteAcceptScreen() {
             <Check className="size-6 text-primary" aria-hidden />
           </span>
           <h1 className="font-heading text-[28px] leading-9 font-bold">
-            {state === "household" ? `Sada si član: ${household.name}` : `Novi ljubimac: ${transfer.animal.name}`}
+            {state === "household"
+              ? `Sada si član: ${household.name}`
+              : isTeam
+                ? `Dobro došao/la u tim: ${team.organisation}`
+                : `Novi ljubimac: ${transfer.animal.name}`}
           </h1>
           <p className="text-sm text-muted-foreground">
             {state === "household"
               ? "Luna i Maks su na tvojoj listi ljubimaca. Uključi podsetnike kad ti odgovara."
-              : "Ceo karton je prebačen. Podesi podsetnike za sledeću vakcinu."}
+              : isTeam
+                ? `Uloga: ${role}. Organizaciju otvaraš iz menija, a tvoji ljubimci ostaju gde su bili.`
+                : "Ceo karton je prebačen. Podesi podsetnike za sledeću vakcinu."}
           </p>
           <Button className="h-11 w-full md:h-9" asChild>
-            <Link href="/ljubimci">Idi na ljubimce</Link>
+            <Link href={isTeam ? "/organizacija" : "/ljubimci"}>{isTeam ? "Idi u organizaciju" : "Idi na ljubimce"}</Link>
           </Button>
         </Card>
       )}
@@ -301,12 +402,14 @@ export default function InviteAcceptScreen() {
             <CircleX className="size-6 text-muted-foreground" aria-hidden />
           </span>
           <h1 className="font-heading text-[28px] leading-9 font-bold">
-            {declinedKind === "household" ? "Poziv je odbijen" : "Prenos kartona je odbijen"}
+            {declinedKind === "transfer" ? "Prenos kartona je odbijen" : "Poziv je odbijen"}
           </h1>
           <p className="text-sm text-muted-foreground">
             {declinedKind === "household"
               ? `Javili smo da ne prihvataš poziv u „${household.name}”. Link više ne važi; ako se predomisliš, zamoli za novi poziv.`
-              : `Javili smo da ne prihvataš karton (ljubimac: ${transfer.animal.name}). Karton ostaje kod organizacije ${transfer.organisation}.`}
+              : declinedKind === "team"
+                ? `Javili smo da ne prihvataš poziv u tim: ${team.organisation}. Ako se predomisliš, zamoli za novi poziv.`
+                : `Javili smo da ne prihvataš karton (ljubimac: ${transfer.animal.name}). Karton ostaje kod organizacije ${transfer.organisation}.`}
           </p>
           <Separator />
           <Button variant="outline" className="h-11 w-full md:h-9" asChild>

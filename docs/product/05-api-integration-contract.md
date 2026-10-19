@@ -6,10 +6,10 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 05 — API & Integration Contract |
-| Version | 1.1 |
+| Version | 1.2 |
 | Date | 2026-10-19 |
 | Author | Keti Vrtunić (interview facilitated by "Vuk", API/Integration Engineer persona) |
-| Traces to | Brief v1.6 · PRD v1.5 · Technical Constraints v1.4 · Design System v1.4 (29 screens) |
+| Traces to | Brief v1.6 · PRD v1.6 · Technical Constraints v1.6 · Design System v1.5 |
 | Status | Draft — payment-provider operations deferred (OQ-11) |
 
 **Change log**
@@ -18,19 +18,20 @@
 |---|---|---|
 | 1.0 | 2026-10-19 | Initial contract: conventions, auth, 72 operations, schemas, error model, integrations. |
 | 1.1 | 2026-10-19 | OQ-12 defaults confirmed (PRD BR-47 … BR-52); OQ-13 data model in TC v1.4; OQ-14 screens added (S28, S29, S11 edit); EP-72 organisation profile; search on EP-54 (FR-59); BR-46 in EP-52. |
+| 1.2 | 2026-10-19 | Owner-approved change requests from the Build Plan review: CR-07 `<code>:<detail>` database error mapping (§7.1); CR-10 one R2 key layout (§10, referenced from §5.1); CR-17 public pages EP-24 / EP-62 not cached — all cache headers and purges removed (EP-05, EP-22, EP-23, EP-24, EP-55, EP-58, EP-61, EP-62, EP-68, EP-72, §3.1, §11, §12); CR-18 organisation team invitations through EP-39 / EP-40 (`InvitationView.kind`); CR-19 WhatsApp templates in §9.4; CR-20 data export archives built in-app (EP-50); CR-22 EP-44 / EP-45 before payments, EP-25 count badge, EP-64 S03 vet suggestion block. |
 
 ---
 
 ## 1. Executive Summary
 
-This contract defines everything that crosses the wire in Moj Ljubimac. Reads and simple writes of a user's own data go through the Supabase data API protected by row-level security, with every Free limit and business rule enforced inside the database; multi-step or privileged work goes through Next.js server actions; external systems (WhatsApp, the payment provider, message action links) and the reminder dispatch job reach the app through a small set of route handlers. It defines 72 operations (EP-01 … EP-72), one error envelope with a catalog of stable codes, and the exact response that puts each screen into its loading, empty, error, Premium-locked, or read-only state. Payment-provider-specific operations are contracted provider-neutrally and deferred until the provider is chosen (OQ-11). Traces to Brief v1.6, PRD v1.4, Technical Constraints v1.3, Design System v1.3.
+This contract defines everything that crosses the wire in Moj Ljubimac. Reads and simple writes of a user's own data go through the Supabase data API protected by row-level security, with every Free limit and business rule enforced inside the database; multi-step or privileged work goes through Next.js server actions; external systems (WhatsApp, the payment provider, message action links) and the reminder dispatch job reach the app through a small set of route handlers. It defines 72 operations (EP-01 … EP-72), one error envelope with a catalog of stable codes, and the exact response that puts each screen into its loading, empty, error, Premium-locked, or read-only state. Payment-provider-specific operations are contracted provider-neutrally and deferred until the provider is chosen (OQ-11). Traces to Brief v1.6, PRD v1.6, Technical Constraints v1.6, Design System v1.5.
 
 ---
 
 ## 2. Inherited Context
 
 - **Scope ceiling:** 7 epics, FR-01 … FR-58 (PRD v1.4).
-- **Binding ADRs (TC v1.3):** ADR-01 Next.js + Supabase · ADR-02 schema · ADR-04 reminder dispatch job every minute · ADR-05 web push · ADR-06 Supabase Auth (email + Google) · ADR-07 files on R2 · ADR-08 Resend email · ADR-09 payments (**provider deferred**, see OQ-11) · ADR-11 OpenStreetMap geocoding · ADR-12 PDF in the browser · ADR-13 backups/exports · ADR-14 shadcn/Tailwind.
+- **Binding ADRs (TC v1.6):** ADR-01 Next.js + Supabase · ADR-02 schema · ADR-04 reminder dispatch job every minute · ADR-05 web push · ADR-06 Supabase Auth (email + Google) · ADR-07 files on R2 · ADR-08 Resend email · ADR-09 payments (**provider deferred**, see OQ-11) · ADR-11 OpenStreetMap geocoding · ADR-12 PDF in the browser · ADR-13 backups/exports · ADR-14 shadcn/Tailwind · ADR-15 tests · ADR-16 folder layout · ADR-17 approved libraries · ADR-18 no edge caching of public pages.
 - **Design System v1.3:** 27 screens (S01 … S27). State vocabulary used as keys in §7.3: **default, loading, empty, error, premium_locked, read_only**, plus screen-specific variants: *pending_approval* (S20), *link_disabled* (S09), *invitation_expired / invitation_declined / slot_taken* (S14), *email_sent* (S15), *pending_deletion* (S19), *trial_used / expired / cancelled* (S17, S18).
 - **Formatting (Design §9):** dates `19. 10. 2026.`, time `08:00`, money `2.990 RSD`, Europe/Belgrade time; pet names always nominative.
 - **NFRs that become budgets (§12):** NFR-01 reminder delivery, NFR-03/04 usability, NFR-09 attachment size, NFR-10 cost.
@@ -56,7 +57,7 @@ This contract defines everything that crosses the wire in Moj Ljubimac. Reads an
 |---|---|---|
 | **Data API** (Supabase client, PostgREST, RLS) | Reads and single-row writes of data the caller owns or may see; database views and RPC functions for computed reads | `table` / `view` / `rpc:function` + operation + filter |
 | **Server actions** (Next.js, `"use server"`) | Anything multi-step, privileged, using secrets, touching R2, sending messages, or calling a third party | `action:name(input) → output` |
-| **Route handlers** (`/api/...`) | Calls from outside the app: webhooks, signed action links, the dispatch job, public cached pages | `METHOD /api/path` |
+| **Route handlers** (`/api/...`) | Calls from outside the app: webhooks, signed action links, the dispatch job, public pages (not cached, TC ADR-18) | `METHOD /api/path` |
 
 **Rule:** every business rule and Free limit is enforced in the database (constraints, triggers, RLS), so the same rule holds whichever surface a write uses. Server actions never bypass RLS for a user's own data; only Operator actions, jobs, and webhooks use the service role, and only on the server.
 
@@ -65,7 +66,7 @@ No versioning in v1: client and server deploy together and there is no public AP
 
 ### 3.3 Request conventions
 - JSON bodies (`application/json`, UTF-8); file bytes never go through the app (see §10).
-- **Idempotency:** operations that cost money or send a message to another person take `idempotency_key` (UUID v4 generated by the client per user intent). A repeat with the same key within 24 h returns the original result and performs nothing. Applies to EP-30 (send code), EP-35, EP-45, EP-56 (invite), EP-59, EP-63.
+- **Idempotency:** operations that cost money or send a message to another person take `idempotency_key` (UUID v4 generated by the client per user intent). A repeat with the same key within 24 h returns the original result and performs nothing (results stored in `idempotency_keys`, TC §5.7). Applies to EP-30 (send code), EP-35, EP-45, EP-56 (invite), EP-59, EP-63.
 - Naturally idempotent operations (marking done, toggling a switch, setting preferences) need no key.
 
 ### 3.4 Collection conventions
@@ -185,7 +186,7 @@ Jobs EP-49, EP-52 and webhook EP-46 run as System.
 - **Read views.** Data API reads go through `security_invoker` views named `*_api` (`pet_summaries_api`, `weight_entries_api`, `feeding_entries_api`, `stool_entries_api`, `moments_api`, `meal_schedules_api`), so RLS on the base tables still decides visibility. The views add the computed fields listed in §6 (`access`, `created_by_name`, Money objects). Single-row Data API writes target the base table with `Prefer: return=representation` and `select=` through the matching `*_api` view, so a write returns the same schema as the read.
 - **Per-entry access.** Entries that household members may create (weight, dose, feeding, stool, moment) carry their own `access`: `can_edit = can_delete = (caller is the creator) OR (caller is the pet's owner) OR (caller is an organisation Admin/Volunteer of the pet's organisation)` (BR-23); `false` for everyone when the household is read-only (BR-28).
 - **Automatic reminders** (FR-09, FR-20) are created, updated and removed by database triggers on `pets`, `vaccinations`, `treatments`, `vet_visits`. They are created only for personally owned pets (`reminders.user_id = pets.owner_id`); organisation animals get no automatic reminders in v1. Occurrences follow the rolling 60-day window (TC §5.5).
-- **R2 key layout** (set by EP-13 / EP-21, never by the client): `pets/{pet_id}/photo/{uuid}/{safe_file_name}`, `pets/{pet_id}/visits/{vet_visit_id}/{uuid}/{safe_file_name}`, `pets/{pet_id}/moments/{moment_id}/{position}-{uuid}.{ext}`. `safe_file_name` is the original name, lowercased, with characters other than `[a-z0-9._-]` replaced by `-`, at most 100 chars. Raw `r2_key` values are never returned to the client.
+- **R2 key layout:** keys are set by the server (EP-13 / EP-21), never by the client, using the single layout in §10 (step 6). Raw `r2_key` values are never returned to the client.
 - **Field error codes** used in `validation_failed.fields`: see PROPOSED CODES at the end of this part.
 
 #### EP-01 — List my pets
@@ -258,7 +259,7 @@ Jobs EP-49, EP-52 and webhook EP-46 run as System.
 - **Response:** `ok` `{ deleted_pet_id: uuid }` (`pets.id`).
 - **Errors:** `not_found` (404); `forbidden_role` (403); `validation_failed` (422, `fields.confirm = "required"`).
 - **States:** S03 → redirect to S01 with toast; error toast on 5xx.
-- **Side effects:** in one transaction: collects every R2 key of the pet (`pets.photo_r2_key`, `attachments.r2_key`, `moment_photos.r2_key`) and the slugs of its `moment_public_links`, then deletes the `pets` row (cascade removes all record, care-log, moment, memorial, reminder, occurrence rows). After commit: queues the R2 keys for the nightly R2 cleanup job (TC §5.9) and purges the public-moment cache for each collected slug (§ EP-23).
+- **Side effects:** in one transaction: collects every R2 key of the pet (`pets.photo_r2_key`, `attachments.r2_key`, `moment_photos.r2_key`), then deletes the `pets` row (cascade removes all record, care-log, moment, memorial, reminder, occurrence and public-link rows, so EP-24 returns `404` for its moments on the next request). After commit: queues the R2 keys for the nightly R2 cleanup job (TC §5.9).
 - **Budget:** `action`
 
 #### EP-06 — Move to memorial
@@ -373,7 +374,7 @@ Jobs EP-49, EP-52 and webhook EP-46 run as System.
 - **Response:** `request_upload` → `ok` `UploadTicket` (PUT URL expires in 10 min). `confirm_upload` → `ok` `Attachment` (purpose `attachment`) or `Pet` (purpose `pet_photo`).
 - **Errors:** `file_too_large` (422); `file_type_not_allowed` (422); `premium_required` (403, `details.limit = "attachments"`) — Free owner already has 10 attachments on the pet (BR-01, E-04), checked at ticket time and again by the insert trigger at confirm; `validation_failed` (422) — `fields.upload_token = "invalid"` (bad/expired token) or `"not_uploaded"` (object missing in R2 at confirm); `forbidden_role` (403); `not_found` (404).
 - **States:** S05 attachment zone: chip per file (uploading → done); inline file error on `file_too_large` / `file_type_not_allowed`; premium_locked on `premium_required`; S02 photo preview.
-- **Side effects:** `request_upload` signs a stateless `upload_token` (HMAC over purpose, target, r2_key, mime, size, expiry) — no row is written. `confirm_upload` does an R2 `HEAD` to verify the object exists with the declared size and content type (mismatch → `file_too_large` / `file_type_not_allowed` and the object is deleted), then inserts `attachments` (`pet_id` from the visit) or sets `pets.photo_r2_key` (old key queued for deletion). Objects never confirmed are removed by the nightly R2 cleanup (no DB row older than 24 h).
+- **Side effects:** `request_upload` builds the `r2_key` from the §10 key layout (step 6) and signs a stateless `upload_token` (HMAC over purpose, target, r2_key, mime, size, expiry) — no row is written. `confirm_upload` does an R2 `HEAD` to verify the object exists with the declared size and content type (mismatch → `file_too_large` / `file_type_not_allowed` and the object is deleted), then inserts `attachments` (`pet_id` from the visit) or sets `pets.photo_r2_key` (old key queued for deletion). Objects never confirmed are removed by the nightly R2 cleanup (no DB row older than 24 h).
 - **Budget:** `action`
 
 #### EP-14 — Delete attachment
@@ -490,7 +491,7 @@ Jobs EP-49, EP-52 and webhook EP-46 run as System.
 - **Response:** `ok` `{ deleted_moment_id: uuid }` (`moments.id`).
 - **Errors:** `not_found` (404); `forbidden_role` (403); `household_read_only` (403).
 - **States:** S08 card removed, counter decreases; empty when the last one goes.
-- **Side effects:** deletes the `moments` row (cascade: `moment_photos`, `moment_public_links` — the link is disabled automatically, BR-45); queues the photo R2 keys for cleanup; purges the public cache for the moment's slug.
+- **Side effects:** deletes the `moments` row (cascade: `moment_photos`, `moment_public_links` — the link is disabled automatically, BR-45); queues the photo R2 keys for cleanup. EP-24 returns `404` for the slug on the next request (not cached).
 - **Budget:** `action`
 
 #### EP-23 — Enable / disable public link
@@ -502,7 +503,7 @@ Jobs EP-49, EP-52 and webhook EP-46 run as System.
 - **Response:** `ok` `{ slug: string (moment_public_links.slug), active: boolean (moment_public_links.active), url: string (computed: "https://mojljubimac.rs/t/" + slug) }`. Naturally idempotent.
 - **Errors:** `not_found` (404); `forbidden_role` (403); `household_read_only` (403).
 - **States:** S08 Switch reflects `active`; copy button enabled when `active = true`.
-- **Side effects:** first enable inserts `moment_public_links` with a random unguessable slug (128-bit, base62, 22 chars); later toggles update `active` and keep the slug. Disabling purges the CDN cache for `/t/{slug}` and `/api/public/moments/{slug}` immediately, so EP-24 returns `404` on the next request.
+- **Side effects:** first enable inserts `moment_public_links` with a random unguessable slug (128-bit, base62, 22 chars); later toggles update `active` and keep the slug. EP-24 is not cached, so after disabling it returns `404` on the next request.
 - **Budget:** `action`
 
 #### EP-24 — Get public moment
@@ -511,10 +512,10 @@ Jobs EP-49, EP-52 and webhook EP-46 run as System.
 - **FRs:** FR-19
 - **Authorization:** public (no session). Service role on the server reads only the fields of `PublicMoment` — never health data, owner, or other moments (BR-37, BR-45).
 - **Request:** `slug` — path — required — 22 chars `[0-9A-Za-z]`.
-- **Response:** `200` `PublicMoment`; headers `Cache-Control: public, s-maxage=300` (5 min), `X-Robots-Tag: noindex`.
+- **Response:** `200` `PublicMoment`; headers `Cache-Control: no-store` (not cached — rendered on every request, TC ADR-18), `X-Robots-Tag: noindex`.
 - **Errors:** `not_found` (404) — unknown slug, `active = false`, or moment deleted (indistinguishable on purpose, E-07).
 - **States:** S09 default on `200`; link_disabled on `404`.
-- **Side effects:** none. Photo URLs are presigned for 10 min, so a response served from the 5-min cache still has ≥ 5 min of valid URLs.
+- **Side effects:** none. Photo URLs are presigned for 10 min when the response is built.
 - **Budget:** `public`
 
 ---
@@ -527,7 +528,7 @@ Jobs EP-49, EP-52 and webhook EP-46 run as System.
 
 #### EP-25 — List reminder occurrences
 - **Address:** Data API: `rpc:list_reminder_occurrences(filter, pet_id, limit, offset)` (security invoker; RLS on `reminders` / `reminder_occurrences` / `household_pets` / `household_memberships`)
-- **Callers:** S01 `/ljubimci` ("Danas" strip, `filter=today`, first 3 shown); S03 `/ljubimci/[id]` (Pregled tab "next 3", `filter=next`, `pet_id`, `limit=3`); S10 `/podsetnici` (tabs Danas / Uskoro / Propušteno / Urađeno → `today` / `upcoming` / `missed` / `done`, tab counts)
+- **Callers:** app shell sidebar and bottom nav (Podsetnici count badge = `total` for `filter=today`, i.e. today's pending occurrences); S01 `/ljubimci` ("Danas" strip, `filter=today`, first 3 shown); S03 `/ljubimci/[id]` (Pregled tab "next 3", `filter=next`, `pet_id`, `limit=3`); S10 `/podsetnici` (tabs Danas / Uskoro / Propušteno / Urađeno → `today` / `upcoming` / `missed` / `done`, tab counts)
 - **FRs:** FR-20, FR-24, FR-28, FR-29
 - **Authorization:** Owner — instances of reminders where `reminders.user_id = auth.uid()`. Member — instances of reminders on pets shared with a household where the caller's `household_memberships.reminders_enabled = true`; otherwise none are visible. Organisation roles and Operator get `[]` (no personal reminders). Instances of inactive reminders (`reminders.active = false`, BR-17) are never returned.
 - **Request:**
@@ -753,30 +754,30 @@ Jobs EP-49, EP-52 and webhook EP-46 run as System.
 - **Budget:** `write`
 
 #### EP-39 — Get invitation by token
-- **Address:** `action:get_household_invitation({ token }) → InvitationView`
-- **Callers:** S14 `/poziv/[token]` (household variant). S14 selects EP-39 or EP-60 by the token's type prefix (`hh_` household invitation, `tr_` record transfer — §9.3).
-- **FRs:** FR-26
+- **Address:** `action:get_household_invitation({ token }) → InvitationView` — handles both `hh_` (household) and `og_` (organisation team) tokens (v1.2, CR-18)
+- **Callers:** S14 `/poziv/[token]` (household and team invitation variants). S14 selects EP-39 or EP-60 by the token's type prefix (`hh_` household invitation, `og_` organisation team invitation → EP-39; `tr_` record transfer → EP-60 — §9.3).
+- **FRs:** FR-26, FR-43
 - **Authorization:** anyone holding the token. Visitor (no session) → limited fields (see `InvitationView`); signed-in invitee → full fields.
 - **Request:**
-  - `token` — string — required — raw token from the link; looked up by `token_hash`.
-- **Response:** `ok` `InvitationView` (also for `status = accepted | declined`, so S14 can show the decided state).
+  - `token` — string — required — raw token from the link; looked up by `token_hash` in `household_invitations` (`hh_`) or `organisation_invitations` (`og_`).
+- **Response:** `ok` `InvitationView` with `kind = household | organisation` (also for `status = accepted | declined`, so S14 can show the decided state).
 - **Errors:** `not_found` (404) — unknown token; `invitation_expired` (410) — `status = expired` or `expires_at < now()`.
-- **States:** S14 *loading* → household variant; Visitor → sign-in prompt variant (`is_signed_in = false`); `status = declined` → *invitation_declined*; `status = accepted` → accepted variant; `410` → *invitation_expired*; `404` / `5xx` → *error*.
+- **States:** S14 *loading* → household or team variant (by `kind`); Visitor → sign-in prompt variant (`is_signed_in = false`); `status = declined` → *invitation_declined*; `status = accepted` → accepted variant; `410` → *invitation_expired*; `404` / `5xx` → *error*.
 - **Side effects:** none.
 - **Budget:** `read-small`
 
 #### EP-40 — Accept / decline invitation
-- **Address:** `action:decide_household_invitation({ token, decision }) → { status, household_id }`
+- **Address:** `action:decide_household_invitation({ token, decision }) → { kind, status, household_id, organisation_id }` — handles `hh_` and `og_` tokens (v1.2, CR-18)
 - **Callers:** S14 `/poziv/[token]` ("Prihvati" / "Odbij")
-- **FRs:** FR-26
+- **FRs:** FR-26, FR-43
 - **Authorization:** any signed-in user holding the token (the token is the credential; the invitation email is the delivery address only). Visitor → `401 unauthenticated` (S14 shows sign-in / register first, E-17 pattern of FR-26).
 - **Request:**
   - `token` — string — required.
   - `decision` — enum `accept` | `decline` — required.
-- **Response:** `ok` `{ status: "accepted" | "declined" /* household_invitations.status */, household_id: uuid /* household_invitations.household_id */ }`.
-- **Errors:** `not_found` (404) — unknown token; `invitation_expired` (410); `invitation_used` (409) — already accepted or declined; `already_member` (409) — caller is the owner or already a member; `household_full` (409) — owner + members = 6 at accept time (BR-20); `household_read_only` (403) — accept while the household is read-only (owner without Premium).
-- **States:** S14 accept → accepted variant, then S13 (member view); decline → *invitation_declined*; `410` → *invitation_expired*; `409` → inline message.
-- **Side effects:** accept: inserts `household_memberships { household_id, user_id: auth.uid(), joined_at: now(), reminders_enabled: false }`; sets `household_invitations.status = accepted`, `accepted_by`, `decided_at`. Decline: `status = declined`, `decided_at`. No email.
+- **Response:** `ok` `{ kind: "household" | "organisation", status: "accepted" | "declined" /* household_invitations.status | organisation_invitations.status */, household_id: uuid | null /* household_invitations.household_id; null for organisation */, organisation_id: uuid | null /* organisation_invitations.organisation_id; null for household */ }`.
+- **Errors:** `not_found` (404) — unknown token; `invitation_expired` (410); `invitation_used` (409) — already accepted or declined; `already_member` (409) — caller is the owner or already a member; `household_full` (409) — owner + members = 6 at accept time (BR-20); `household_read_only` (403) — accept while the household is read-only (owner without Premium). Organisation tokens: `already_member` (409) — caller already in the team; `team_full` (409) — 20 users at accept time (BR-34).
+- **States:** S14 accept → accepted variant, then S13 (member view) for a household or S20 for an organisation team; decline → *invitation_declined*; `410` → *invitation_expired*; `409` → inline message.
+- **Side effects:** accept: inserts `household_memberships { household_id, user_id: auth.uid(), joined_at: now(), reminders_enabled: false }`; sets `household_invitations.status = accepted`, `accepted_by`, `decided_at`. Decline: `status = declined`, `decided_at`. Organisation token, accept: inserts `organisation_memberships { organisation_id, user_id: auth.uid(), role: organisation_invitations.role }`; sets `organisation_invitations.status = accepted`, `accepted_by`; the invitee keeps their own `profiles.account_type` (team membership is separate from account type — PRD BR-53; a person can own pets and volunteer). Decline: `status = declined`. No email.
 - **Budget:** `action`
 
 ### 5.5 Account & profile (EPIC-05, part 1)
@@ -837,9 +838,9 @@ Jobs EP-49, EP-52 and webhook EP-46 run as System.
 - **FRs:** FR-36, FR-37
 - **Authorization:** public (Visitor allowed).
 - **Request:** none.
-- **Response:** `200` `Plan[]` (bounded, whole list).
+- **Response:** `200` `Plan[]` (bounded, whole list). Before payments (plans not yet seeded with prices, OQ-03 / OQ-11), the plan codes are listed with price fields `null` (v1.2, CR-22).
 - **Errors:** —
-- **States:** S17 *default*; `[]` or `5xx` → *error* (prices are required to subscribe; OQ-03 values are data).
+- **States:** S17 *default*; price fields `null` → *payments_coming_soon* ("Plaćanje uskoro dostupno", prices hidden); `5xx` → *error*.
 - **Side effects:** none.
 - **Budget:** `public`
 
@@ -858,7 +859,7 @@ Common to every operation below: the §4.1 gates run first (`401 unauthenticated
   - `idempotency_key` — uuid v4 — required (§3.3)
 - **Response:** `ok` + `CheckoutSession`. Trial rule (BR-07): `trial_applied = true` only for a `premium_*` plan when `profiles.trial_used = false`; breeder plans have no trial (BR-07 covers Premium only); otherwise the first charge is immediate (E-15).
 - **Errors:** `payment_provider_unavailable` (503) — **always, until OQ-11 is resolved** (returned after validation, so validation errors still surface); `validation_failed` (422) — unknown/inactive plan, family mismatch (`fields.plan = "plan_not_allowed"`); `trial_already_used` (409) — `expect_trial = true` but the trial was used; `subscription_already_active` (409) — the user already has a `trialing`/`active`/`cancelled` row of the same family whose `current_period_end > now()` (use EP-48 to resume renewal instead); `forbidden_role` (403).
-- **States:** S17 *default* → redirect to `checkout_url`; S17 *trial_used* on `trial_already_used`; S17/S18 *error* on `payment_provider_unavailable` (copy: "Plaćanje uskoro").
+- **States:** S17 *default* → redirect to `checkout_url`; S17 *trial_used* on `trial_already_used`; S17 *payments_coming_soon* ("Plaćanje uskoro dostupno") and S18 *error* on `payment_provider_unavailable` (v1.2, CR-22).
 - **Side effects:** creates a provider checkout session carrying `{user_id, plan, trial_applied, idempotency_key}` as metadata `[DEFERRED: OQ-11]`. No `subscriptions` row is written here; it is created only when EP-46 confirms. Repeat with the same key within 24 h returns the same `CheckoutSession`.
 - **Budget:** `action`
 
@@ -952,9 +953,9 @@ Common to every operation below: the §4.1 gates run first (`401 unauthenticated
     | deletion.due_at | timestamp | yes | `profiles.deletion_due_at` |
     | deletion.days_left | integer | yes | computed: whole days from today (Europe/Belgrade) to `deletion_due_at`; null when not pending |
     | deletion.heir_full_name | string | yes | computed (BR-27): `profiles.full_name` of the earliest `household_memberships.joined_at` member of the household where `households.owner_id = auth.uid()`; null if no household or no members |
-- **Errors:** `export_in_progress` (409) — a row with `status = preparing` exists; `internal_error` (500) — the export workflow could not be started.
+- **Errors:** `export_in_progress` (409) — a row with `status = preparing` exists; `internal_error` (500) — the export row could not be created.
 - **States:** S19 *default* (no export or `expired`/`failed`), *preparing* (`status = preparing`), *ready* (`status = ready`, `download_url` set), *error* on 5xx or `status = failed`; *pending_deletion* from `deletion.due_at` not null.
-- **Side effects:** `requestDataExport` inserts `data_exports{user_id, status = preparing, requested_at = now}` and starts the GitHub Actions export workflow (ADR-13) with the export id. The workflow writes one ZIP (all personal data, records, attachments, photos) to R2, then sets `status = ready`, `r2_key`, `size_bytes`, `ready_at = now`, `expires_at = ready_at + 7 days` and emails the user (Resend) that the archive is ready; on failure `status = failed`. Expired archives are removed by EP-52.
+- **Side effects:** `requestDataExport` inserts `data_exports{user_id, status = preparing, requested_at = now}`; the internal route `/api/internal/exports`, called by pg_cron every 5 minutes (TC ADR-13, v1.6), picks up `preparing` rows, builds one ZIP with `fflate` (all personal data, records, attachments, photos), uploads it to R2 under `exports/` (§10), then sets `status = ready`, `r2_key`, `size_bytes`, `ready_at = now`, `expires_at = ready_at + 7 days` and emails the user (Resend) that the archive is ready; on failure `status = failed`. Expired archives are removed by EP-52.
 - **Budget:** `action`
 
 #### EP-51 — Request account deletion / cancel deletion
@@ -1051,7 +1052,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Response:** `createIntake` → `ok` + `Intake`. Status change → `200` + updated row (`OrgAnimalRow` fields).
 - **Errors:** `validation_failed` (422) — field errors; `forbidden_role` (403); `not_found` (404) — pet of another organisation; `organisation_pending_approval` (403).
 - **States:** S20 inline field errors in the Dialog; *default* after save (row appears, chip counts change).
-- **Side effects:** `createIntake` (one transaction): `pets{organisation_id, name, species, species_other, sex, breed, approx_age_text, shelter_status = intake}` + `intakes{pet_id, intake_on, arrival_type, place_found, note, created_by}` + `pet_status_history{status = intake, changed_at = now, changed_by}`. Status change: trigger inserts `pet_status_history{status, changed_at = now, changed_by = auth.uid()}`; a change to or from `available` purges the EP-62 cache for the organisation.
+- **Side effects:** `createIntake` (one transaction): `pets{organisation_id, name, species, species_other, sex, breed, approx_age_text, shelter_status = intake}` + `intakes{pet_id, intake_on, arrival_type, place_found, note, created_by}` + `pet_status_history{status = intake, changed_at = now, changed_by}`. Status change: trigger inserts `pet_status_history{status, changed_at = now, changed_by = auth.uid()}`. EP-62 is not cached, so a change to or from `available` shows on the public page on the next request.
 - **Budget:** `write`
 
 #### EP-56 — Team: invite member / remove member / change role
@@ -1096,7 +1097,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Response:** `ok` + the updated `AdoptionRequest` / `BreederInquiry`.
 - **Errors:** `already_decided` (409) — status is not `pending`; `forbidden_role` (403); `not_found` (404); `breeder_plan_required` (403) — breeder without active plan; `organisation_pending_approval` (403).
 - **States:** S21 *default* with the row moved to the accepted/rejected filter; accepted rows show "Pošalji karton".
-- **Side effects:** `status`, `decided_by = auth.uid()`, `decided_at = now()`. Accept → pet `shelter_status = reserved` (shelter) or `offspring_status = reserved` (breeder) + `pet_status_history`; EP-62 cache purged. Accept and reject → email to the applicant's `email` (Resend) in the applicant's `profiles.locale`, with the organisation's contact details on accept (BR-36). Other pending requests for the same pet are left unchanged.
+- **Side effects:** `status`, `decided_by = auth.uid()`, `decided_at = now()`. Accept → pet `shelter_status = reserved` (shelter) or `offspring_status = reserved` (breeder) + `pet_status_history` (shown on EP-62 on the next request). Accept and reject → email to the applicant's `email` (Resend) in the applicant's `profiles.locale`, with the organisation's contact details on accept (BR-36). Other pending requests for the same pet are left unchanged.
 - **Budget:** `action`
 
 #### EP-59 — Send record transfer / re-send
@@ -1139,19 +1140,19 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Response:** list → `200` + `{ items: Litter[], eligible_mothers: [{pet_id, name}], eligible_fathers: [{pet_id, name}], access: Access }` (`items` sorted by `born_on` desc; mothers/fathers = the organisation's female/male non-offspring pets with `breeding_status = active`, source `pets.id`, `pets.name`). create → `ok` + `Litter`. update → `200` + updated offspring row (`Litter.offspring[]` shape).
 - **Errors:** `validation_failed` (422) — mother not female/not ours, both father fields set, `born_on` in future, count out of range, negative price; `breeder_plan_required` (403); `forbidden_role` (403); `not_found` (404); `organisation_pending_approval` (403).
 - **States:** S22 *empty* on `items: []`; *default*; *read_only* when `access.can_edit = false`; inline errors in the Dialog.
-- **Side effects:** create (one transaction): `litters{organisation_id, mother_id, father_id, father_name, born_on, offspring_count}` + `offspring_count` `pets{organisation_id, litter_id, name = "Mladunče N", species = mother's, breed = mother's, sex = unknown, birth_date = born_on, offspring_status = available}` + one `pet_status_history` row each (`available`). Names and sex are edited later through EP-04 (Part A). Status/price change → `pet_status_history` (status only) and EP-62 cache purge.
+- **Side effects:** create (one transaction): `litters{organisation_id, mother_id, father_id, father_name, born_on, offspring_count}` + `offspring_count` `pets{organisation_id, litter_id, name = "Mladunče N", species = mother's, breed = mother's, sex = unknown, birth_date = born_on, offspring_status = available}` + one `pet_status_history` row each (`available`). Names and sex are edited later through EP-04 (Part A). Status/price change → `pet_status_history` (status only); EP-62 reflects it on the next request.
 - **Budget:** `read-small` (list), `action` (create), `write` (update)
 
 #### EP-62 — Public organisation page
-- **Address:** `GET /api/public/orgs/:slug?limit=&offset=` — cached at the edge 5 min (`Cache-Control: public, s-maxage=300`), cache tag `org:<slug>`
+- **Address:** `GET /api/public/orgs/:slug?limit=&offset=` — not cached; rendered on every request (`Cache-Control: no-store`, TC ADR-18)
 - **Callers:** S23 `/o/[slug]` (Visitor and signed-in)
 - **FRs:** FR-46, FR-49
 - **Authorization:** everyone, Visitor included. Only `organisations.approval_status = approved`; a breeder organisation additionally needs an active breeder plan (E-21). Otherwise `404 not_found`.
 - **Request:** `slug` — path — required (`organisations.slug`); `limit` — integer — optional, default 20, max 50; `offset` — optional, default 0.
-- **Response:** `200` + `PublicOrgPage`. Animals: shelter — `pets.shelter_status = available`; breeder — `pets.offspring_status = available`; sort `pets.created_at` desc. Only public fields (BR-37). Photo/logo URLs are presigned GET URLs generated when the response is built (10 min) — never older than 5 min when served from cache.
+- **Response:** `200` + `PublicOrgPage`. Animals: shelter — `pets.shelter_status = available`; breeder — `pets.offspring_status = available`; sort `pets.created_at` desc. Only public fields (BR-37). Photo/logo URLs are presigned GET URLs generated when the response is built (10 min).
 - **Errors:** `not_found` (404); `validation_failed` (422) — bad paging.
 - **States:** S23 *default*; *empty* on `animals: []`; *error* on 404/5xx. Guest vs signed-in variants come from the session (Me, Part B), not from this response.
-- **Side effects:** none. Cache purged by EP-55, EP-58, EP-59, EP-61 status/price changes and EP-68 decisions.
+- **Side effects:** none. Status/price changes (EP-55, EP-58, EP-59, EP-61) and approval decisions (EP-68) show on the next request.
 - **Budget:** `public`
 
 #### EP-63 — Submit adoption request / breeder inquiry
@@ -1176,7 +1177,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 
 #### EP-64 — List partners nearby
 - **Address:** Data API `rpc:partners_nearby(p_lat, p_lng, p_city_id, p_type, p_limit)`
-- **Callers:** S24 `/partneri` (featured section, list by distance, type chips, no-vet banner); S03 `/ljubimci/[id]` vet suggestions (`p_type = vet`, `p_limit = 3`) when `pets.vet_name` is empty (BR-43)
+- **Callers:** S24 `/partneri` (featured section, list by distance, type chips, no-vet banner); S03 `/ljubimci/[id]` "Predlog veterinara u blizini" block (`p_type = vet`, `p_limit = 2`, plus "Svi partneri →" to S24) when `pets.vet_name` is empty (BR-43; v1.2, CR-22)
 - **FRs:** FR-52, FR-53, FR-55, FR-56
 - **Authorization:** any signed-in user; Visitor → `401 unauthenticated`.
 - **Request:**
@@ -1237,7 +1238,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Response:** list → `200` + `PendingOrganisation[]` with `total`. decide → `ok` + `PendingOrganisation` (updated `approval_status`).
 - **Errors:** `forbidden_role` (403); `not_found` (404); `already_decided` (409) — not `pending`; `validation_failed` (422) — reason with approve, reason too long.
 - **States:** S26 tab *empty* on `[]`; *default*; *loading*; *error*.
-- **Side effects:** approve → `organisations.approval_status = approved`; members' writes unblock immediately; email to the creator (`profiles.email` of `organisations.created_by`, Resend). Reject → `approval_status = rejected`, `rejection_reason`; email with the reason when given. EP-62 cache purge for the slug.
+- **Side effects:** approve → `organisations.approval_status = approved`; members' writes unblock immediately; email to the creator (`profiles.email` of `organisations.created_by`, Resend). Reject → `approval_status = rejected`, `rejection_reason`; email with the reason when given. EP-62 reflects the decision on the next request.
 - **Budget:** `read-list` (list), `action` (decide)
 
 #### EP-69 — Admin: list / create / update partner
@@ -1307,7 +1308,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Response:** `200` → `Organisation`
 - **Errors:** `validation_failed` (422); `forbidden_role` (403); `not_found` (404); `organisation_pending_approval` (403)
 - **States:** S29 default, read_only (Volunteer: `access.can_edit = false` from EP-53), inline field errors.
-- **Side effects:** public page cache for EP-62 refreshes within 5 minutes.
+- **Side effects:** none; EP-62 (not cached) shows the change on the next request.
 - **Budget:** `write`.
 
 ---
@@ -1740,21 +1741,24 @@ One reminder **instance** (see §5.3 note) as seen by the caller.
 Fields marked **(session)** are `null` for a Visitor.
 | Field | Type | Null | Source |
 |---|---|---|---|
-| kind | enum `household` | no | computed: constant |
-| status | enum `pending` / `accepted` / `declined` | no | `household_invitations.status` (expired → `410`, never returned here) |
-| expires_at | timestamp | no | `household_invitations.expires_at` |
-| household_name | string | no | `households.name` |
-| inviter_name | string | yes | `profiles.full_name` of `households.owner_id` |
-| inviter_city | City | yes | **(session)** `cities` via `profiles.city_id` of the owner (schema City, part C) |
-| shared_pets | object[] | yes | **(session)** pets in `household_pets` of the household |
+| kind | enum `household` / `organisation` / `transfer` | no | computed: from the token prefix — `hh_` → `household`, `og_` → `organisation` (EP-39); `transfer` is the value S14 uses for `tr_` tokens, which EP-60 answers with `TransferView` (v1.2, CR-18) |
+| status | enum `pending` / `accepted` / `declined` | no | `household_invitations.status` / `organisation_invitations.status` (expired → `410`, never returned here) |
+| expires_at | timestamp | no | `household_invitations.expires_at` / `organisation_invitations.expires_at` |
+| household_name | string | yes | `households.name`; null when `kind = organisation` |
+| organisation_name | string | yes | `organisations.name` via `organisation_invitations.organisation_id`; null when `kind = household` |
+| organisation_type | enum `shelter` / `breeder` | yes | `organisations.type`; null when `kind = household` |
+| role | enum `admin` / `volunteer` | yes | `organisation_invitations.role`; null when `kind = household` |
+| inviter_name | string | yes | `profiles.full_name` of `households.owner_id` (household) or of `organisations.created_by` (organisation) |
+| inviter_city | City | yes | **(session)** `cities` via `profiles.city_id` of the owner, or `organisations.city_id` for an organisation (schema City, part C) |
+| shared_pets | object[] | yes | **(session)** pets in `household_pets` of the household; null when `kind = organisation` |
 | shared_pets[].name | string | no | `pets.name` |
 | shared_pets[].sex | enum | no | `pets.sex` |
 | shared_pets[].species | enum | no | `pets.species` |
 | shared_pets[].breed | string | yes | `pets.breed` |
-| member_count | integer | yes | **(session)** computed: 1 + count `household_memberships` |
-| member_limit | integer | yes | **(session)** computed: constant 6 |
+| member_count | integer | yes | **(session)** computed: 1 + count `household_memberships` (household); count `organisation_memberships` (organisation) |
+| member_limit | integer | yes | **(session)** computed: constant 6 (household) / 20 (organisation, BR-34) |
 | is_signed_in | boolean | no | computed: request has a session |
-| already_member | boolean | yes | **(session)** computed: caller is owner or has a `household_memberships` row |
+| already_member | boolean | yes | **(session)** computed: caller is owner or has a `household_memberships` row (household); caller has an `organisation_memberships` row for the organisation (organisation) |
 
 #### Me
 | Field | Type | Null | Source |
@@ -2180,7 +2184,16 @@ type ApiError = {
   details?: Record<string, unknown> // machine-readable extras, e.g. { limit: "pets" }, { retry_after_s: 1800 }
 }
 ```
-Database errors raised by triggers use `RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = '<code>'`; the client maps `message` → `code` so a rule fails with the same code on every surface. User-facing copy for each code is owned by the Design System (§8, §9).
+Database errors raised by triggers and RPC functions use `RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = '<code>'` or `MESSAGE = '<code>:<detail>'` (TC §5.7.1); `lib/server` maps `message` → `ApiError` so a rule fails with the same code on every surface (v1.2, CR-07):
+
+| Database `MESSAGE` | `ApiError` |
+|---|---|
+| `'<code>'` (e.g. `household_full`) | `{ code: "household_full" }` |
+| `'premium_required:<limit>'` (e.g. `premium_required:pets`) | `{ code: "premium_required", details: { limit: "pets" } }` |
+| `'whatsapp_not_connected:<channel>'` | `{ code: "whatsapp_not_connected", details: { channel: "<channel>" } }` |
+| any message whose `<code>` is not in §7.2 | `{ code: "internal_error" }` (original message logged) |
+
+The text before the first `:` is always a §7.2 catalog code; the detail after it goes under the `details` key the code defines (`limit` for `premium_required`, `channel` for `whatsapp_not_connected`). User-facing copy for each code is owned by the Design System (§8, §9).
 
 **Field error codes** (values inside `fields`, not catalog codes): `required`, `invalid`, `too_long`, `out_of_range`, `before_start` (date before its paired start date), `invalid_state` (not valid for the record's current state), `not_uploaded` (confirm called but the file is missing), `plan_not_allowed`, `last_admin`.
 
@@ -2281,10 +2294,19 @@ Contracted provider-neutrally in EP-46: signature verification, idempotency by p
 |---|---|---|---|---|
 | Resend | email reminders, invitations, transfers, request outcomes, expiry notices, auth email (SMTP) | template id + locale + variables | 3 tries, exponential (1 min, 5 min, 15 min) inside the dispatch job | delivery row `failed`; Operator alert per RISK-14 |
 | Web Push (VAPID) | push reminders | `{ title, body, url, done_url }`, ≤ 4 KB | 1 retry | `410 Gone` from the push service deletes the `push_subscriptions` row |
-| WhatsApp Cloud API | reminders (utility template + "Urađeno" quick reply), verification code (authentication template) | template name + language + variables | 2 tries | delivery row `failed`; falls back to email + push for that occurrence |
+| WhatsApp Cloud API | reminders (utility template + "Urađeno" quick reply), verification code (authentication template) — templates below | template name + language + variables | 2 tries | delivery row `failed`; falls back to email + push for that occurrence |
 | Viber chatbot | reminders when switched on (BR-14b) | — | — | built, inactive in v1 |
 | Payment provider | checkout session, recurring charge | [DEFERRED: OQ-11] | — | — |
 | OpenStreetMap Nominatim | geocode partner address (EP-69) | `q=<address, city, Serbia>` with app User-Agent, max 1 request/s | none | `502 geocoding_failed`; Operator enters coordinates manually |
+
+**WhatsApp message templates (v1.2, CR-19)**
+
+| Template name | Category | Languages | Variables | Buttons | Used by |
+|---|---|---|---|---|---|
+| `reminder_due` | Utility | `sr`, `en` | `{{1}}` pet name (nominative), or "Za mene" / "For me" when the reminder has no pet (BR-18); `{{2}}` reminder title; `{{3}}` due date and time (Europe/Belgrade, Design §9 format) | Quick reply "Urađeno" (`sr`) / "Done" (`en`); payload = the occurrence's signed `dn_` token (§9.3) | EP-33 dispatch; reply handled by §9.1 |
+| `verification_code` | Authentication | `sr`, `en` | `{{1}}` 6-digit code | Copy-code button (Meta authentication template default) | EP-30 send code |
+
+The template language follows the recipient's `profiles.locale` (`sr-Latn` → `sr`). Both templates must be approved in Meta Business Manager before Step 29 (WhatsApp channel) runs in production; until then EP-30 and WhatsApp delivery work only against the Meta test number.
 
 ---
 
@@ -2296,7 +2318,14 @@ Implements ADR-07 (Cloudflare R2).
 3. Server returns an **upload ticket**: presigned R2 `PUT` URL (expires 10 min) + `r2_key` + signed ticket.
 4. Client uploads the bytes directly to R2, then calls the confirm action with the ticket; the server verifies the object exists (`HEAD`), then inserts the row.
 5. Viewing: EP-15 returns presigned `GET` URLs (expire 10 min). Public moment photos are served only through EP-24, which signs them for the page.
-6. **Keys:** `u/<owner_id>/pets/<pet_id>/<kind>/<uuid>-<file_name>` and `o/<org_id>/...` for organisations; `p/<partner_id>/logo-<uuid>` for partners.
+6. **Keys (the only R2 key layout; v1.2, CR-10):**
+   - personally owned pets: `u/<owner_id>/pets/<pet_id>/<kind>/<uuid>-<safe_file_name>`
+   - organisation animals: `o/<org_id>/pets/<pet_id>/<kind>/<uuid>-<safe_file_name>`
+   - organisation logo: `o/<org_id>/logo-<uuid>.<ext>`
+   - partner logo: `p/<partner_id>/logo-<uuid>.<ext>`
+   - data export archives: `exports/<user_id>/<data_export_id>.zip` (TC ADR-13)
+   - `<kind>` ∈ `photo` (pet photo), `visits/<vet_visit_id>` (attachment), `moments/<moment_id>` (moment photo; `<uuid>` is prefixed with `<position>-`).
+   - `safe_file_name` is the original name, lowercased, with characters other than `[a-z0-9._-]` replaced by `-`, at most 100 chars. A record transfer (EP-60) copies objects to new keys under the new owner's `u/` prefix.
 7. **Deletion:** deleting a row queues its key; the nightly job (EP-52) deletes queued keys and orphaned objects older than 24 h with no row.
 
 ---
@@ -2309,9 +2338,9 @@ Implements ADR-07 (Cloudflare R2).
 | EP-35 household invitation, EP-56 team invitation | 20 per day | user | `429 rate_limited` |
 | EP-30 send WhatsApp code | 5 per hour | user | `429 rate_limited` |
 | EP-42 sign-in, sign-up, password reset | Supabase Auth built-in limits | IP / email | Supabase error mapped to `429 rate_limited` |
-| EP-24, EP-62 public pages | none; 5-minute cache | — | — |
+| EP-24, EP-62 public pages | none; not cached (TC ADR-18) | — | — |
 
-Counters live in the database (a small counter per user + operation + window), so they hold across server instances.
+Counters live in the database (`rate_limit_counters`, one row per user + operation + window — TC §5.7), so they hold across server instances.
 
 ---
 
@@ -2325,7 +2354,7 @@ Classes used in §5. Budgets are server-side p95 under v1 volumes; they are targ
 | `read-list` | ≤ 400 ms, ≤ 50 items, ≤ 100 KB | lists (EP-01, EP-17, EP-20, EP-25, EP-54, EP-57, EP-64) | NFR-03 |
 | `write` | ≤ 400 ms | single-row writes and RPCs | NFR-03 |
 | `action` | ≤ 1.5 s (≤ 5 s when calling a third party) | server actions | NFR-03 |
-| `public` | ≤ 300 ms cached, ≤ 800 ms uncached | EP-24, EP-62 | NFR-03 |
+| `public` | ≤ 800 ms (not cached, rendered on every request) | EP-24, EP-62 | NFR-03 |
 | `job` | dispatch run ≤ 50 s (fits the 60 s cadence); nightly ≤ 10 min | EP-33, EP-49, EP-52 | NFR-01 (≥ 95 % within 5 min), ADR-04 |
 | uploads | ≤ 10 MB per file, direct to R2 | §10 | NFR-09 |
 | cost | WhatsApp ≤ 30 messages / Premium user / month; Viber off | EP-33 | NFR-10 |

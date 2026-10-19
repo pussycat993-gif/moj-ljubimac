@@ -6,11 +6,11 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 04 — Design System & Living Screens |
-| Version | 1.4 |
+| Version | 1.5 |
 | Date | 2026-10-19 |
 | Author | Keti Vrtunić (interview facilitated by "Jelena", Design Systems lead persona) |
-| Traces to | Brief v1.6 · PRD v1.5 · Technical Constraints v1.4 |
-| Status | Draft — 29 screens written and verified in a preview build (see `04-design/README.md`) |
+| Traces to | Brief v1.6 · PRD v1.6 · Technical Constraints v1.6 |
+| Status | Draft — 31 screens written and verified in a preview build (see `04-design/README.md`) |
 
 **Change log**
 
@@ -21,12 +21,13 @@
 | 1.2 | 2026-10-19 | Pet accent becomes two-tone: soft blush pink / pistachio surfaces with deep rose / olive for text, rings and graphics. |
 | 1.3 | 2026-10-19 | Change requests from the API Contract field audit: new S27 treatment form; channel connection (push, WhatsApp) in S12; organisation name/city/PIB in S15; city as a list everywhere; pet names always in the nominative; no photo captions; structured partner hours and separate messaging number; household name and declined invitations in S14. |
 | 1.4 | 2026-10-19 | Codex direction adopted: large pastel pet headers and cards, species icons in avatars, reminder-type icon tiles, pastel status pills, "Danas" as a card row, sidebar with full logo, counts and user footer, pet search; new S28 new password, S29 organisation public profile, S11 edit variant. |
+| 1.5 | 2026-10-19 | Owner-approved change requests from the Build Plan review: CR-11 i18n rule (every string in `sr.ts` and `en.ts`); CR-12 S10 manual reminder rows open S11 edit; CR-13 S12 WhatsApp "Uskoro dostupno" state; CR-14 new §9.1 Message copy (email, push, action pages) with template ids; CR-18 S14 team invitation variant; CR-21 new S30 Politika privatnosti and S31 Uslovi korišćenja with placeholder legal text (new OQ-15); CR-22 S03 vet suggestion card, S17 "Plaćanje uskoro dostupno" state, count badge on the phone bottom nav, web app manifest exception to the no-hex rule. `ReminderRow` gains an optional `href`; public footer links go to `/privatnost` and `/uslovi`. |
 
 ---
 
 ## 1. Executive Summary
 
-This design system dresses all seven Moj Ljubimac epics in one visual language and defines 29 living screens. Foundations: a warm cream page with white cards, the existing brand brown `#563218` as primary, a per-pet accent (rose for female, teal for male, neutral for organisations), Nunito headings with Inter body text, a 4 px spacing base, 8/12 px radii and two shadow levels, light mode only. On phones the app uses a bottom navigation bar; on computers a left sidebar. One shared pattern each for loading, empty, error, Premium-locked, and read-only states. Traces to Brief v1.6, PRD v1.5, Technical Constraints v1.4.
+This design system dresses all seven Moj Ljubimac epics in one visual language and defines 31 living screens. Foundations: a warm cream page with white cards, the existing brand brown `#563218` as primary, a per-pet accent (rose for female, teal for male, neutral for organisations), Nunito headings with Inter body text, a 4 px spacing base, 8/12 px radii and two shadow levels, light mode only. On phones the app uses a bottom navigation bar; on computers a left sidebar. One shared pattern each for loading, empty, error, Premium-locked, and read-only states. Traces to Brief v1.6, PRD v1.6, Technical Constraints v1.6.
 
 ---
 
@@ -55,6 +56,8 @@ The official logo (dog and cat silhouette with the script wordmark "Moj Ljubimac
 ## 4. Design Tokens
 
 Light mode only for v1. All colours are semantic tokens; no screen uses a raw hex value.
+
+**Exception — web app manifest (CR-22):** `app/manifest.ts` cannot read CSS variables, so it carries the token values as hex, and only there: `name` "Moj Ljubimac", `short_name` "Ljubimac", `start_url` "/ljubimci", `display` "standalone", `theme_color` `#563218` (= `--primary`), `background_color` `#F6F1EB` (= `--background`), icons `app-icon-192.png` / `app-icon-512.png`. If either token changes, the manifest changes in the same commit. No other file may use raw hex.
 
 ### 4.1 Colour
 
@@ -228,6 +231,7 @@ Fonts loaded with `next/font/google` (subsets `latin`, `latin-ext` — required 
 
 ### 5.1 App shell (Owner, Household Member)
 - **Phones (< md):** top bar (logo mark, pet switcher, profile avatar) + scrolling content + **bottom navigation** fixed, 4 items: *Ljubimci*, *Podsetnici*, *Partneri*, *Profil*. Content gets `pb-24` so the bar never covers it.
+- **Count badge (CR-22):** *Podsetnici* carries a count badge = today's pending reminders (EP-25 `total` for filter `today`, status pending) — in the sidebar and on the phone bottom-nav icon. Zero → no badge.
 - **Computers (≥ md):** **left sidebar** 240 px (`w-60`) with logo, the same 4 items plus *Domaćinstvo* and *Podešavanja*; content area centred, `max-w-5xl`, `px-6 py-8`.
 - **Pet context:** inside a pet's pages the content is wrapped in `data-pet-sex` so the pet header band and tab underline use `--pet-accent`.
 
@@ -235,7 +239,7 @@ Fonts loaded with `next/font/google` (subsets `latin`, `latin-ext` — required 
 Same structure, different items: *Životinje*, *Zahtevi* (shelter) / *Upiti* (breeder), *Legla* (breeder only), *Tim*, *Profil*. All accents neutral.
 
 ### 5.3 Public shell (Visitor)
-No navigation. Slim top bar with the logo mark and a "Napravi nalog" button; content `max-w-3xl`, centred; footer with privacy and terms links.
+No navigation. Slim top bar with the logo mark and a "Napravi nalog" button; content `max-w-3xl`, centred; footer with links *Politika privatnosti* → `/privatnost` (S30) and *Uslovi korišćenja* → `/uslovi` (S31).
 
 ### 5.4 Auth shell
 Centred card `max-w-md` on the cream ground, logo above. Used for sign-in, registration, invitation acceptance.
@@ -282,19 +286,19 @@ Rule: **primitives are composed from shadcn/ui, never hand-rolled.**
 
 | Composite | Built from | Purpose |
 |---|---|---|
-| `AppShell` | Button, Avatar, Sheet | owner/org/admin shells: sidebar with full logo, "MENI" label, count badges (`counts`), user footer (`user`); bottom nav on phones |
+| `AppShell` | Button, Avatar, Sheet | owner/org/admin shells: sidebar with full logo, "MENI" label, count badges (`counts`, shown in the sidebar and on the phone bottom nav), user footer (`user`); bottom nav on phones |
 | `PetAvatar` | Avatar | photo, species icon, or initial; `onSoft` puts a white circle on pastel blocks |
 | `PetHeader` | Card, PetAvatar, Badge | large pastel (`bg-pet-accent-soft`) top block with avatar, name in deep accent, chips; actions below |
 | `PremiumLock` | Card, Button, Badge | the single Premium-locked pattern |
 | `EmptyState` | Card, Button | icon + heading + one line + action |
 | `ErrorState` | Card, Button | message + "Pokušaj ponovo" |
 | `ReadOnlyBanner` | Card | read-only household / organisation copy |
-| `ReminderRow` | Badge, Button | one reminder occurrence with status and "Urađeno" |
+| `ReminderRow` | Badge, Button | one reminder occurrence with status and "Urađeno"; optional `href` makes the title a link (manual reminders → S11 edit) |
 | `LogoMark` | `next/image` | official logo; variants `mark` (phone top bar), `horizontal` (sidebar, public header), `full` (auth screens) |
 | `StatusBadge` | Badge | pastel status pills (Urađeno, Uskoro, Propušteno), Danas, Premium |
 | `ReminderTypeIcon` | lucide icons | rounded tile per reminder type: Droplet (dose), Syringe (vaccination), Stethoscope (vet follow-up), UtensilsCrossed (meal), Cake (birthday), Bell (manual) |
 | `StateSwitcher` | Tabs | dev-only state preview in mock screens |
-| `PublicShell`, `AuthShell` | Button, LogoMark | public and auth frames (in `shells.tsx`) |
+| `PublicShell`, `AuthShell` | Button, LogoMark | public and auth frames (in `shells.tsx`); the public footer links to S30 / S31 |
 
 **Proposed additions (raised while writing screens — not yet approved, see OQ-10):** `DateField` (Serbian-locale date picker, now repeated in several screens), compact inline `PremiumLock` for a single switch/checkbox, `AttachmentChip`, organisation/request statuses in `StatusBadge` (screens currently use plain `Badge`), `LogoAvatar` for organisations/partners, `InlineAlert` for form-level errors, `Toaster` mounted in the shells (screens currently confirm inline with `role="status"`), and an optional `label` on `StateSwitcher`.
 
@@ -331,10 +335,74 @@ Rule: **primitives are composed from shadcn/ui, never hand-rolled.**
 ## 9. Content & Voice (UI copy)
 
 - **Locale:** Serbian Latin by default; every string also exists in English (NFR-05). Screens are written in Serbian.
+- **i18n rule (CR-11):** every screen step adds all of its strings to both `lib/i18n/sr.ts` and `lib/i18n/en.ts`. The Serbian text is the copy in the mockups; the English text is a faithful translation of it — no new copy, no extra or missing messages. A key present in one file and missing in the other fails the build. Message copy in §9.1 follows the same rule.
 - **Tone:** informal "ti", warm, short. Name the pet, always in the **nominative** — names are never declined, because user-entered names cannot be inflected reliably: *"Luna — vakcina ističe za 7 dana"*, *"Lek za: Luna"*, not *"Luni ističe vakcina"*.
 - **Terminology:** use Brief/PRD glossary terms exactly — *Uspomena* (Memorial), *Trenutak* (Moment), *Domaćinstvo* (Household), *Partner*, *Podsetnik* (Reminder), *Premium*, *Azil*, *Odgajivačnica*, *Leglo*, *Udomljavanje*.
 - **Formats:** dates `19. 10. 2026.`; time `08:00`; money `2.990 RSD`; weight `4,2 kg`, `850 g`.
 - **Mock data:** realistic Serbian names and places — pets *Luna* (female cat), *Maks* (male dog), *Kiki* (female rabbit); people *Ivana Petrović*, *Marko Jovanović*; places *Novi Sad*, *Beograd*, *Bečej*; partners *Veterinarska ambulanta „Dr Vet"*, *Pet shop „Šapica"*, *Grooming salon „Čupko"*, *Pet hotel „Kod Mace"*. Never "Lorem ipsum", never "John Doe". Prices for Premium/breeder plans are placeholders until OQ-03 closes and are marked `/* placeholder price — OQ-03 */` in code.
+
+### 9.1 Message copy (CR-14)
+
+Copy for everything the product sends outside the app screens, plus the two action-link pages. Template ids are the keys used in code (`lib/i18n/{sr,en}.ts` under `messages.<id>`, and the Resend/push template id); the language follows the recipient's `profiles.locale`. Same voice as the screens: informal "ti", short, pet names in the **nominative** (never declined — use "ljubimac: Maks", "Maks — …"). Variables in `{braces}`; `{pet}` is the pet name, or *Za mene* / *For me* for personal reminders. Every email ends with the shared footer. WhatsApp templates are defined in the API Contract §9.4 (`reminder_due`, `verification_code`) and reuse the reminder wording below.
+
+**Shared email footer** (`email_footer`) — sr: *"Moj Ljubimac · Ovaj mejl ti šaljemo jer imaš nalog. Obaveštenja menjaš u Podešavanjima."* · en: *"Moj Ljubimac · You're getting this email because you have an account. Change notifications in Settings."*
+
+| Template id | Channel | Part | sr | en |
+|---|---|---|---|---|
+| `reminder_email` | Email | Subject | `{pet}: {title}` | `{pet}: {title}` |
+| | | Body | Zdravo, {first_name}! Podsetnik: **{title}** — {pet}, {date} u {time}. | Hi {first_name}! Reminder: **{title}** — {pet}, {date} at {time}. |
+| | | Buttons | **Urađeno** (action link, EP-32) · Otvori u aplikaciji | **Done** (action link, EP-32) · Open in the app |
+| | | Note | Dugme „Urađeno“ važi 24 sata. | The "Done" button works for 24 hours. |
+| `reminder_push` | Push | Title | `{pet}: {title}` | `{pet}: {title}` |
+| | | Body | {date} u {time} | {date} at {time} |
+| | | Action | Urađeno | Done |
+| `action_done_page` | Page `/api/a/done` | Heading | Označeno kao urađeno | Marked as done |
+| | | Body | {pet}: {title} — označeno u {time}. | {pet}: {title} — marked at {time}. |
+| | | Button | Otvori aplikaciju | Open the app |
+| `action_expired_page` | Page `/api/a/done` | Heading | Link je istekao | This link has expired |
+| | | Body | Link važi 24 sata i samo jednom. Otvori aplikaciju i označi podsetnik tamo. | The link works once and for 24 hours. Open the app and mark the reminder there. |
+| | | Button | Otvori aplikaciju | Open the app |
+| `household_invitation` | Email | Subject | {inviter} te poziva u domaćinstvo: {household} | {inviter} invited you to a household: {household} |
+| | | Body | {inviter} želi da zajedno brinete o ljubimcima ({pets}). Kao član unosiš svakodnevnu negu i vidiš ceo karton. Poziv važi do {date}. | {inviter} wants you to care for their pets together ({pets}). As a member you log daily care and see the full record. The invitation is valid until {date}. |
+| | | Button | Pogledaj poziv | View invitation |
+| `team_invitation` | Email | Subject | Poziv u tim: {organisation} | Team invitation: {organisation} |
+| | | Body | {inviter} te poziva u tim organizacije {organisation} — uloga: {role}. Tvoj nalog ostaje kakav je i dalje vodiš i svoje ljubimce. Poziv važi do {date}. | {inviter} invited you to the {organisation} team — role: {role}. Your account stays as it is, and you keep your own pets. The invitation is valid until {date}. |
+| | | Button | Pogledaj poziv | View invitation |
+| `record_transfer` | Email | Subject | Stiže ti karton: {pet} | A record is on its way: {pet} |
+| | | Body | {organisation} ti šalje ceo karton (ljubimac: {pet}) — vakcine, preglede i priloge. Link važi do {date}. | {organisation} is sending you the full record (pet: {pet}) — vaccinations, vet visits and attachments. The link is valid until {date}. |
+| | | Button | Prihvati karton | Accept the record |
+| `adoption_request_accepted` | Email | Subject | Zahtev prihvaćen: {pet} | Request accepted: {pet} |
+| | | Body | Dobre vesti! {organisation} je prihvatio tvoj zahtev za udomljavanje (ljubimac: {pet}). Javi im se: {org_phone}, {org_email}. | Good news! {organisation} accepted your adoption request (pet: {pet}). Get in touch: {org_phone}, {org_email}. |
+| `adoption_request_rejected` | Email | Subject | Odgovor na zahtev: {pet} | Reply to your request: {pet} |
+| | | Body | {organisation} ovog puta nije prihvatio tvoj zahtev za udomljavanje (ljubimac: {pet}). Hvala ti što želiš da pomogneš — i druge životinje čekaju dom. | {organisation} couldn't accept your adoption request this time (pet: {pet}). Thank you for wanting to help — other animals are waiting for a home too. |
+| | | Button | Pogledaj životinje | See the animals |
+| `breeder_inquiry_accepted` | Email | Subject | Upit prihvaćen: {pet} | Inquiry accepted: {pet} |
+| | | Body | {organisation} je prihvatio tvoj upit (ljubimac: {pet}). Javi im se: {org_phone}, {org_email}. | {organisation} accepted your inquiry (pet: {pet}). Get in touch: {org_phone}, {org_email}. |
+| `breeder_inquiry_rejected` | Email | Subject | Odgovor na upit: {pet} | Reply to your inquiry: {pet} |
+| | | Body | {organisation} ovog puta nije prihvatio tvoj upit (ljubimac: {pet}). Pogledaj ostale mladunce na njihovoj stranici. | {organisation} couldn't accept your inquiry this time (pet: {pet}). See their other offspring on their page. |
+| | | Button | Pogledaj stranicu | View their page |
+| `premium_expiry_30` | Email | Subject | Premium ističe za 30 dana | Premium ends in 30 days |
+| | | Body | Tvoj Premium traje do {date}. {renew_line} | Your Premium runs until {date}. {renew_line} |
+| `premium_expiry_7` | Email | Subject | Premium ističe za 7 dana | Premium ends in 7 days |
+| | | Body | Tvoj Premium traje do {date}. {renew_line} | Your Premium runs until {date}. {renew_line} |
+| `premium_expiry_1` | Email | Subject | Premium ističe sutra | Premium ends tomorrow |
+| | | Body | Tvoj Premium traje do {date}. {renew_line} | Your Premium runs until {date}. {renew_line} |
+| | | `{renew_line}` auto-renew on | Obnavlja se automatski — ne moraš ništa da radiš. | It renews automatically — nothing to do. |
+| | | `{renew_line}` auto-renew off | Posle toga prelaziš na Free: ništa se ne briše, ali dodatni ljubimci i domaćinstvo postaju samo za čitanje. | After that you move to Free: nothing is deleted, but extra pets and the household become read-only. |
+| | | Button | Pogledaj pretplatu | View subscription |
+| `shelter_approved` | Email | Subject | Azil je odobren: {organisation} | Shelter approved: {organisation} |
+| | | Body | Dobro došao/la! {organisation} je odobren — sada možeš da dodaješ životinje, pozivaš tim i objaviš javnu stranicu. | Welcome! {organisation} is approved — you can add animals, invite your team and publish your public page. |
+| | | Button | Otvori organizaciju | Open organisation |
+| `shelter_rejected` | Email | Subject | Azil nije odobren: {organisation} | Shelter not approved: {organisation} |
+| | | Body | Nažalost, ovog puta ne možemo da odobrimo nalog za {organisation}. Ako misliš da je greška, odgovori na ovaj mejl. | Unfortunately we can't approve the account for {organisation} this time. If you think this is a mistake, reply to this email. |
+| `data_export_ready` | Email | Subject | Tvoji podaci su spremni | Your data is ready |
+| | | Body | Arhiva sa svim tvojim podacima i kartonima je spremna ({size}). Link važi do {date}. | The archive with all your data and records is ready ({size}). The link is valid until {date}. |
+| | | Button | Preuzmi podatke | Download data |
+| `account_deletion_scheduled` | Email | Subject | Nalog će biti obrisan {date} | Your account will be deleted on {date} |
+| | | Body | Primili smo zahtev za brisanje naloga. Nalog je isključen, a {date} brišemo ga trajno sa svim podacima. Predomislio/la si se? Prijavi se pre tog datuma i otkaži brisanje. | We got your request to delete your account. It's switched off now, and on {date} we delete it permanently with all its data. Changed your mind? Sign in before then and cancel the deletion. |
+| | | Button | Otkaži brisanje | Cancel deletion |
+
+Organisation names stay as typed (nominative, never declined); where Serbian needs a gendered verb after an organisation name, the masculine form is used, as for the default noun *azil* / *udruženje*.
 
 ---
 
@@ -384,8 +452,10 @@ Shells: **A** = App shell (owner), **O** = Organisation shell, **P** = Public sh
 | S24 | EPIC-07 | Partneri u blizini | `/partneri` | FR-52, FR-53, FR-55, FR-56 | A | `partners.tsx` |
 | S25 | EPIC-07 | Profil partnera | `/partneri/[id]` | FR-54, FR-55 | A | `partner-profile.tsx` |
 | S26 | EPIC-07 | Admin | `/admin` | FR-42, FR-57, FR-58 (+ BR-14b switch) | D | `admin.tsx` |
+| S30 | EPIC-05 | Politika privatnosti | `/privatnost` | Release Criterion 4 | P | `privacy.tsx` |
+| S31 | EPIC-05 | Uslovi korišćenja | `/uslovi` | Release Criterion 4 | P | `terms.tsx` |
 
-**Coverage (29 screens):** EPIC-01 ✅ (7) · EPIC-02 ✅ (3) · EPIC-03 ✅ (3) · EPIC-04 ✅ (2) · EPIC-05 ✅ (6) · EPIC-06 ✅ (5) · EPIC-07 ✅ (3). Every screen traces to PRD FRs; no screen outside PRD scope.
+**Coverage (31 screens):** EPIC-01 ✅ (7) · EPIC-02 ✅ (3) · EPIC-03 ✅ (3) · EPIC-04 ✅ (2) · EPIC-05 ✅ (8) · EPIC-06 ✅ (5) · EPIC-07 ✅ (3). Every screen traces to PRD FRs, or (S30, S31) to PRD Release Criterion 4; no screen outside PRD scope. (S14 is counted under EPIC-04.)
 
 ---
 
@@ -397,7 +467,7 @@ Every screen: inline Serbian mock data, local React state only, `"use client"`, 
 
 **S02 Dodaj / izmeni ljubimca** — Form `max-w-3xl` in sections: Osnovno (ime*, vrsta* Select incl. "Ostalo" + text field, rasa, pol* RadioGroup, datum rođenja or okvirna godina), Izgled (boja/oznake, fotografija), Identifikacija (mikročip, pasoš, sterilisan da/ne/ne znam), Moj veterinar (ime, telefon), Jedinica težine (kg/g), napomena. Sex choice live-previews the pet accent. Validation inline. States D X.
 
-**S03 Karton ljubimca** — `PetHeader` (accent band, avatar, name, age, microchip) + actions: "Izvezi PDF" (G on Free), DropdownMenu (Premesti u Uspomene, Obriši trajno → AlertDialog "Da, obriši"). Tabs: Pregled (next 3 reminders, last weight, last visit), Vakcine (list with next-dose badge), Terapije (with "Doza data" button and dose log), Pregledi (list, attachment chips), Težina (list + simple bar trend from div bars using tokens). Detail+aside on lg. States D L E (per tab) G (PDF) R (member view hides medical edit buttons).
+**S03 Karton ljubimca** — `PetHeader` (accent band, avatar, name, age, microchip) + actions: "Izvezi PDF" (G on Free), DropdownMenu (Premesti u Uspomene, Obriši trajno → AlertDialog "Da, obriši"). Tabs: Pregled (next 3 reminders, last weight, last visit), Vakcine (list with next-dose badge), Terapije (with "Doza data" button and dose log), Pregledi (list, attachment chips), Težina (list + simple bar trend from div bars using tokens). Detail+aside on lg. Aside "Moj veterinar" card; when the pet has no "moj veterinar" it is replaced by a small **"Predlog veterinara u blizini"** card (CR-22, EP-64): the top 2 vet partners (featured first, then distance — name linking to S25, distance · address, call icon button) and a "Svi partneri →" link to `/partneri`. States D L E (per tab) G (PDF) R (member view hides medical edit buttons), plus the no-vet variant "Bez veterinara (predlog)".
 
 **S04 Nova vakcina** — Fields per FR-05; "Datum sledeće doze" shows helper *"Napravićemo podsetnik."* States D X.
 
@@ -417,21 +487,21 @@ Every screen: inline Serbian mock data, local React state only, `"use client"`, 
 
 **S09 Javni trenutak** — Public shell; photos, text, pet name, date; no health data; CTA "Napravi nalog za svog ljubimca". States D, link-disabled (*"Ovaj trenutak više nije javan"*).
 
-**S10 Podsetnici** — Tabs Danas / Uskoro / Propušteno / Urađeno; `ReminderRow` (pet avatar or "Za mene", title, time, channel icons, status badge, "Urađeno"). "Novi podsetnik" button. States D L E.
+**S10 Podsetnici** — Tabs Danas / Uskoro / Propušteno / Urađeno; `ReminderRow` (pet avatar or "Za mene", title, time, channel icons, status badge, "Urađeno"). Tapping a **manual** reminder's title opens S11 in edit mode (`/podsetnici/[id]`, CR-12); generated reminders (vaccination, dose, follow-up, meal, birthday) are edited at their source. "Novi podsetnik" button. The *Podsetnici* nav count badge = today's pending reminders. States D L E.
 
 **S11 Novi / izmeni podsetnik** — Title*, za koga (ljubimac Select or "Samo za mene"), datum i vreme*, ponavljanje (Select). Edit variant prefilled with "Obriši podsetnik" (AlertDialog). States D X, edit.
 
-**S12 Podešavanja podsetnika** — One Card per type (Vakcine, Terapije/doze, Kontrole, Obroci, Rođendani, Moji podsetnici): lead-time chips (multi), delivery time, channel Checkboxes (Email, Push, WhatsApp with Premium badge/G on Free; Viber absent while switched off); doses and meals show *"Stižu tačno u zadato vreme"*. WhatsApp counter "12 / 30 poruka ovog meseca". iPhone push hint card ("Dodaj na početni ekran"). A "Kanali" card on top: Push (isključeno / uključeno / blokirano u pregledaču) and WhatsApp number connection (number → "Pošalji kod" → code → "Povezano" → "Prekini vezu"; G on Free). States D G, plus push-on/WhatsApp-connected and push-blocked variants.
+**S12 Podešavanja podsetnika** — One Card per type (Vakcine, Terapije/doze, Kontrole, Obroci, Rođendani, Moji podsetnici): lead-time chips (multi), delivery time, channel Checkboxes (Email, Push, WhatsApp with Premium badge/G on Free; Viber absent while switched off); doses and meals show *"Stižu tačno u zadato vreme"*. WhatsApp counter "12 / 30 poruka ovog meseca". iPhone push hint card ("Dodaj na početni ekran"). A "Kanali" card on top: Push (isključeno / uključeno / blokirano u pregledaču) and WhatsApp number connection (number → "Pošalji kod" → code → "Povezano" → "Prekini vezu"; G on Free). States D G, plus push-on/WhatsApp-connected and push-blocked variants, and **"WhatsApp uskoro"** (CR-13): for Premium users before the WhatsApp channel is live, the WhatsApp section shows an *"Uskoro dostupno"* badge and one line instead of the number form, every WhatsApp channel checkbox is disabled and unchecked with *"Uskoro dostupno"* beside it, and the monthly counter card is hidden.
 
 **S13 Domaćinstvo** — Members list (role, joined date, remove), invite Dialog (email or copy link), shared-pets Switch list, counter "3 / 6 članova", own reminder opt-in Switch for members. States D G (Free owner) R (owner's Premium lapsed: banner + hidden controls) E.
 
-**S14 Prihvati poziv / karton** — Auth shell; variants: household invitation (household by name, e.g. "Domaćinstvo Petrović", inviter), declined ("Odbijeno") and record transfer (animal card, organisation name); "Prihvati" / sign-in prompt; expired variant; Free-slot-taken variant → PremiumLock (FR-51).
+**S14 Prihvati poziv / karton** — Auth shell; variants: household invitation (household by name, e.g. "Domaćinstvo Petrović", inviter), **team invitation** (CR-18: organisation name, type and city, inviter, role *Admin* or *Volonter* with what the role can and cannot do, team counter "6 / 20", validity, note that the invitee keeps their own account and pets — BR-53; "Pridruži se timu" / "Odbij"; accepted → "Idi u organizaciju"), declined ("Odbijeno") and record transfer (animal card, organisation name); "Prihvati" / sign-in prompt; expired variant; Free-slot-taken variant → PremiumLock (FR-51).
 
 **S15 Registracija** — Account type RadioGroup (Vlasnik / Azil / Odgajivačnica) with one-line descriptions; email, lozinka, or "Nastavi sa Google-om"; language switch SR/EN; for Azil/Odgajivačnica also *Naziv organizacije\** and *Grad\** (Select from the city list) and optional *PIB*; shelter note *"Azil odobravamo ručno, obično u roku od 2 dana."* After submit: "Proveri mejl" state.
 
 **S16 Prijava** — Email/lozinka, Google, "Zaboravljena lozinka". States D X.
 
-**S17 Premium** — Free vs Premium comparison (rows from BR-01/BR-02), Mesečno / Godišnje toggle (placeholder prices — OQ-03), "Probaj 7 dana besplatno" (or "Pretplati se" when trial used), card-payment note (Monri). States D.
+**S17 Premium** — Free vs Premium comparison (rows from BR-01/BR-02), Mesečno / Godišnje toggle (placeholder prices — OQ-03), "Probaj 7 dana besplatno" (or "Pretplati se" when trial used), card-payment note (Monri). States D, trial used, and **"Plaćanje uskoro dostupno"** (CR-22: plans without prices from EP-44, EP-45 → `503 payment_provider_unavailable`): status card explaining payment is coming, billing toggle and prices hidden ("Cena će biti objavljena uskoro."), CTA disabled with the label "Plaćanje uskoro dostupno", card-payment note hidden.
 
 **S18 Profil i pretplata** — Name, city, language; Premium card with days remaining (`Progress`), renewal date, auto-renew status, "Otkaži obnovu" AlertDialog; expired variant with downgrade note (FR-39). Links to reminder settings and S19.
 
@@ -449,6 +519,10 @@ Every screen: inline Serbian mock data, local React state only, `"use client"`, 
 
 **S25 Profil partnera** — Header (logo, name, type, address, distance, working hours), description, the four quick actions as large buttons, website/Instagram handle.
 
+**S30 Politika privatnosti** — Public shell; h1, a short intro with "Poslednja izmena", a "Sadržaj" card with anchor links, then numbered sections *Ko smo*, *Koje podatke prikupljamo*, *Zašto ih prikupljamo*, *Koliko ih čuvamo*, *Tvoja prava*, *Kontakt*. Every section body is a placeholder paragraph *"Tekst dostavlja vlasnik (OQ-15)."* — muted, dashed border — until the owner supplies the text. States D.
+
+**S31 Uslovi korišćenja** — Same layout as S30; sections *Opšte*, *Nalog*, *Premium i plaćanje*, *Sadržaj korisnika*, *Odgovornost*, *Izmene uslova*, *Kontakt*; same placeholder (OQ-15). The intro shows "Verzija {TERMS_VERSION}" (constant in `lib/legal.ts`, TC CR-09 — the version registration stores). States D.
+
 **S26 Admin** — Admin shell; Tabs: Azili na čekanju (approve/reject), Partneri (Table: name, type, city, Istaknut Switch with "3 / 3" limit hint, plaćeno do, status; add/edit Dialog with "Pronađi koordinate" button), Statistika (clicks per partner per action), Kanali (Viber Switch with cost warning).
 
 ---
@@ -462,6 +536,7 @@ Every screen: inline Serbian mock data, local React state only, `"use client"`, 
 | OQ-04 | Brief | Partner pricing. | No |
 | OQ-09 | Design | ✅ Resolved (v1.1): logo supplied and integrated. An SVG version is still welcome but not blocking. | — |
 | OQ-10 | Design | `[NEEDS CLARIFICATION]` Approve the proposed composites in §6 (DateField, compact PremiumLock, AttachmentChip, StatusBadge statuses, LogoAvatar, InlineAlert, Toaster in shells). | No |
+| OQ-15 | Design (CR-21) | `[NEEDS CLARIFICATION]` The owner (with a lawyer) must supply the privacy policy and terms of use texts for S30 and S31, in Serbian and English. Until then the sections carry the placeholder *"Tekst dostavlja vlasnik (OQ-15)."* | No — blocks only Release (Step 32), not building |
 
 ---
 
