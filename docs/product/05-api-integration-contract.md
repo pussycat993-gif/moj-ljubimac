@@ -1,0 +1,2469 @@
+# API & Integration Contract — Moj Ljubimac (Web)
+
+## Document Control
+
+| Field | Value |
+|---|---|
+| Product | Moj Ljubimac ("My Pet") — web application |
+| Document | 05 — API & Integration Contract |
+| Version | 1.1 |
+| Date | 2026-10-19 |
+| Author | Keti Vrtunić (interview facilitated by "Vuk", API/Integration Engineer persona) |
+| Traces to | Brief v1.6 · PRD v1.5 · Technical Constraints v1.4 · Design System v1.4 (29 screens) |
+| Status | Draft — payment-provider operations deferred (OQ-11) |
+
+**Change log**
+
+| Version | Date | Change |
+|---|---|---|
+| 1.0 | 2026-10-19 | Initial contract: conventions, auth, 72 operations, schemas, error model, integrations. |
+| 1.1 | 2026-10-19 | OQ-12 defaults confirmed (PRD BR-47 … BR-52); OQ-13 data model in TC v1.4; OQ-14 screens added (S28, S29, S11 edit); EP-72 organisation profile; search on EP-54 (FR-59); BR-46 in EP-52. |
+
+---
+
+## 1. Executive Summary
+
+This contract defines everything that crosses the wire in Moj Ljubimac. Reads and simple writes of a user's own data go through the Supabase data API protected by row-level security, with every Free limit and business rule enforced inside the database; multi-step or privileged work goes through Next.js server actions; external systems (WhatsApp, the payment provider, message action links) and the reminder dispatch job reach the app through a small set of route handlers. It defines 72 operations (EP-01 … EP-72), one error envelope with a catalog of stable codes, and the exact response that puts each screen into its loading, empty, error, Premium-locked, or read-only state. Payment-provider-specific operations are contracted provider-neutrally and deferred until the provider is chosen (OQ-11). Traces to Brief v1.6, PRD v1.4, Technical Constraints v1.3, Design System v1.3.
+
+---
+
+## 2. Inherited Context
+
+- **Scope ceiling:** 7 epics, FR-01 … FR-58 (PRD v1.4).
+- **Binding ADRs (TC v1.3):** ADR-01 Next.js + Supabase · ADR-02 schema · ADR-04 reminder dispatch job every minute · ADR-05 web push · ADR-06 Supabase Auth (email + Google) · ADR-07 files on R2 · ADR-08 Resend email · ADR-09 payments (**provider deferred**, see OQ-11) · ADR-11 OpenStreetMap geocoding · ADR-12 PDF in the browser · ADR-13 backups/exports · ADR-14 shadcn/Tailwind.
+- **Design System v1.3:** 27 screens (S01 … S27). State vocabulary used as keys in §7.3: **default, loading, empty, error, premium_locked, read_only**, plus screen-specific variants: *pending_approval* (S20), *link_disabled* (S09), *invitation_expired / invitation_declined / slot_taken* (S14), *email_sent* (S15), *pending_deletion* (S19), *trial_used / expired / cancelled* (S17, S18).
+- **Formatting (Design §9):** dates `19. 10. 2026.`, time `08:00`, money `2.990 RSD`, Europe/Belgrade time; pet names always nominative.
+- **NFRs that become budgets (§12):** NFR-01 reminder delivery, NFR-03/04 usability, NFR-09 attachment size, NFR-10 cost.
+- **Highest upstream ids:** RISK-17, ASM-09 → this document continues at RISK-18 and ASM-10.
+
+**Carried-forward open questions**
+
+| ID | Origin | Status here |
+|---|---|---|
+| OQ-01 | Brief | Open — targets; no wire impact |
+| OQ-03 | Brief | Open — prices are data in `plans`; no wire impact |
+| OQ-04 | Brief | Open — partner pricing, billed outside the product |
+| OQ-10 | Design | Open — proposed composites; no wire impact |
+| OQ-11 | API (new) | Open — payment provider deferred; blocks EP-45, EP-46, EP-49 provider specifics |
+
+---
+
+## 3. API Surface & Conventions
+
+### 3.1 Surfaces and routing rule
+
+| Surface | Used for | Address style in §5 |
+|---|---|---|
+| **Data API** (Supabase client, PostgREST, RLS) | Reads and single-row writes of data the caller owns or may see; database views and RPC functions for computed reads | `table` / `view` / `rpc:function` + operation + filter |
+| **Server actions** (Next.js, `"use server"`) | Anything multi-step, privileged, using secrets, touching R2, sending messages, or calling a third party | `action:name(input) → output` |
+| **Route handlers** (`/api/...`) | Calls from outside the app: webhooks, signed action links, the dispatch job, public cached pages | `METHOD /api/path` |
+
+**Rule:** every business rule and Free limit is enforced in the database (constraints, triggers, RLS), so the same rule holds whichever surface a write uses. Server actions never bypass RLS for a user's own data; only Operator actions, jobs, and webhooks use the service role, and only on the server.
+
+### 3.2 Versioning
+No versioning in v1: client and server deploy together and there is no public API. Route handlers called by external systems (`/api/webhooks/*`, `/api/a/*`) keep their paths and payloads stable; changing them is a breaking change and requires checking the external sender.
+
+### 3.3 Request conventions
+- JSON bodies (`application/json`, UTF-8); file bytes never go through the app (see §10).
+- **Idempotency:** operations that cost money or send a message to another person take `idempotency_key` (UUID v4 generated by the client per user intent). A repeat with the same key within 24 h returns the original result and performs nothing. Applies to EP-30 (send code), EP-35, EP-45, EP-56 (invite), EP-59, EP-63.
+- Naturally idempotent operations (marking done, toggling a switch, setting preferences) need no key.
+
+### 3.4 Collection conventions
+- **Bounded lists** (pets, members, today's reminders, partners in a city, litters) return the whole list.
+- **Unbounded lists** (care log, reminder history, organisation animals, requests, admin statistics) use **offset pages**: `limit` (default 20, max 50) and `offset`; the response carries `total` so the screen can show "Učitaj još". Data API: `.range(offset, offset+limit-1)` with `count: 'exact'`.
+- **Empty collection:** `200` with an empty array — never `404`. This is what produces the *empty* state.
+- Sorting is fixed per operation (stated in §5); no client-chosen sort in v1. Filters are named per operation.
+
+### 3.5 Field conventions
+- Names `snake_case` (same as columns).
+- IDs: UUID strings.
+- Timestamps: ISO 8601 with `Z` (UTC), e.g. `"2026-10-19T06:00:00Z"`; dates without time: `"2026-10-19"`; times of day: `"08:00"` (Europe/Belgrade wall clock). The client renders per Design §9.
+- Money: integer minor units + ISO currency, e.g. `{ "amount_minor": 299000, "currency": "RSD" }` → 2.990 RSD.
+- Weights: number in the pet's unit plus `weight_unit` (`kg` / `g`).
+- Enums: lowercase snake_case English values (`female`, `in_care`, `pet_hotel`); labels are translated in the UI.
+- **Nullability:** every documented field is always present; `null` means "no value". Absent is never used to mean anything.
+
+### 3.6 Action result shape
+Server actions return a discriminated result instead of throwing:
+```ts
+type ActionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: ApiError }   // ApiError — §7.1
+```
+Route handlers return the HTTP status from §7.2 with `ApiError` as the body on failure.
+
+---
+
+## 4. Authentication & Authorization
+
+### 4.1 Authentication (implements ADR-06)
+- Session: Supabase Auth session in **httpOnly cookies** set by `@supabase/ssr`, refreshed automatically by middleware on every request.
+- Sign-up / sign-in / sign-out / password reset / Google OAuth go through Supabase Auth (EP-42); email verification is mandatory.
+- Unauthenticated: protected pages redirect to `/prijava`; protected calls return `401 unauthenticated`.
+- Gates checked on every protected call, in this order:
+  1. no session → `401 unauthenticated`
+  2. email not verified → `403 email_not_verified`
+  3. `profiles.deletion_requested_at` set → `403 account_pending_deletion` (only EP-51 cancel and EP-42 sign-out allowed)
+  4. organisation member whose organisation is `pending` → writes return `403 organisation_pending_approval`; reads allowed
+- Signed action links (`/api/a/*`) authenticate by a single-use HMAC token instead of a session (§9.3).
+
+### 4.2 Roles
+| Role | Who |
+|---|---|
+| **Owner** | `profiles.account_type = owner`, acting on own pets/household |
+| **Member** | household member acting on a shared pet |
+| **OrgAdmin** / **Volunteer** | `organisation_memberships.role` |
+| **Operator** | `profiles.is_operator = true` |
+| **Visitor** | no session (public pages only) |
+| **System** | dispatch job, nightly jobs, webhooks (service role, server only) |
+
+### 4.3 Permission rules on the wire
+- Data the caller has **no relation to** (another user's pet, household, organisation) → `404 not_found` (existence is not revealed).
+- Data the caller can see but their **role cannot change** → `403 forbidden_role` (the client hides the control).
+- Free limit reached → `403 premium_required` with `details.limit` (§7.2) → *premium_locked* state.
+- Read-only household (owner without Premium, BR-28) → writes return `403 household_read_only` → *read_only* state.
+
+### 4.4 Role → operation matrix
+
+✅ allowed · 👁 read only · ❌ denied (`403 forbidden_role`) · — not applicable (no relation → `404`)
+
+| EP | Operation | Owner | Member | OrgAdmin | Volunteer | Operator | Visitor |
+|---|---|---|---|---|---|---|---|
+| EP-01 | List my pets | ✅ | ✅ shared | ✅ org | ✅ org | — | — |
+| EP-02 | Get pet record | ✅ | 👁 | ✅ | ✅ | — | — |
+| EP-03 | Create pet | ✅ | ❌ | ✅ | ✅ | — | — |
+| EP-04 | Update pet | ✅ | ❌ | ✅ | ✅ | — | — |
+| EP-05 | Delete pet permanently | ✅ | ❌ | ✅ | ❌ | — | — |
+| EP-06 / EP-07 | Memorial / restore | ✅ | ❌ | — | — | — | — |
+| EP-08 | Weight entries | ✅ | ✅ own entries | ✅ | ✅ | — | — |
+| EP-09 / EP-10 / EP-12 | Vaccinations / treatments / vet visits | ✅ | 👁 | ✅ | ✅ | — | — |
+| EP-11 | Log dose given | ✅ | ✅ | ✅ | ✅ | — | — |
+| EP-13 / EP-14 | Attachment upload / delete | ✅ | ❌ | ✅ | ✅ | — | — |
+| EP-15 | File view URL | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| EP-16 | PDF export data | ✅ Premium | ❌ | — | — | — | — |
+| EP-17 / EP-18 | Care log read / write | ✅ | ✅ own entries | — | — | — | — |
+| EP-19 | Meal schedule | ✅ | 👁 | — | — | — | — |
+| EP-20 | List moments | ✅ | ✅ | — | — | — | — |
+| EP-21 / EP-22 | Create / delete moment | ✅ | ✅ own | — | — | — | — |
+| EP-23 | Toggle public link | ✅ | ✅ own | — | — | — | — |
+| EP-24 | Public moment | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| EP-25 / EP-26 | Reminder occurrences / mark done | ✅ | ✅ opted-in | — | — | — | — |
+| EP-27 | Manual reminders | ✅ | ❌ | — | — | — | — |
+| EP-28 – EP-31 | Preferences, push, WhatsApp, usage | ✅ self | ✅ self | ✅ self | ✅ self | ✅ self | — |
+| EP-32 | Done via action link | token | token | — | — | — | token |
+| EP-33 | Dispatch | System only | | | | | |
+| EP-34 | Get household | ✅ | 👁 | — | — | — | — |
+| EP-35 – EP-37 | Invite, remove, shared pets | ✅ | leave only | — | — | — | — |
+| EP-38 | My reminder opt-in | — | ✅ | — | — | — | — |
+| EP-39 / EP-40 | Invitation view / decide | invitee | invitee | invitee | invitee | invitee | view only |
+| EP-41 – EP-44 | Register, auth, profile, plans | ✅ | ✅ | ✅ | ✅ | ✅ | register/sign-in, plans |
+| EP-45 – EP-48 | Checkout, subscription, cancel | ✅ | ✅ | ✅ breeder | ❌ | — | — |
+| EP-50 / EP-51 | Data export / account deletion | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| EP-53 | My organisation | — | — | ✅ | 👁 | — | — |
+| EP-54 / EP-55 | Org animals list / intake & status | — | — | ✅ | ✅ (no delete) | — | — |
+| EP-56 | Team invite / remove / role | — | — | ✅ | ❌ | — | — |
+| EP-57 | List requests/inquiries | — | — | ✅ | 👁 | — | — |
+| EP-58 / EP-59 | Decide / send transfer | — | — | ✅ | ❌ | — | — |
+| EP-60 | Transfer view / decide | recipient | recipient | — | — | — | view only |
+| EP-61 | Litters | — | — | ✅ breeder | ✅ breeder | — | — |
+| EP-62 | Public org page | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| EP-63 | Submit request/inquiry | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ `401` |
+| EP-64 – EP-67 | Partners, partner, click, cities | ✅ | ✅ | ✅ | ✅ | ✅ | cities only |
+| EP-68 – EP-71 | Admin | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| EP-72 | Organisation public profile | — | — | ✅ | 👁 | — | — |
+
+Jobs EP-49, EP-52 and webhook EP-46 run as System.
+
+---
+
+## 5. Operation Catalog (EP-##)
+
+### 5.1 Pets & health record (EPIC-01)
+
+**Part A conventions (apply to EP-01 … EP-24 unless an operation says otherwise)**
+- The §4.1 gates (`unauthenticated`, `email_not_verified`, `account_pending_deletion`, `organisation_pending_approval` on writes) run before every authenticated operation here and are not repeated per operation. `internal_error` (500) is possible on every operation and is not repeated.
+- **Read views.** Data API reads go through `security_invoker` views named `*_api` (`pet_summaries_api`, `weight_entries_api`, `feeding_entries_api`, `stool_entries_api`, `moments_api`, `meal_schedules_api`), so RLS on the base tables still decides visibility. The views add the computed fields listed in §6 (`access`, `created_by_name`, Money objects). Single-row Data API writes target the base table with `Prefer: return=representation` and `select=` through the matching `*_api` view, so a write returns the same schema as the read.
+- **Per-entry access.** Entries that household members may create (weight, dose, feeding, stool, moment) carry their own `access`: `can_edit = can_delete = (caller is the creator) OR (caller is the pet's owner) OR (caller is an organisation Admin/Volunteer of the pet's organisation)` (BR-23); `false` for everyone when the household is read-only (BR-28).
+- **Automatic reminders** (FR-09, FR-20) are created, updated and removed by database triggers on `pets`, `vaccinations`, `treatments`, `vet_visits`. They are created only for personally owned pets (`reminders.user_id = pets.owner_id`); organisation animals get no automatic reminders in v1. Occurrences follow the rolling 60-day window (TC §5.5).
+- **R2 key layout** (set by EP-13 / EP-21, never by the client): `pets/{pet_id}/photo/{uuid}/{safe_file_name}`, `pets/{pet_id}/visits/{vet_visit_id}/{uuid}/{safe_file_name}`, `pets/{pet_id}/moments/{moment_id}/{position}-{uuid}.{ext}`. `safe_file_name` is the original name, lowercased, with characters other than `[a-z0-9._-]` replaced by `-`, at most 100 chars. Raw `r2_key` values are never returned to the client.
+- **Field error codes** used in `validation_failed.fields`: see PROPOSED CODES at the end of this part.
+
+#### EP-01 — List my pets
+- **Address:** Data API: `view:pet_summaries_api` select; filters: `lifecycle=eq.active|memorial` (optional, default both), `id=eq.<uuid>` (optional, single-pet header); order `lifecycle asc, name asc`. Whole list (bounded).
+- **Callers:** S01 `/ljubimci` (cards + Free counter "1 / 1"), S06 `/uspomene` (memorial cards, "n / 2", name of active pet holding the Free slot), S24 `/partneri` (vet-suggestion banner: active pets with `vet_name = null`, BR-43), S11 `/podsetnici/novi` (pet picker); single-pet header (`id` filter) for S04 `/ljubimci/[id]/vakcine/nova`, S05 `/ljubimci/[id]/pregledi/novi` (+ `vet_name` prefill, attachment counter "n / 10"), S27 `/ljubimci/[id]/terapije/nova`, S07 `/ljubimci/[id]/dnevnik`, S08 `/ljubimci/[id]/trenuci` (moment counter "n / 5").
+- **FRs:** FR-01, FR-11, FR-12, FR-20, FR-36, FR-56
+- **Authorization:** Owner — own pets (`pets.owner_id = auth.uid()`); Member — pets shared with any household they belong to (`household_pets`), active only; OrgAdmin/Volunteer — their organisation's breeding stock (`pets.organisation_id` = caller's org AND `breeding_status = active`; bounded — used by the S22 mother picker; full animal lists use EP-54). Rows the caller has no relation to are simply absent.
+- **Request:** query filters above only.
+- **Response:** `200` `PetSummary[]`. Free counters are computed by the client from rows with `access.role = "owner"` together with `Entitlements` (EP-43).
+- **Errors:** none beyond the gates (empty result = `[]`).
+- **States:** S01 loading / default / empty (`[]` for `lifecycle=active`) / premium_locked (client: Free and own active count ≥ 1 when pressing "Dodaj ljubimca"); S06 default / empty (no memorial rows) / premium_locked on restore (own active count ≥ 1 on Free); S24 banner shown when any active row has `vet_name = null`; single-pet callers → error state on `[]` (pet not found).
+- **Side effects:** none.
+- **Budget:** `read-list`
+
+#### EP-02 — Get pet record
+- **Address:** Data API: `rpc:get_pet_record(p_pet_id uuid)` → one JSON document (stable, `security invoker`).
+- **Callers:** S03 `/ljubimci/[id]` (all tabs, header, actions, read-only banner); S02 `/ljubimci/[id]/izmena` (edit preload, uses `pet`); S03 for organisation animals opened from S20.
+- **FRs:** FR-02, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-13, FR-28, FR-44
+- **Authorization:** Owner ✅ (`access.can_edit = true`, `can_delete = true`); Member 👁 (`can_edit = false`, `can_delete = false`, `can_log = true` unless the household is read-only); OrgAdmin ✅ (`can_edit = true`, `can_delete = true`); Volunteer ✅ (`can_edit = true`, `can_delete = false`). Organisation's copy after an accepted transfer (`record_transfers.status = accepted` for this `pet_id`): `can_edit = can_delete = can_log = false`. No relation → `404`.
+- **Request:** `p_pet_id` — uuid — required.
+- **Response:** `200` `PetRecord`.
+- **Errors:** `not_found` (404) — unknown pet or no relation.
+- **States:** S03 loading / default; per-tab empty when the tab's array is `[]`; read_only when `access.can_edit = false` (banner text chosen by `read_only_reason`, owner name from `owner_name`); premium_locked on "Izvezi PDF" when `Entitlements.premium = false`; error on `404` / 5xx. S02 edit: error on `404`.
+- **Side effects:** none.
+- **Budget:** `read-small`
+
+#### EP-03 — Create pet
+- **Address:** Data API: `pets` insert (`owner_id = auth.uid()` for owners; `organisation_id` = caller's org for organisation roles) with `Prefer: return=representation`, returning `Pet`.
+- **Callers:** S02 `/ljubimci/novi`.
+- **FRs:** FR-01, FR-03, FR-09, FR-44
+- **Authorization:** Owner ✅ (own `owner_id` only); OrgAdmin/Volunteer ✅ (own `organisation_id` only); Member ❌ — a member creates pets only as an owner of their own account, so the check is on the row: `owner_id` ≠ caller → `403 forbidden_role`. Breeder organisation without an active breeder plan → `403 breeder_plan_required` (BR-11).
+- **Request:**
+  - `name` — string — required — 1–60 chars
+  - `species` — enum `pets.species` — required
+  - `species_other` — string — required when `species = other`, else must be null — 1–60 chars
+  - `sex` — enum `male|female|unknown` — required
+  - `breed`, `colour_markings`, `microchip_number`, `passport_number` — string — optional — ≤ 100 chars each
+  - `birth_date` — date — optional — not in the future; mutually exclusive with `birth_year`
+  - `birth_year` — integer — optional — 4 digits, 1990 … current year
+  - `neutered` — enum `yes|no|unknown` — optional (default `unknown`)
+  - `vet_name` — string — optional — ≤ 100; `vet_phone` — string — optional — ≤ 30
+  - `weight_unit` — enum `kg|g` — optional (default `kg`) (FR-03)
+  - `note` — string — optional — ≤ 2000
+  - Organisation-only (ignored → `validation_failed` when sent by an owner): `breeding_status` (`active|retired`), `public_description` (≤ 1000), `approx_age_text` (≤ 40), `price_minor` (integer ≥ 0, breeder offspring only). Shelter intake uses EP-55, offspring are created by litters (EP-61).
+  - Photo is not part of the insert: after the pet exists, the client uploads it via EP-13 (`purpose = pet_photo`).
+- **Response:** `201` `Pet`.
+- **Errors:** `premium_required` (403, `details.limit = "pets"`) — Free owner already has 1 active pet (BR-01, E-26; trigger counts `pets` where `owner_id` and `lifecycle = active`); `validation_failed` (422) — field rules above; `forbidden_role` (403); `breeder_plan_required` (403).
+- **States:** S02 default → toast + redirect to S03; inline field errors on `422`; S02 X (save error) on 5xx; premium_locked (PremiumLock) on `premium_required`.
+- **Side effects:** trigger creates a yearly `birthday` reminder when `birth_date` is set and the pet is personally owned (FR-09).
+- **Budget:** `write`
+
+#### EP-04 — Update pet
+- **Address:** Data API: `pets` update `id=eq.<uuid>` (partial), returning `Pet`.
+- **Callers:** S02 `/ljubimci/[id]/izmena`.
+- **FRs:** FR-02, FR-03, FR-09
+- **Authorization:** Owner ✅; OrgAdmin/Volunteer ✅ (own organisation's animals); Member ❌ `403 forbidden_role`; organisation copy after transfer ❌ `403 forbidden_role`. No relation → `404`.
+- **Request:** any subset of the EP-03 fields, same constraints. `owner_id`, `organisation_id`, `lifecycle`, `photo_r2_key`, `shelter_status`, `offspring_status`, `litter_id` are not writable here (lifecycle: EP-06/EP-07; photo: EP-13; statuses: EP-55/EP-61).
+- **Response:** `200` `Pet`.
+- **Errors:** `not_found` (404); `forbidden_role` (403); `validation_failed` (422); `breeder_plan_required` (403).
+- **States:** S02 I (edit) → toast + redirect to S03; inline field errors; X on 5xx.
+- **Side effects:** `birth_date` change → birthday reminder recreated / removed; `weight_unit` change → trigger converts every `weight_entries.value` of the pet (×1000 kg→g, ÷1000 g→kg) in the same transaction, since values are stored in the pet's unit.
+- **Budget:** `write`
+
+#### EP-05 — Delete pet permanently
+- **Address:** `action:delete_pet({ pet_id, confirm }) → { deleted_pet_id }`
+- **Callers:** S03 `/ljubimci/[id]` (DropdownMenu → AlertDialog "Da, obriši").
+- **FRs:** FR-13
+- **Authorization:** Owner ✅; OrgAdmin ✅; Member ❌ / Volunteer ❌ `403 forbidden_role` (BR-25, BR-34). No relation → `404`.
+- **Request:** `pet_id` — uuid — required; `confirm` — boolean — required — must be `true`.
+- **Response:** `ok` `{ deleted_pet_id: uuid }` (`pets.id`).
+- **Errors:** `not_found` (404); `forbidden_role` (403); `validation_failed` (422, `fields.confirm = "required"`).
+- **States:** S03 → redirect to S01 with toast; error toast on 5xx.
+- **Side effects:** in one transaction: collects every R2 key of the pet (`pets.photo_r2_key`, `attachments.r2_key`, `moment_photos.r2_key`) and the slugs of its `moment_public_links`, then deletes the `pets` row (cascade removes all record, care-log, moment, memorial, reminder, occurrence rows). After commit: queues the R2 keys for the nightly R2 cleanup job (TC §5.9) and purges the public-moment cache for each collected slug (§ EP-23).
+- **Budget:** `action`
+
+#### EP-06 — Move to memorial
+- **Address:** `action:move_pet_to_memorial({ pet_id, date, reason, note }) → MemorialRecord` (wraps `rpc:move_pet_to_memorial` for atomicity).
+- **Callers:** S03 `/ljubimci/[id]` (DropdownMenu "Premesti u Uspomene" dialog).
+- **FRs:** FR-11
+- **Authorization:** Owner ✅. Member ❌ `403 forbidden_role`. Organisation animals ❌ `403 forbidden_role` (organisations use statuses, EP-55). No relation → `404`.
+- **Request:**
+  - `pet_id` — uuid — required — pet must have `lifecycle = active`
+  - `date` — date — required — not in the future
+  - `reason` — enum `passed_away|rehomed|lost` — optional
+  - `note` — string — optional — ≤ 1000
+- **Response:** `ok` `MemorialRecord`.
+- **Errors:** `premium_required` (403, `details.limit = "memorials"`) — Free owner already has 2 memorials (BR-01, E-02); `validation_failed` (422) — already a memorial (`fields.pet_id = "invalid_state"`) or field rules; `forbidden_role` (403); `not_found` (404).
+- **States:** S03 → redirect to S06 with toast; premium_locked (PremiumLock in the dialog) on `premium_required`; inline errors on `422`.
+- **Side effects:** inserts `memorial_records`; sets `pets.lifecycle = memorial`; sets `reminders.active = false` for every reminder with this `pet_id` and deletes their `pending` occurrences (BR-17); the pet stops counting toward the active-pet limit (BR-03).
+- **Budget:** `action`
+
+#### EP-07 — Restore from memorial
+- **Address:** `action:restore_pet_from_memorial({ pet_id, reenable_reminders }) → Pet` (wraps `rpc:restore_pet_from_memorial`).
+- **Callers:** S06 `/uspomene` ("Vrati među aktivne").
+- **FRs:** FR-12
+- **Authorization:** Owner ✅. Member / organisation roles ❌ `403 forbidden_role`. No relation → `404`.
+- **Request:** `pet_id` — uuid — required — pet must have `lifecycle = memorial`; `reenable_reminders` — boolean — optional (default `true`).
+- **Response:** `ok` `Pet` (with `lifecycle = "active"`).
+- **Errors:** `premium_required` (403, `details.limit = "pets"`) — Free owner's active slot is taken (E-03); `validation_failed` (422, `fields.pet_id = "invalid_state"`) — not a memorial; `not_found` (404).
+- **States:** S06 default (card leaves the list, toast); premium_locked on `premium_required`.
+- **Side effects:** deletes the pet's `memorial_records` row; sets `pets.lifecycle = active`; when `reenable_reminders`, sets `reminders.active = true` for the pet's reminders whose next due time is still in the future (vaccination `next_due_on`, treatment `ends_on`, vet `follow_up_on`, birthday, meal) and generates their occurrences.
+- **Budget:** `action`
+
+#### EP-08 — Weight entries create / update / delete
+- **Address:** Data API: `weight_entries` insert / update `id=eq.<uuid>` / delete `id=eq.<uuid>`; returning via `weight_entries_api`.
+- **Callers:** S03 `/ljubimci/[id]` (Težina tab: add dialog, row edit/delete).
+- **FRs:** FR-03, FR-04, FR-28
+- **Authorization:** Owner ✅ (all entries); Member ✅ insert, update/delete own entries only (BR-22, BR-23) — someone else's entry → `403 forbidden_role`; OrgAdmin/Volunteer ✅. Household read-only → `403 household_read_only`. Organisation copy after transfer → `403 forbidden_role`.
+- **Request (insert):** `pet_id` — uuid — required; `measured_on` — date — required — not in the future; `value` — number — required — > 0, ≤ 3 decimals, in the pet's `weight_unit`; `note` — string — optional — ≤ 500. Update: any of `measured_on`, `value`, `note`. Delete: `id` only.
+- **Response:** `201` / `200` `WeightEntry`; delete `204`.
+- **Errors:** `validation_failed` (422); `forbidden_role` (403); `household_read_only` (403); `not_found` (404).
+- **States:** S03 Težina default / empty; read_only hides edit/delete on rows where `access.can_edit = false`; inline errors on `422`.
+- **Side effects:** none.
+- **Budget:** `write`
+
+#### EP-09 — Vaccinations create / update / delete
+- **Address:** Data API: `vaccinations` insert / update `id=eq.<uuid>` / delete `id=eq.<uuid>`; returning `Vaccination`.
+- **Callers:** S04 `/ljubimci/[id]/vakcine/nova` (create); S03 `/ljubimci/[id]` (Vakcine tab: edit, delete).
+- **FRs:** FR-05, FR-20
+- **Authorization:** Owner ✅; OrgAdmin/Volunteer ✅; Member 👁 → `403 forbidden_role`; organisation copy after transfer → `403 forbidden_role`.
+- **Request (insert):** `pet_id` — uuid — required; `name` — string — required — 1–100; `given_on` — date — required — not in the future; `next_due_on` — date — optional — > `given_on`; `clinic` — string — optional — ≤ 100 (S04 prefills from `PetSummary.vet_name`); `batch_number` — string — optional — ≤ 60; `note` — string — optional — ≤ 1000. Update: any subset, same rules.
+- **Response:** `201` / `200` `Vaccination`; delete `204`.
+- **Errors:** `validation_failed` (422, e.g. `fields.next_due_on = "before_start"`); `forbidden_role` (403); `not_found` (404).
+- **States:** S04 D → toast + back to S03; X / inline errors on `422`; S03 Vakcine default / empty.
+- **Side effects:** trigger syncs the `vaccination` reminder (`reminders.source_id = vaccinations.id`, `starts_at` = `next_due_on` at the owner's `reminder_preferences.delivery_time` for `vaccination`): created when `next_due_on` is set, moved when it changes, removed with its occurrences when cleared or the row is deleted (E-01).
+- **Budget:** `write`
+
+#### EP-10 — Treatments create / update / delete
+- **Address:** Data API: `treatments` insert / update `id=eq.<uuid>` / delete `id=eq.<uuid>`; returning `Treatment`.
+- **Callers:** S27 `/ljubimci/[id]/terapije/nova` (create); S03 `/ljubimci/[id]` (Terapije tab: edit, delete).
+- **FRs:** FR-06, FR-20
+- **Authorization:** as EP-09.
+- **Request (insert):**
+  - `pet_id` — uuid — required
+  - `type` — enum `medication|deworming|flea_tick|other` — required
+  - `name` — string — required — 1–100
+  - `dose` — string — optional — ≤ 60
+  - `interval_value` — integer — optional — > 0; required together with `interval_unit`
+  - `interval_unit` — enum `hours|days` — optional; required together with `interval_value`
+  - `starts_on` — date — required
+  - `ends_on` — date — optional — ≥ `starts_on` (S27 "Trajanje N dana" is converted by the client to `starts_on + N − 1`)
+  - `note` — string — optional — ≤ 1000
+- **Response:** `201` / `200` `Treatment`; delete `204`.
+- **Errors:** `validation_failed` (422, e.g. `fields.interval_value = "out_of_range"`, `fields.ends_on = "before_start"`); `forbidden_role` (403); `not_found` (404).
+- **States:** S27 D → toast with schedule summary + back to S03; X / inline errors on `422`; S03 Terapije default / empty.
+- **Side effects:** trigger creates one `treatment_dose` reminder (`source_id = treatments.id`): `starts_at` = `starts_on` at 08:00 Europe/Belgrade (if that moment has passed, the save time rounded up to the next full hour); `recurrence = hourly_interval` (hours) or `daily` (days) with `interval_value`; `ends_at` = end of `ends_on` (null = until the treatment is ended); no interval → a single dose reminder at `starts_at`. Doses are delivered at the exact time (BR-13). Update regenerates future occurrences; delete removes the reminder and its occurrences (dose logs cascade).
+- **Budget:** `write`
+
+#### EP-11 — Log dose given
+- **Address:** Data API: `rpc:log_dose(p_treatment_id uuid, p_given_at timestamptz, p_occurrence_id uuid)` → `DoseLog`.
+- **Callers:** S03 `/ljubimci/[id]` (Terapije tab "Doza data"); S10 `/podsetnici` ("Urađeno" on a `treatment_dose` occurrence).
+- **FRs:** FR-06, FR-24, FR-28
+- **Authorization:** Owner ✅; Member ✅ (BR-22); OrgAdmin/Volunteer ✅. Household read-only → `403 household_read_only`. Organisation copy after transfer → `403 forbidden_role`.
+- **Request:** `p_treatment_id` — uuid — required; `p_given_at` — timestamp — optional (default `now()`) — not more than 5 minutes in the future; `p_occurrence_id` — uuid — optional — must belong to the treatment's reminder.
+- **Response:** `200` `DoseLog`. Idempotent on `p_occurrence_id`: if a dose log already exists for that occurrence, the existing `DoseLog` is returned and nothing changes.
+- **Errors:** `not_found` (404); `household_read_only` (403); `forbidden_role` (403); `validation_failed` (422, `fields.p_occurrence_id = "invalid"`).
+- **States:** S03 default (dose appears in "recent doses", next dose advances); S10 occurrence moves to Urađeno.
+- **Side effects:** inserts `dose_logs`; when `p_occurrence_id` is given, sets that occurrence (and the other lead-time rows with the same `reminder_id` + `due_at`) to `status = done`, `done_at = now()`, `done_by = auth.uid()`.
+- **Budget:** `write`
+
+#### EP-12 — Vet visits create / update / delete
+- **Address:** Data API: `vet_visits` insert / update `id=eq.<uuid>` / delete `id=eq.<uuid>`; returning `VetVisit`.
+- **Callers:** S05 `/ljubimci/[id]/pregledi/novi` (create, then attachments via EP-13); S03 `/ljubimci/[id]` (Pregledi tab: edit, delete).
+- **FRs:** FR-07, FR-20
+- **Authorization:** as EP-09.
+- **Request (insert):** `pet_id` — uuid — required; `visited_on` — date — required — not in the future; `reason` — string — required — 1–200; `clinic` — string — optional — ≤ 100 (prefill from `vet_name`); `findings`, `recommendations` — string — optional — ≤ 4000 each; `cost_minor` — integer — optional — ≥ 0, RSD para (the client parses "2.990" → `299000`); `follow_up_on` — date — optional — > `visited_on`. Update: any subset.
+- **Response:** `201` / `200` `VetVisit`; delete `204`.
+- **Errors:** `validation_failed` (422); `forbidden_role` (403); `not_found` (404).
+- **States:** S05 D → (attachments) → toast + back to S03; X / inline errors; S03 Pregledi default / empty.
+- **Side effects:** trigger syncs the `vet_follow_up` reminder from `follow_up_on` exactly as EP-09 does for `next_due_on`. Delete cascades `attachments` rows; the deleted rows' R2 keys are queued for the nightly cleanup by an `after delete` trigger.
+- **Budget:** `write`
+
+#### EP-13 — Request upload ticket + confirm (attachment, pet photo)
+- **Address:** `action:request_upload({ purpose, target_id, file_name, mime_type, size_bytes }) → UploadTicket`, then client `PUT` to `UploadTicket.put_url` (direct to R2), then `action:confirm_upload({ upload_token }) → Attachment | Pet`.
+- **Callers:** S05 `/ljubimci/[id]/pregledi/novi` (one ticket per file after the visit is saved); S02 `/ljubimci/novi`, `/ljubimci/[id]/izmena` (pet photo).
+- **FRs:** FR-01, FR-08
+- **Authorization:** Owner ✅; OrgAdmin/Volunteer ✅; Member ❌ `403 forbidden_role`; organisation copy after transfer ❌ `403 forbidden_role`. No relation → `404`.
+- **Request (`request_upload`):**
+  - `purpose` — enum `attachment|pet_photo|organisation_logo` — required (`organisation_logo`: OrgAdmin only, images only, confirm sets `organisations.logo_r2_key` — EP-72)
+  - `target_id` — uuid — required — `vet_visits.id` for `attachment`, `pets.id` for `pet_photo`
+  - `file_name` — string — required — 1–200
+  - `mime_type` — string — required — `image/*` or `application/pdf` for `attachment`; `image/jpeg|image/png|image/webp|image/heic` for `pet_photo` (BR-05)
+  - `size_bytes` — integer — required — 1 … 10 485 760 (BR-05)
+- **Request (`confirm_upload`):** `upload_token` — string — required — from the ticket, unexpired.
+- **Response:** `request_upload` → `ok` `UploadTicket` (PUT URL expires in 10 min). `confirm_upload` → `ok` `Attachment` (purpose `attachment`) or `Pet` (purpose `pet_photo`).
+- **Errors:** `file_too_large` (422); `file_type_not_allowed` (422); `premium_required` (403, `details.limit = "attachments"`) — Free owner already has 10 attachments on the pet (BR-01, E-04), checked at ticket time and again by the insert trigger at confirm; `validation_failed` (422) — `fields.upload_token = "invalid"` (bad/expired token) or `"not_uploaded"` (object missing in R2 at confirm); `forbidden_role` (403); `not_found` (404).
+- **States:** S05 attachment zone: chip per file (uploading → done); inline file error on `file_too_large` / `file_type_not_allowed`; premium_locked on `premium_required`; S02 photo preview.
+- **Side effects:** `request_upload` signs a stateless `upload_token` (HMAC over purpose, target, r2_key, mime, size, expiry) — no row is written. `confirm_upload` does an R2 `HEAD` to verify the object exists with the declared size and content type (mismatch → `file_too_large` / `file_type_not_allowed` and the object is deleted), then inserts `attachments` (`pet_id` from the visit) or sets `pets.photo_r2_key` (old key queued for deletion). Objects never confirmed are removed by the nightly R2 cleanup (no DB row older than 24 h).
+- **Budget:** `action`
+
+#### EP-14 — Delete attachment
+- **Address:** `action:delete_attachment({ attachment_id }) → { deleted_attachment_id }`
+- **Callers:** S03 `/ljubimci/[id]` (Pregledi tab attachment chip menu); S05 (remove an already-confirmed file).
+- **FRs:** FR-08
+- **Authorization:** Owner ✅; OrgAdmin/Volunteer ✅; Member ❌ `403 forbidden_role`. No relation → `404`.
+- **Request:** `attachment_id` — uuid — required.
+- **Response:** `ok` `{ deleted_attachment_id: uuid }` (`attachments.id`).
+- **Errors:** `not_found` (404); `forbidden_role` (403).
+- **States:** S03 / S05 chip removed, counter "n / 10" decreases; error toast on 5xx.
+- **Side effects:** deletes the `attachments` row, then deletes the R2 object; if R2 deletion fails the key is queued for the nightly cleanup.
+- **Budget:** `action`
+
+#### EP-15 — Get file view URLs
+- **Address:** `action:get_file_urls({ items }) → FileUrl[]`
+- **Callers:** S03 `/ljubimci/[id]` (open attachment, pet photo), S05 (attachment preview), S08 `/ljubimci/[id]/trenuci` (moment photo grid), S01 / S06 (pet photos on cards).
+- **FRs:** FR-08, FR-17
+- **Authorization:** per item, by relation to the file's pet: Owner, Member (shared pet), OrgAdmin/Volunteer (organisation pet) ✅. `organisation_logo` / `partner_logo`: any signed-in user for approved organisations / partners with `paid_until ≥ today`; Operator for any. Items the caller may not see are returned with `url = null` (the batch does not fail).
+- **Request:** `items` — array — required — 1–50 entries of `{ kind: "attachment"|"pet_photo"|"moment_photo"|"organisation_logo"|"partner_logo", id: uuid }` (`attachments.id`, `pets.id`, `moment_photos.id`, `organisations.id`, `partners.id`).
+- **Response:** `ok` `FileUrl[]` in request order (presigned R2 GET, expires in 10 min).
+- **Errors:** `validation_failed` (422, `fields.items = "out_of_range"`).
+- **States:** images render when URLs arrive (skeleton until then); `url = null` → placeholder avatar / "Fajl nije dostupan".
+- **Side effects:** none.
+- **Budget:** `action`
+
+#### EP-16 — Get PDF export bundle
+- **Address:** `action:get_pdf_export_bundle({ pet_id }) → PdfExportBundle`
+- **Callers:** S03 `/ljubimci/[id]` ("Izvezi PDF"; the PDF is rendered in the browser, ADR-12).
+- **FRs:** FR-10
+- **Authorization:** Owner with Premium ✅. Owner without Premium → `403 premium_required` (`details.limit = "pdf_export"`, E-25). Member ❌ `403 forbidden_role`. Organisation roles ❌ `403 forbidden_role` (not offered to organisations in v1). No relation → `404`.
+- **Request:** `pet_id` — uuid — required.
+- **Response:** `ok` `PdfExportBundle`.
+- **Errors:** `premium_required` (403); `forbidden_role` (403); `not_found` (404).
+- **States:** S03 premium_locked (PremiumLock) on `premium_required`; button spinner while generating; error toast on 5xx.
+- **Side effects:** none (image attachment URLs in the bundle expire in 10 min).
+- **Budget:** `action`
+
+### 5.2 Care log & moments (EPIC-02)
+
+#### EP-17 — List care log
+- **Address:** Data API: `view:feeding_entries_api` select `pet_id=eq.<uuid>` order `fed_at desc`, or `view:stool_entries_api` select `pet_id=eq.<uuid>` order `observed_at desc`; `.range(offset, offset+limit-1)`, `count: 'exact'`.
+- **Callers:** S07 `/ljubimci/[id]/dnevnik` (tab Ishrana → feeding, tab Stolica → stool; "Učitaj još").
+- **FRs:** FR-14, FR-16
+- **Authorization:** Owner ✅; Member ✅ (shared pet). Organisation roles: — (no relation to care log → rows absent). No relation → `[]`; the screen detects a missing pet via the EP-01 header.
+- **Request:** `pet_id` — uuid — required; `kind` — `feeding|stool` — required (selects the view); `limit` — integer — optional — 1–50, default 20; `offset` — integer — optional — ≥ 0, default 0.
+- **Response:** `200` `{ items: FeedingEntry[] | StoolEntry[], total: integer }`. Day grouping and "Danas/Juče" labels are computed by the client in Europe/Belgrade.
+- **Errors:** `validation_failed` (422, `fields.limit = "out_of_range"`).
+- **States:** S07 loading / default / empty (`total = 0`) per tab.
+- **Side effects:** none.
+- **Budget:** `read-list`
+
+#### EP-18 — Feeding / stool entries create / update / delete
+- **Address:** Data API: `feeding_entries` or `stool_entries` insert / update `id=eq.<uuid>` / delete `id=eq.<uuid>`; returning via the matching `*_api` view.
+- **Callers:** S07 `/ljubimci/[id]/dnevnik` (quick-add Dialogs, row edit/delete).
+- **FRs:** FR-14, FR-16, FR-28
+- **Authorization:** Owner ✅ (all entries); Member ✅ insert, update/delete own only (BR-22, BR-23) — else `403 forbidden_role`. Household read-only → `403 household_read_only`. No limit on any tier (BR-04).
+- **Request (feeding insert):** `pet_id` — uuid — required; `fed_at` — timestamp — required — not more than 5 min in the future (client builds it from date + `HH:MM` Europe/Belgrade); `type` — enum `dry|wet|treat|home_made|other` — required; `brand` — string — optional — ≤ 100; `amount_g` — number — optional — > 0, ≤ 1 decimal; `note` — string — optional — ≤ 500.
+- **Request (stool insert):** `pet_id` — uuid — required; `observed_at` — timestamp — required — same rule; `consistency` — enum `normal|soft|diarrhoea|hard` — required; `blood_or_mucus` — boolean — optional (default `false`); `note` — string — optional — ≤ 500.
+- Update: any subset of the same fields. Delete: `id`.
+- **Response:** `201` / `200` `FeedingEntry` or `StoolEntry`; delete `204`.
+- **Errors:** `validation_failed` (422); `forbidden_role` (403); `household_read_only` (403); `not_found` (404).
+- **States:** S07 toast + entry appears; inline errors in the Dialog on `422`; edit/delete hidden on rows with `access.can_edit = false`.
+- **Side effects:** none.
+- **Budget:** `write`
+
+#### EP-19 — Get / set meal schedule
+- **Address:** Get: Data API `view:meal_schedules_api` select `pet_id=eq.<uuid>` (0 or 1 row). Set: Data API `rpc:set_meal_schedule(p_pet_id uuid, p_meal_times time[], p_meal_weekdays smallint[])` → `MealSchedule`.
+- **Callers:** S07 `/ljubimci/[id]/dnevnik` ("Podsetnici za obroke" card).
+- **FRs:** FR-15, FR-20
+- **Authorization:** Get: Owner ✅, Member 👁. Set: Owner ✅; Member ❌ `403 forbidden_role`; pet in memorial → `422 validation_failed` (`fields.p_pet_id = "invalid_state"`, BR-17).
+- **Request (set):** `p_pet_id` — uuid — required; `p_meal_times` — `HH:MM`[] — required — 0–6 distinct times (empty array removes the schedule); `p_meal_weekdays` — integer[] — required when times are non-empty — 1–7 distinct values in 1…7 (1 = Monday; all 7 = "Svaki dan").
+- **Response:** Get `200` `MealSchedule[]` (empty = no schedule). Set `200` `MealSchedule` (with `reminder_id = null` and empty arrays after removal).
+- **Errors:** `validation_failed` (422); `forbidden_role` (403); `not_found` (404).
+- **States:** S07 card shows times and weekday chips, or the "add" prompt when `[]`; edit controls hidden for members.
+- **Side effects:** the rpc keeps at most one `meal` reminder per pet: upserts `reminders` (`type = meal`, `user_id = pets.owner_id`, `pet_id`, `meal_times`, `meal_weekdays`, `active = true`) and regenerates its future occurrences at the exact times (BR-13); empty times delete the reminder and its occurrences.
+- **Budget:** `write`
+
+#### EP-20 — List moments
+- **Address:** Data API: `view:moments_api` select `pet_id=eq.<uuid>` order `moment_date desc, created_at desc`; `.range(...)`, `count: 'exact'`.
+- **Callers:** S08 `/ljubimci/[id]/trenuci` (grid, Free counter "n / 5", public-link switch state). Thumbnails via EP-15 (`moment_photo`).
+- **FRs:** FR-17, FR-19
+- **Authorization:** Owner ✅; Member ✅ (shared pet). Organisation roles: — (rows absent).
+- **Request:** `pet_id` — uuid — required; `limit` — 1–50, default 20; `offset` — ≥ 0, default 0.
+- **Response:** `200` `{ items: Moment[], total: integer }`. `total` counts all moments of the pet and drives the Free counter together with `Entitlements`.
+- **Errors:** `validation_failed` (422).
+- **States:** S08 loading / default / empty (`total = 0`); premium_locked on "Novi trenutak" when Free and `total ≥ 5`.
+- **Side effects:** none.
+- **Budget:** `read-list`
+
+#### EP-21 — Create moment with photos
+- **Address:** step 1 `action:prepare_moment({ pet_id, moment_date, text, photos }) → { draft_token, tickets: UploadTicket[] }`; step 2 client `PUT`s each photo to its `put_url`; step 3 `action:confirm_moment({ draft_token }) → Moment`.
+- **Callers:** S08 `/ljubimci/[id]/trenuci` (new-moment Dialog).
+- **FRs:** FR-17
+- **Authorization:** Owner ✅; Member ✅ (shared pet, BR-22). Household read-only → `403 household_read_only`. Organisation roles: — (`404`).
+- **Request (`prepare_moment`):**
+  - `pet_id` — uuid — required — active pet
+  - `moment_date` — date — required — not in the future
+  - `text` — string — optional — ≤ 280 chars
+  - `photos` — array — optional — 0–5 entries (BR-06) of `{ file_name: string 1–200, mime_type: image/jpeg|image/png|image/webp|image/heic, size_bytes: 1…10 485 760 }`; at least one of `text`, `photos` required
+- **Request (`confirm_moment`):** `draft_token` — string — required — unexpired (10 min).
+- **Response:** `prepare_moment` → `ok` `{ draft_token: string (computed: HMAC over pet, date, text hash, keys, expiry), tickets: UploadTicket[] (position 1…n) }`. `confirm_moment` → `ok` `Moment`.
+- **Errors:** `too_many_photos` (422) — more than 5 (E-08); `file_too_large` (422); `file_type_not_allowed` (422); `premium_required` (403, `details.limit = "moments"`) — 5 moments already on the pet and the creator has no Premium (BR-01, BR-24; checked in step 1 and by the insert trigger in step 3); `validation_failed` (422) — field rules, `fields.draft_token = "invalid"` or `"not_uploaded"`; `household_read_only` (403); `not_found` (404).
+- **States:** S08 Dialog: per-photo progress; inline errors; premium_locked on `premium_required`; toast + moment appears on success.
+- **Side effects:** step 1 writes nothing. Step 3 verifies every object with R2 `HEAD`, then inserts `moments` and `moment_photos` (`r2_key`, `position`) in one transaction. Unconfirmed objects are removed by the nightly R2 cleanup.
+- **Budget:** `action`
+
+#### EP-22 — Delete moment
+- **Address:** `action:delete_moment({ moment_id }) → { deleted_moment_id }`
+- **Callers:** S08 `/ljubimci/[id]/trenuci` (moment menu → AlertDialog).
+- **FRs:** FR-17, FR-19
+- **Authorization:** Owner ✅ (any moment of own pet); Member ✅ own moments only — else `403 forbidden_role`. Household read-only → `403 household_read_only`.
+- **Request:** `moment_id` — uuid — required.
+- **Response:** `ok` `{ deleted_moment_id: uuid }` (`moments.id`).
+- **Errors:** `not_found` (404); `forbidden_role` (403); `household_read_only` (403).
+- **States:** S08 card removed, counter decreases; empty when the last one goes.
+- **Side effects:** deletes the `moments` row (cascade: `moment_photos`, `moment_public_links` — the link is disabled automatically, BR-45); queues the photo R2 keys for cleanup; purges the public cache for the moment's slug.
+- **Budget:** `action`
+
+#### EP-23 — Enable / disable public link
+- **Address:** `action:set_moment_public_link({ moment_id, active }) → { slug, active, url }`
+- **Callers:** S08 `/ljubimci/[id]/trenuci` ("Javni link" Switch + copy).
+- **FRs:** FR-19
+- **Authorization:** Owner ✅; Member ✅ own moments only — else `403 forbidden_role`. Household read-only → `403 household_read_only`. Available on every tier.
+- **Request:** `moment_id` — uuid — required; `active` — boolean — required.
+- **Response:** `ok` `{ slug: string (moment_public_links.slug), active: boolean (moment_public_links.active), url: string (computed: "https://mojljubimac.rs/t/" + slug) }`. Naturally idempotent.
+- **Errors:** `not_found` (404); `forbidden_role` (403); `household_read_only` (403).
+- **States:** S08 Switch reflects `active`; copy button enabled when `active = true`.
+- **Side effects:** first enable inserts `moment_public_links` with a random unguessable slug (128-bit, base62, 22 chars); later toggles update `active` and keep the slug. Disabling purges the CDN cache for `/t/{slug}` and `/api/public/moments/{slug}` immediately, so EP-24 returns `404` on the next request.
+- **Budget:** `action`
+
+#### EP-24 — Get public moment
+- **Address:** `GET /api/public/moments/:slug`
+- **Callers:** S09 `/t/[slug]` (server-rendered page; Visitor and any signed-in user).
+- **FRs:** FR-19
+- **Authorization:** public (no session). Service role on the server reads only the fields of `PublicMoment` — never health data, owner, or other moments (BR-37, BR-45).
+- **Request:** `slug` — path — required — 22 chars `[0-9A-Za-z]`.
+- **Response:** `200` `PublicMoment`; headers `Cache-Control: public, s-maxage=300` (5 min), `X-Robots-Tag: noindex`.
+- **Errors:** `not_found` (404) — unknown slug, `active = false`, or moment deleted (indistinguishable on purpose, E-07).
+- **States:** S09 default on `200`; link_disabled on `404`.
+- **Side effects:** none. Photo URLs are presigned for 10 min, so a response served from the 5-min cache still has ≥ 5 min of valid URLs.
+- **Budget:** `public`
+
+---
+
+### 5.3 Reminders & delivery (EPIC-03)
+
+> Applies to every protected operation in §5.3–§5.5: the §4.1 gates (`401 unauthenticated`, `403 email_not_verified`, `403 account_pending_deletion`, `403 organisation_pending_approval` on writes) and `500 internal_error` can always occur. They are listed under **Errors** only where an operation behaves differently.
+>
+> **Occurrence instances.** `reminder_occurrences` holds one row per lead time (TC §5.5). Everything user-facing works on the **instance** = all rows sharing (`reminder_id`, `due_at`). The **final notice** of an instance is its row with the latest `notify_at` (normally the lead-0 row). Reads return one row per instance, identified by the final notice's `id`; marking done applies to every row of the instance.
+
+#### EP-25 — List reminder occurrences
+- **Address:** Data API: `rpc:list_reminder_occurrences(filter, pet_id, limit, offset)` (security invoker; RLS on `reminders` / `reminder_occurrences` / `household_pets` / `household_memberships`)
+- **Callers:** S01 `/ljubimci` ("Danas" strip, `filter=today`, first 3 shown); S03 `/ljubimci/[id]` (Pregled tab "next 3", `filter=next`, `pet_id`, `limit=3`); S10 `/podsetnici` (tabs Danas / Uskoro / Propušteno / Urađeno → `today` / `upcoming` / `missed` / `done`, tab counts)
+- **FRs:** FR-20, FR-24, FR-28, FR-29
+- **Authorization:** Owner — instances of reminders where `reminders.user_id = auth.uid()`. Member — instances of reminders on pets shared with a household where the caller's `household_memberships.reminders_enabled = true`; otherwise none are visible. Organisation roles and Operator get `[]` (no personal reminders). Instances of inactive reminders (`reminders.active = false`, BR-17) are never returned.
+- **Request:**
+  - `filter` — enum `today` | `upcoming` | `missed` | `done` | `next` — required.
+    - `today`: due date (Europe/Belgrade) = today, instance not done and not missed — whole list, `limit`/`offset` ignored, sorted `due_at` asc.
+    - `upcoming`: due from tomorrow 00:00 Belgrade up to the 60-day occurrence window, not done — paged, `due_at` asc.
+    - `missed`: final notice `status = missed` — paged, `due_at` desc.
+    - `done`: instance done — paged, `done_at` desc.
+    - `next`: `due_at` ≥ today 00:00 Belgrade, not done, not missed — paged, `due_at` asc (S03).
+  - `pet_id` — uuid — optional — must be a pet visible to the caller.
+  - `limit` — integer — optional — default 20, max 50 (ignored for `today`).
+  - `offset` — integer — optional — default 0.
+- **Response:** `200` `{ items: ReminderOccurrence[], total: integer, counts: { today: integer, upcoming: integer, missed: integer, done: integer } }` — `total` counts the requested filter; `counts` always covers all four S10 tabs (with the same `pet_id` scope). Empty → `items: []`, `total: 0`.
+- **Errors:** `not_found` (404) — `pet_id` not visible to the caller; `validation_failed` (422) — unknown `filter`, `limit` > 50.
+- **States:** S01 strip / S10 tab: *loading* → *default*; `items: []` → *empty* (per-tab copy on S10, strip hidden/empty copy on S01); S03 Pregled tab *empty* when `[]`; `5xx` → *error* (S10).
+- **Side effects:** none.
+- **Budget:** `read-list`
+
+#### EP-26 — Mark occurrence done
+- **Address:** Data API: `rpc:mark_occurrence_done(occurrence_id)`
+- **Callers:** S01 `/ljubimci` ("Urađeno" in Danas strip); S03 `/ljubimci/[id]` (Pregled reminders); S10 `/podsetnici` (row "Urađeno")
+- **FRs:** FR-24, FR-28
+- **Authorization:** Owner of the reminder; Member who can see the instance (EP-25 rule). Naturally idempotent — no idempotency key.
+- **Request:**
+  - `occurrence_id` — uuid — required — any row of the instance (normally the `id` from EP-25).
+- **Response:** `200` `ReminderOccurrence` with `display_status = "done"`. If the instance is already done, returns it unchanged with the original `done_at` / `done_by` (no write).
+- **Errors:** `not_found` (404) — unknown or not visible; `household_read_only` (403) — caller is a member and the household is read-only (BR-28).
+- **States:** S01 / S03 / S10 row switches to done badge with time and first name; `403 household_read_only` → *read_only* (control hidden on next render).
+- **Side effects:** every row of the instance → `status = done`, `done_at = now()`, `done_by = auth.uid()`; pending/sent rows of the instance are excluded from further sends, re-send and missed marking (EP-33). Instances already `missed` may still be marked done (late acknowledgement). For `reminders.type = treatment_dose`: inserts `dose_logs { treatment_id = reminders.source_id, given_at = now(), occurrence_id, created_by = auth.uid() }` unless a dose log for that occurrence already exists (same rule as EP-11).
+- **Budget:** `write`
+
+#### EP-27 — Manual reminders: create / update / delete
+- **Address:** Data API: `reminders` — **create** `insert { type: "manual", title, pet_id, starts_at, recurrence }` `.select()`; **get** `select` `.eq("id", id).eq("type","manual")`; **update** `update { title?, pet_id?, starts_at?, recurrence? }` `.eq("id", id).eq("type","manual")` `.select()`; **delete** `delete` `.eq("id", id).eq("type","manual")`
+- **Callers:** S11 `/podsetnici/novi` (create). Update / get / delete have no screen in Design v1.3 (available for a later S10 row menu).
+- **FRs:** FR-21
+- **Authorization:** Owner (`profiles.account_type = owner`) on own reminders only (`user_id` defaults to `auth.uid()` and cannot be set). A member may not link a manual reminder to a pet they do not own → `403 forbidden_role`. Shelter/breeder accounts → `403 forbidden_role`. Rows of other types (`type ≠ manual`) are not addressable here → `404 not_found`.
+- **Request:**
+  - `title` — string — required on create — 1–80 chars (`fields.title`: `required` | `too_long`).
+  - `pet_id` — uuid | null — optional — null = "Samo za mene" (BR-18); must be the caller's own pet with `lifecycle = active` (`fields.pet_id`: `pet_memorial`).
+  - `starts_at` — timestamp (UTC `Z`) — required on create — must be in the future (`fields.starts_at`: `required` | `in_past`); the client converts the Belgrade date + `HH:MM` input to UTC.
+  - `recurrence` — enum `none` | `daily` | `weekly` | `monthly` | `yearly` — required on create (BR-18; `hourly_interval` rejected: `fields.recurrence = invalid`).
+- **Response:** create/update `201`/`200` `Reminder`; get `200` `Reminder`; delete `204`.
+- **Errors:** `validation_failed` (422) — field codes above; `not_found` (404) — unknown id, not the caller's, or not manual; `forbidden_role` (403) — see Authorization.
+- **States:** S11 *default* → saved confirmation on success; `422` → inline field errors; `5xx` → *error* (X).
+- **Side effects:** insert/update trigger (re)generates pending `reminder_occurrences` for the rolling 60-day window, one row per lead time from the caller's `reminder_preferences` for type `manual` (defaults if none, see `ReminderPreference`); on update, future pending rows are deleted and regenerated; done/missed history stays. Delete cascades to occurrences and deliveries.
+- **Budget:** `write`
+
+#### EP-28 — Get / update reminder preferences
+- **Address:** **get** Data API: `rpc:get_reminder_settings()`; **update** Data API: `reminder_preferences` `upsert { type, lead_minutes, delivery_time, channels }` `onConflict: "user_id,type"` `.select()` (one call per changed type card)
+- **Callers:** S12 `/podesavanja/podsetnici`
+- **FRs:** FR-22, FR-23, FR-25
+- **Authorization:** any signed-in user, self only (`user_id = auth.uid()`, set by default).
+- **Request (update):**
+  - `type` — enum `vaccination` | `treatment_dose` | `vet_follow_up` | `meal` | `birthday` | `manual` — required.
+  - `lead_minutes` — integer[] — required — 1–6 distinct values from {0, 1440, 4320, 10080, 20160, 43200} (UI days 0/1/3/7/14/30) (BR-13; `fields.lead_minutes`: `required` | `invalid`). For `treatment_dose` and `meal` the value is ignored and stored as `{0}` (BR-13: exact time).
+  - `delivery_time` — `"HH:MM"` — required except for `treatment_dose` / `meal` (stored as null) (`fields.delivery_time`: `required`).
+  - `channels` — enum[] subset of `email` | `push` | `whatsapp` | `viber` — required — at least one (`fields.channels: required`) (BR-14).
+    - `whatsapp`: caller must have Premium (BR-14) → else `premium_required` `details.limit = "whatsapp"`; and a connected number (`user_channels` row, channel `whatsapp`, `opted_in_at` not null) → else `whatsapp_not_connected`.
+    - `viber`: while `app_settings.viber_enabled = false` → `channel_disabled` (BR-14b, E-27); when on, Premium required as for WhatsApp, and a connected Viber identity → else `whatsapp_not_connected` with `details.channel = "viber"`.
+- **Response:** get `200` `{ preferences: ReminderPreference[] /* always 6, one per type */, viber_enabled: boolean /* app_settings.viber_enabled */, whatsapp: WhatsAppConnection }`; update `200` `ReminderPreference`.
+- **Errors:** `validation_failed` (422); `premium_required` (403, `details.limit = "whatsapp"`); `whatsapp_not_connected` (409); `channel_disabled` (409).
+- **States:** S12 *default*; Free user (`Me.entitlements.premium = false`) → WhatsApp checkbox *premium_locked* (G); `403 premium_required` on save → *premium_locked*; Viber checkbox absent while `viber_enabled = false`; `whatsapp.status = "connected"` → "WhatsApp connected" variant.
+- **Side effects:** future pending occurrences of the caller's own reminders of that type are regenerated with the new lead times / delivery time (done/missed history untouched). Channel changes apply from the next dispatch. Stored `whatsapp`/`viber` choices survive Premium expiry; EP-33 falls back at send time (BR-16).
+- **Budget:** get `read-small`, update `write`
+
+#### EP-29 — Register / unregister web push subscription
+- **Address:** **register** Data API: `rpc:register_push_subscription(endpoint, p256dh, auth, user_agent)` (security definer: an endpoint already stored for another user on the same browser is re-assigned to the caller); **check** Data API: `push_subscriptions` `select` `.eq("endpoint", endpoint)`; **unregister** Data API: `push_subscriptions` `delete` `.eq("endpoint", endpoint)`
+- **Callers:** S12 `/podesavanja/podsetnici` ("Kanali" card: Push isključeno / uključeno / blokirano u pregledaču). The browser state *blokirano* comes from `Notification.permission = "denied"` and needs no call. VAPID public key is shipped to the client as `NEXT_PUBLIC_VAPID_PUBLIC_KEY`.
+- **FRs:** FR-23
+- **Authorization:** any signed-in user, self only.
+- **Request (register):**
+  - `endpoint` — string — required — `https://` URL from `PushSubscription.endpoint` (`fields.endpoint: invalid`).
+  - `p256dh` — string — required — base64url key.
+  - `auth` — string — required — base64url secret.
+  - `user_agent` — string — optional — ≤ 300 chars (shown nowhere; diagnostics).
+- **Response:** register `200` `PushSubscription`; check `200` `PushSubscription[]` (0 or 1 row → push on/off for this browser); unregister `204`.
+- **Errors:** `validation_failed` (422).
+- **States:** S12 push row: registered → "uključeno"; `[]` → "isključeno"; permission denied → "blokirano"; iPhone without home-screen install → hint card (client-side detection, ADR-05).
+- **Side effects:** none. EP-33 deletes endpoints that the push service answers with `404`/`410`.
+- **Budget:** `write` (check `read-small`)
+
+#### EP-30 — WhatsApp connect: send code / verify code / disconnect
+- **Address:** `action:whatsapp_connection(input) → WhatsAppConnection | CodeSent`
+- **Callers:** S12 `/podesavanja/podsetnici` ("Kanali" card: number → "Pošalji kod" → code → "Povezano" → "Prekini vezu")
+- **FRs:** FR-23
+- **Authorization:** any signed-in user, self only. `send_code` and `verify_code` require Premium (`Me.entitlements.premium = true`); `disconnect` is always allowed.
+- **Request:** discriminated by `op`:
+  - `op: "send_code"`
+    - `phone` — string — required — E.164 (`+381641234567`) (`fields.phone`: `invalid` | `undeliverable` when the WhatsApp Cloud API rejects the number).
+    - `idempotency_key` — uuid v4 — required (§3.3). Repeat within 24 h returns the original `CodeSent` and sends nothing.
+  - `op: "verify_code"`
+    - `verification_token` — string — required — from the `send_code` result.
+    - `code` — string — required — 6 digits.
+  - `op: "disconnect"` — no fields.
+- **Response:** `ok`:
+  - `send_code` → `CodeSent { phone: string, expires_at: timestamp /* now + 10 min */, resend_available_at: timestamp /* now + 60 s */, verification_token: string }`. The token is stateless: HMAC (server secret) over `user_id`, `phone`, `expires_at` and the code — nothing is stored until verification (§9.3 token rules; the code cannot be checked without the server secret).
+  - `verify_code` → `WhatsAppConnection` (`status = "connected"`).
+  - `disconnect` → `WhatsAppConnection` (`status = "not_connected"`).
+- **Errors:** `premium_required` (403, `details.limit = "whatsapp"`) — Free user on send/verify; `validation_failed` (422) — phone; `verification_code_invalid` (422) — wrong code, expired code or token, or token issued to another user; `rate_limited` (429, `details.retry_after_s`) — more than 5 `send_code` per hour per user, or more than 10 `verify_code` per hour per user.
+- **States:** S12 Kanali card: *default* → code entry after `send_code` → "Povezano" after `verify_code`; Free → *premium_locked* (G); `422` → inline field error; `429` → inline "try again later".
+- **Side effects:** `send_code`: sends the WhatsApp **authentication template** with the code (Meta Cloud API). `verify_code`: upserts `user_channels { channel: whatsapp, address: phone, opted_in_at: now() }` (the verified exchange is the user's opt-in). `disconnect`: deletes the `user_channels` whatsapp row and removes `whatsapp` from every `reminder_preferences.channels` of the caller; a type left with no channel is set to `{email, push}`.
+- **Budget:** `action`
+
+#### EP-31 — Get channel usage this month
+- **Address:** Data API: `rpc:get_channel_usage()`
+- **Callers:** S12 `/podesavanja/podsetnici` ("12 / 30 poruka ovog meseca", reset date)
+- **FRs:** FR-23 (BR-14a)
+- **Authorization:** any signed-in user, self only.
+- **Request:** none.
+- **Response:** `200` `ChannelUsage`.
+- **Errors:** —
+- **States:** S12 *default* (counter shown only when Premium; Free → part of *premium_locked* WhatsApp card).
+- **Side effects:** none.
+- **Budget:** `read-small`
+
+#### EP-32 — Mark done via action link
+- **Address:** `GET /api/a/done?t=<token>` (route handler, no session). WhatsApp quick reply "Urađeno" is the same operation arriving at `POST /api/webhooks/whatsapp` (§9, WhatsApp inbound webhook): the button payload carries the same signed token and the webhook applies exactly the rules below, then replies with a short confirmation message.
+- **Callers:** external — link in reminder email (Resend) and web push notification; WhatsApp quick-reply button (via §9 webhook).
+- **FRs:** FR-24
+- **Authorization:** single-use HMAC token (§9.3) bound to `occurrence_id` + `recipient_id`, valid 24 h from send. The recipient must still be able to see the instance (owner, or member still opted in to a shared pet).
+- **Request:**
+  - `t` — string — required — signed action token.
+- **Response:** `200 text/html` — minimal localized confirmation page (recipient's `profiles.locale`): pet name, reminder title, "Označeno kao urađeno", link to `/podsetnici`. With `Accept: application/json` → `200 { occurrence: ReminderOccurrence }`. A token that was already used and whose instance is done returns the same success page (no write).
+- **Errors:** `invalid_action_token` (400) — bad signature, expired (> 24 h), or used while the instance is not done; `not_found` (404) — recipient lost access (left household, opted out, pet unshared or deleted); `household_read_only` (403) — recipient is a member of a read-only household. Error responses are localized HTML pages (JSON `ApiError` with `Accept: application/json`).
+- **States:** no app screen; S10 shows the instance as done on next load.
+- **Side effects:** same as EP-26 with `done_by = recipient_id`; marks the token used. Requests with `Purpose: prefetch` / `Sec-Purpose: prefetch` headers and `HEAD` requests return `200` without marking anything (mail-scanner prefetch guard).
+- **Budget:** `public`
+
+#### EP-33 — Dispatch due reminders
+- **Address:** `POST /api/internal/dispatch` (route handler), called every minute by pg_cron via `pg_net` (ADR-04)
+- **Callers:** job (System)
+- **FRs:** FR-20, FR-22, FR-23, FR-24, FR-25, FR-29
+- **Authorization:** System only. Header `X-Dispatch-Secret` compared in constant time with the server secret `DISPATCH_SECRET`; uses the service role.
+- **Request:**
+  - header `X-Dispatch-Secret` — string — required.
+  - `run_at` — timestamp — optional — defaults to `now()`; used only for logging.
+- **Response:** `200` `{ claimed: integer, delivered: integer, failed: integer, fell_back: integer, resent: integer, missed: integer, duration_ms: integer }`.
+- **Errors:** `invalid_signature` (401) — missing or wrong secret header; `internal_error` (500).
+- **States:** none (feeds S01/S03/S10 and message channels).
+- **Side effects:** in order, within a 45 s budget, in batches of ≤ 200:
+  1. **Claim** — `rpc:claim_due_occurrences(200)`: `UPDATE reminder_occurrences SET status = 'sent', sent_at = now() WHERE id IN (SELECT … WHERE status = 'pending' AND notify_at <= now() … FOR UPDATE SKIP LOCKED) RETURNING …`, skipping instances already done, reminders with `active = false`, pets with `lifecycle = memorial` (BR-17), and owners with `deletion_requested_at` set. Overlapping runs can never claim the same row.
+  2. **Recipients** — the reminder owner (`reminders.user_id`) plus, when `pet_id` is shared (`household_pets`), every `household_memberships` member of that household with `reminders_enabled = true` (BR-24, FR-29) whose account is not pending deletion.
+  3. **Channels per recipient** — recipient's `reminder_preferences.channels` for `reminders.type` (defaults when no row). Members: intersected with {email, push} (BR-24). For `whatsapp` / `viber`, the channel is dropped and replaced by the **fallback** {email, push} when any holds: recipient has no Premium (BR-16, FR-25); `viber` while `app_settings.viber_enabled = false` (BR-14b); no `user_channels` row with `opted_in_at`; the recipient already has ≥ 30 `reminder_deliveries` with channel in (whatsapp, viber), `status = delivered`, in the current Europe/Belgrade calendar month (BR-14a — checked per message, so the 30th is sent and the 31st falls back). Each fallback increments `fell_back`.
+  4. **Send** — email via Resend and web push (VAPID, every endpoint of the recipient) each carry a signed action link `/api/a/done?t=…` (EP-32, 24 h, single-use, bound to occurrence + recipient); WhatsApp sends the utility template with the "Urađeno" quick-reply button whose payload is the same token; Viber (when on) the equivalent chatbot message. Push with no stored endpoint is skipped without a row; endpoints answering `404`/`410` are deleted from `push_subscriptions`.
+  5. **Record** — one `reminder_deliveries { occurrence_id, recipient_id, channel, status, provider_message_id, error, delivered_at }` row per recipient × channel (push: `delivered` if ≥ 1 endpoint accepted).
+  6. **Re-send (BR-15)** — final notices with `status = 'sent'`, `sent_at <= now() − 30 min` and the instance not done are re-sent once on the same rules (cap re-checked) → `status = 'resent'`, `resent_at = now()`. Earlier lead-time notices are never re-sent and stay `sent`.
+  7. **Missed (BR-15, E-05)** — final notices with `status = 'resent'`, `resent_at <= now() − 30 min`, instance not done → `status = 'missed'`.
+  8. **Watchdog (RISK-14)** — if pending rows with `notify_at < now() − 15 min` exist and no delivery was recorded in the last 15 minutes, email the Operator (at most once per hour).
+  - Premium expiry notices (FR-25, BR-09) are not sent here; they belong to the nightly subscription job EP-49.
+- **Budget:** `job` (NFR-01: median ≤ 2 min, ≥ 95 % within 5 min of `notify_at`)
+
+### 5.4 Household (EPIC-04)
+
+#### EP-34 — Get household
+- **Address:** Data API: `rpc:get_household(household_id)` (security definer; returns only households the caller owns or belongs to)
+- **Callers:** S13 `/domacinstvo`
+- **FRs:** FR-26, FR-27, FR-28, FR-29, FR-30, FR-31, FR-32
+- **Authorization:** Owner — full view. Member — read view (`access.can_edit = false`): members, shared pets only, own opt-in; `pending_invitations` is `[]`. No relation → `404 not_found`.
+- **Request:**
+  - `household_id` — uuid — optional — default: the household the caller owns, else the caller's earliest-joined membership.
+- **Response:** `200` `{ household: Household | null, my_households: { household_id: uuid /* households.id */, name: string /* households.name */, owner_name: string | null /* profiles.full_name of households.owner_id */, my_role: "owner" | "member" /* computed */ }[] }`. `household = null` when the caller owns none and belongs to none.
+- **Errors:** `not_found` (404) — `household_id` not related to the caller.
+- **States:** S13: `household = null` and `Me.entitlements.premium = false` → *premium_locked* (G); `household = null` and Premium → *empty* (E, "invite your first member" — the household is created by the first EP-35); household with no members besides the owner (`members` length 1) → *empty* (E); `read_only = true` → *read_only* (R: banner with `owner_premium_until`, controls hidden); `my_role = member` → member view (M, *read_only*); otherwise *default* (D).
+- **Side effects:** none.
+- **Budget:** `read-small`
+
+#### EP-35 — Create household invitation
+- **Address:** `action:create_household_invitation(input) → { invitation: HouseholdInvitation, invite_url: string }`
+- **Callers:** S13 `/domacinstvo` (invite Dialog: by email, or "copy link")
+- **FRs:** FR-26
+- **Authorization:** Owner (`profiles.account_type = owner`) with Premium (BR-19). Members and organisation accounts → `403 forbidden_role`.
+- **Request:**
+  - `email` — string | null — optional — valid email; null = link invitation (`fields.email: invalid`).
+  - `household_name` — string — required when the caller has no household yet, ignored otherwise — 1–60 chars (`fields.household_name`: `required` | `too_long`).
+  - `idempotency_key` — uuid v4 — required (§3.3).
+- **Response:** `ok` `{ invitation: HouseholdInvitation, invite_url: "https://mojljubimac.rs/poziv/<token>" }`. The raw token exists only in `invite_url` and is returned only here (only `token_hash` is stored); a repeat with the same `idempotency_key` within 24 h returns the original result including the same URL.
+- **Errors:** `premium_required` (403, `details.limit = "household"`) — owner without Premium (E-10); `household_full` (409) — owner + members already = 6 (BR-20, E-11; pending invitations do not reserve a slot); `already_member` (409) — `email` equals the owner's or a current member's `profiles.email`; `validation_failed` (422); `rate_limited` (429, `details.retry_after_s`) — more than 20 invitations per day per user; `forbidden_role` (403).
+- **States:** S13 Dialog success → link shown with copy button / "email sent" confirmation; `403 premium_required` → *premium_locked*; `409` → inline message in the Dialog.
+- **Side effects:** if the caller owns no household, inserts `households { owner_id: auth.uid(), name: household_name, read_only: false }` first. Inserts `household_invitations { household_id, email, token_hash, expires_at: now() + 7 days, status: pending }`. A pending invitation to the same email is set to `status = expired`. Email invitations send a localized Resend email (inviter name, household name, link); link invitations send nothing. A link invitation is single-use (`accepted_by` holds one user).
+- **Budget:** `action`
+
+#### EP-36 — Revoke invitation / remove member / leave household
+- **Address:** `action:change_household_membership(input) → Household | { left: true }`
+- **Callers:** S13 `/domacinstvo` (owner: revoke pending invitation, "Ukloni" member; member: "Napusti domaćinstvo")
+- **FRs:** FR-30
+- **Authorization:** `revoke_invitation`, `remove_member` — household owner only (BR-25). `leave` — member only (the owner cannot leave their own household). Wrong role → `403 forbidden_role`.
+- **Request:** discriminated by `op`:
+  - `op: "revoke_invitation"` — `invitation_id` — uuid — required.
+  - `op: "remove_member"` — `household_id` — uuid — required; `user_id` — uuid — required.
+  - `op: "leave"` — `household_id` — uuid — required.
+- **Response:** `ok` — `revoke_invitation` / `remove_member` → refreshed `Household`; `leave` → `{ left: true }`.
+- **Errors:** `not_found` (404) — invitation, household or membership not related to the caller; `forbidden_role` (403); `invitation_used` (409) — revoking an invitation that is no longer pending; `household_read_only` (403) — `remove_member` while `households.read_only = true` (revoke and leave stay allowed).
+- **States:** S13 list updates; member after `leave` is routed to S01; `403` → *read_only*.
+- **Side effects:** `revoke_invitation`: `status = expired`, `expires_at = now()` (S14 then shows *invitation_expired*). `remove_member` / `leave`: deletes the `household_memberships` row; the user immediately loses access to shared pets (RLS) and stops receiving their reminders (EP-33 resolves recipients at send time); all their entries stay in the record (BR-26).
+- **Budget:** `action`
+
+#### EP-37 — Set shared pets
+- **Address:** Data API: `household_pets` — **share** `upsert { household_id, pet_id }` `ignoreDuplicates: true`; **unshare** `delete` `.eq("household_id", id).eq("pet_id", pet_id)`
+- **Callers:** S13 `/domacinstvo` (shared-pets Switch per pet)
+- **FRs:** FR-27
+- **Authorization:** household owner only, on pets with `pets.owner_id = auth.uid()` (BR-21). Members → `403 forbidden_role`.
+- **Request:**
+  - `household_id` — uuid — required — caller's own household.
+  - `pet_id` — uuid — required — caller's own pet.
+- **Response:** share `201` (or `200` when already shared); unshare `204`. The client re-reads EP-34 or toggles locally.
+- **Errors:** `not_found` (404) — household or pet not the caller's; `forbidden_role` (403); `household_read_only` (403) — `households.read_only = true`.
+- **States:** S13 Switch on/off; `403 household_read_only` → *read_only*.
+- **Side effects:** members gain/lose access to the pet and its record immediately (RLS joins `household_pets`); members' reminder deliveries for that pet start/stop from the next dispatch.
+- **Budget:** `write`
+
+#### EP-38 — Set my reminder opt-in as member
+- **Address:** Data API: `household_memberships` `update { reminders_enabled }` `.eq("household_id", id).eq("user_id", auth.uid())` `.select("household_id, reminders_enabled")` (column grant: members may update only `reminders_enabled` on their own row)
+- **Callers:** S13 `/domacinstvo` (member view: own reminder opt-in Switch)
+- **FRs:** FR-29
+- **Authorization:** Member, own membership only. Owner → `404 not_found` (owner has no membership row; owner reminders are governed by EP-28).
+- **Request:**
+  - `household_id` — uuid — required.
+  - `reminders_enabled` — boolean — required (BR-24; default false on join).
+- **Response:** `200` `{ household_id: uuid /* household_memberships.household_id */, reminders_enabled: boolean /* household_memberships.reminders_enabled */ }`.
+- **Errors:** `not_found` (404) — caller is not a member of that household.
+- **States:** S13 member view Switch.
+- **Side effects:** from the next dispatch the member is (or is no longer) a recipient for reminders on the household's shared pets, by email and push only (BR-24); their EP-25 list includes/excludes those instances. Allowed while the household is read-only.
+- **Budget:** `write`
+
+#### EP-39 — Get invitation by token
+- **Address:** `action:get_household_invitation({ token }) → InvitationView`
+- **Callers:** S14 `/poziv/[token]` (household variant). S14 selects EP-39 or EP-60 by the token's type prefix (`hh_` household invitation, `tr_` record transfer — §9.3).
+- **FRs:** FR-26
+- **Authorization:** anyone holding the token. Visitor (no session) → limited fields (see `InvitationView`); signed-in invitee → full fields.
+- **Request:**
+  - `token` — string — required — raw token from the link; looked up by `token_hash`.
+- **Response:** `ok` `InvitationView` (also for `status = accepted | declined`, so S14 can show the decided state).
+- **Errors:** `not_found` (404) — unknown token; `invitation_expired` (410) — `status = expired` or `expires_at < now()`.
+- **States:** S14 *loading* → household variant; Visitor → sign-in prompt variant (`is_signed_in = false`); `status = declined` → *invitation_declined*; `status = accepted` → accepted variant; `410` → *invitation_expired*; `404` / `5xx` → *error*.
+- **Side effects:** none.
+- **Budget:** `read-small`
+
+#### EP-40 — Accept / decline invitation
+- **Address:** `action:decide_household_invitation({ token, decision }) → { status, household_id }`
+- **Callers:** S14 `/poziv/[token]` ("Prihvati" / "Odbij")
+- **FRs:** FR-26
+- **Authorization:** any signed-in user holding the token (the token is the credential; the invitation email is the delivery address only). Visitor → `401 unauthenticated` (S14 shows sign-in / register first, E-17 pattern of FR-26).
+- **Request:**
+  - `token` — string — required.
+  - `decision` — enum `accept` | `decline` — required.
+- **Response:** `ok` `{ status: "accepted" | "declined" /* household_invitations.status */, household_id: uuid /* household_invitations.household_id */ }`.
+- **Errors:** `not_found` (404) — unknown token; `invitation_expired` (410); `invitation_used` (409) — already accepted or declined; `already_member` (409) — caller is the owner or already a member; `household_full` (409) — owner + members = 6 at accept time (BR-20); `household_read_only` (403) — accept while the household is read-only (owner without Premium).
+- **States:** S14 accept → accepted variant, then S13 (member view); decline → *invitation_declined*; `410` → *invitation_expired*; `409` → inline message.
+- **Side effects:** accept: inserts `household_memberships { household_id, user_id: auth.uid(), joined_at: now(), reminders_enabled: false }`; sets `household_invitations.status = accepted`, `accepted_by`, `decided_at`. Decline: `status = declined`, `decided_at`. No email.
+- **Budget:** `action`
+
+### 5.5 Account & profile (EPIC-05, part 1)
+
+#### EP-41 — Register
+- **Address:** (1) Supabase Auth: `auth.signUp({ email, password, options: { emailRedirectTo: "/auth/callback", data: { account_type, locale, terms_version, org_name, city_id, tax_id, registration_note } } })`; resend: `auth.resend({ type: "signup", email })`. (2) `action:complete_registration(input) → Me` — called by `GET /auth/callback` after the verification link (payload taken from `user_metadata`), and by S15 completion step after first Google sign-in (no profile yet).
+- **Callers:** S15 `/registracija` (form, "Nastavi sa Google-om", resend); `GET /auth/callback` (route handler, see EP-42)
+- **FRs:** FR-33, FR-35, FR-42
+- **Authorization:** sign-up — Visitor. `complete_registration` — authenticated user with a verified email and **no** `profiles` row (exempt from the profile gates); if a profile already exists it returns the existing `Me` unchanged (idempotent).
+- **Request:**
+  - `email` — string — required (sign-up) — valid email (`fields.email`: `invalid` | `taken`).
+  - `password` — string — required (sign-up) — ≥ 8 chars (`fields.password: too_weak`).
+  - `account_type` — enum `owner` | `shelter` | `breeder` — required (BR-30).
+  - `locale` — enum `sr-Latn` | `en` — required — current UI language (FR-35).
+  - `terms_version` — string — required — must equal the currently published terms version (`fields.terms_version`: `required` | `outdated`).
+  - `org_name` — string — required for shelter/breeder — 2–120 chars.
+  - `city_id` — uuid — required for shelter/breeder — existing `cities.id` (`fields.city_id: unknown`).
+  - `tax_id` — string | null — optional — PIB, 9 digits (`fields.tax_id: invalid`).
+  - `registration_note` — string | null — optional — ≤ 500 chars.
+- **Response:** sign-up → Supabase `{ user, session: null }` = verification pending; `complete_registration` → `ok` `Me`.
+- **Errors:** `validation_failed` (422) — field codes above; Supabase "user already registered" / empty `identities` → `fields.email = taken`; Supabase weak-password error → `fields.password = too_weak`; `rate_limited` (429) — Supabase email rate limit on sign-up/resend; `email_not_verified` (403) — `complete_registration` before verification.
+- **States:** S15 *default* (form) → *email_sent* ("Proveri mejl"; extra shelter note) on sign-up success; `422` → inline field errors / "email taken" error state.
+- **Side effects:** `complete_registration` inserts `profiles { id: auth.uid(), account_type, locale, email, terms_accepted_at: now(), terms_version }`. Shelter/breeder additionally insert `organisations { type, name: org_name, slug: generated unique, city_id, tax_id, registration_note, approval_status: shelter → pending / breeder → approved (BR-32), created_by }` and `organisation_memberships { role: admin }`; a pending shelter triggers an Operator notification email. Breeder features still need a breeder plan (BR-11, EP-45). Verification and auth emails go through Resend SMTP (ADR-08).
+- **Budget:** `action`
+
+#### EP-42 — Auth session operations
+- **Address:** Supabase Auth client: `auth.signInWithPassword({ email, password })`; `auth.signInWithOAuth({ provider: "google", options: { redirectTo: "/auth/callback" } })`; `auth.signOut()`; `auth.resetPasswordForEmail(email, { redirectTo: "/auth/callback?next=/prijava/nova-lozinka" })`; `auth.updateUser({ password })` after recovery. Route handler `GET /auth/callback?code=…` exchanges the code for the cookie session (`exchangeCodeForSession`) and redirects: no profile → S15 completion step; profile with `deletion_requested_at` → S19 `/profil/podaci`; organisation member → `/organizacija`; otherwise `next` or `/ljubimci`.
+- **Callers:** S16 `/prijava` (email/password, Google, "Zaboravljena lozinka"); S15 `/registracija` (Google); app shell / S18 `/profil` (sign out)
+- **FRs:** FR-34
+- **Authorization:** sign-in / OAuth / reset — Visitor; sign-out — any session (allowed during pending deletion, §4.1).
+- **Request:**
+  - `email` — string — required (password sign-in, reset).
+  - `password` — string — required (password sign-in; new password ≥ 8 chars on `updateUser`).
+- **Response:** sign-in → session cookies set by `@supabase/ssr`, client navigates; OAuth → redirect to Google then `/auth/callback`; sign-out → cookies cleared, redirect `/prijava`; reset → always success (no account enumeration).
+- **Errors:** `unauthenticated` (401, `details.reason = "invalid_credentials"`) — wrong email/password; `email_not_verified` (403) — Supabase "email not confirmed"; `rate_limited` (429) — Supabase auth rate limits; `validation_failed` (422) — new password too weak.
+- **States:** S16 *default*; `401` → error (X, wrong credentials); `403 email_not_verified` → error with resend option (EP-41 resend).
+- **Side effects:** none beyond the session; signing in during pending deletion leads to S19 *pending_deletion*.
+- **Budget:** `action`
+
+#### EP-43 — Get / update me
+- **Address:** **get** Data API: `rpc:get_me()`; **update** Data API: `profiles` `update { full_name?, city_id?, locale? }` `.eq("id", auth.uid())` `.select()` (column grant limits writable columns to these three)
+- **Callers:** every app/organisation/admin shell on load (entitlements, locale, role routing); S18 `/profil` (name, city, language form); S19 `/profil/podaci` (deletion status); S12 (Premium gating); S13 (Premium gating); S14 `/poziv/[token]` ("signed in as"); S17 `/premium` (`trial_available`); S01 / S06 / S14 (Free slot holder)
+- **FRs:** FR-25, FR-35, FR-36, FR-39, FR-40
+- **Authorization:** any signed-in user, self only. The **read** is exempt from the `account_pending_deletion` gate so S19 can render *pending_deletion*; the update is not.
+- **Request (update):**
+  - `full_name` — string | null — optional — ≤ 100 chars (`fields.full_name: too_long`).
+  - `city_id` — uuid | null — optional — existing `cities.id` (`fields.city_id: unknown`) (city chosen from EP-67 list).
+  - `locale` — enum `sr-Latn` | `en` — optional (FR-35).
+- **Response:** get `200` `Me`, or `200 null` when the session has no `profiles` row yet (client routes to the S15 completion step); update `200` `Me`.
+- **Errors:** `validation_failed` (422); `account_pending_deletion` (403) — update during the deletion window.
+- **States:** shells *loading* → *default*; S18 *default*, `entitlements.subscription_status = expired` → *expired* variant with over-limit summary from `usage`; S19 `deletion_due_at` not null → *pending_deletion*; `422` → inline field errors; `5xx` → *error*.
+- **Side effects:** `locale` change switches UI language immediately and is used for all later emails/messages to the user.
+- **Budget:** get `read-small`, update `write`
+
+#### EP-44 — List plans
+- **Address:** Data API: `plans` `select` `.eq("active", true)` via view `v_public_plans` (anon + authenticated read), sorted family then period (monthly before yearly)
+- **Callers:** S17 `/premium` (Mesečno / Godišnje toggle, prices, yearly per-month amount); S18 `/profil` (price on the Premium card)
+- **FRs:** FR-36, FR-37
+- **Authorization:** public (Visitor allowed).
+- **Request:** none.
+- **Response:** `200` `Plan[]` (bounded, whole list).
+- **Errors:** —
+- **States:** S17 *default*; `[]` or `5xx` → *error* (prices are required to subscribe; OQ-03 values are data).
+- **Side effects:** none.
+- **Budget:** `public`
+
+### 5.6 Subscriptions & data control (EPIC-05, part 2)
+
+Common to every operation below: the §4.1 gates run first (`401 unauthenticated`, `403 email_not_verified`, `403 account_pending_deletion`, `403 organisation_pending_approval` on organisation writes) and are not repeated in each **Errors** list unless an operation changes them. "Premium active" (used throughout) = `computed: a subscriptions row of the user with plan premium_* and status in (trialing, active, cancelled) and current_period_end > now()`. "Breeder plan active" = the same test with plan breeder_*, held by any `admin` of the organisation.
+
+#### EP-45 — Start checkout
+- **Address:** `action:startCheckout(input) → CheckoutSession`
+- **Callers:** S17 `/premium` ("Probaj 7 dana besplatno" / "Pretplati se"); S18 `/profil` ("Obnovi Premium" in the expired variant)
+- **FRs:** FR-37, FR-42 (breeder plan)
+- **Authorization:** Owner, Member (as owners of their own account) for `premium_*`; OrgAdmin of a breeder organisation for `breeder_*`; Volunteer and shelter users → `403 forbidden_role`.
+- **Request:**
+  - `plan` — enum `premium_monthly` / `premium_yearly` / `breeder_monthly` / `breeder_yearly` — required — must exist in `plans` with `active = true`; family must match `profiles.account_type` (owner → premium_*, breeder → breeder_*)
+  - `expect_trial` — boolean — optional, default false — the client sets it when the screen offered the trial; if true and `profiles.trial_used = true` the call fails with `trial_already_used` so the screen re-renders (BR-07)
+  - `idempotency_key` — uuid v4 — required (§3.3)
+- **Response:** `ok` + `CheckoutSession`. Trial rule (BR-07): `trial_applied = true` only for a `premium_*` plan when `profiles.trial_used = false`; breeder plans have no trial (BR-07 covers Premium only); otherwise the first charge is immediate (E-15).
+- **Errors:** `payment_provider_unavailable` (503) — **always, until OQ-11 is resolved** (returned after validation, so validation errors still surface); `validation_failed` (422) — unknown/inactive plan, family mismatch (`fields.plan = "plan_not_allowed"`); `trial_already_used` (409) — `expect_trial = true` but the trial was used; `subscription_already_active` (409) — the user already has a `trialing`/`active`/`cancelled` row of the same family whose `current_period_end > now()` (use EP-48 to resume renewal instead); `forbidden_role` (403).
+- **States:** S17 *default* → redirect to `checkout_url`; S17 *trial_used* on `trial_already_used`; S17/S18 *error* on `payment_provider_unavailable` (copy: "Plaćanje uskoro").
+- **Side effects:** creates a provider checkout session carrying `{user_id, plan, trial_applied, idempotency_key}` as metadata `[DEFERRED: OQ-11]`. No `subscriptions` row is written here; it is created only when EP-46 confirms. Repeat with the same key within 24 h returns the same `CheckoutSession`.
+- **Budget:** `action`
+
+#### EP-46 — Payment provider webhook
+- **Address:** `POST /api/webhooks/payments`
+- **Callers:** payment provider (external system) `[DEFERRED: OQ-11]`
+- **FRs:** FR-37, FR-38, FR-25 (status that drives notices), FR-32 (household read-only)
+- **Authorization:** System. Authenticated by the provider's signature header `[DEFERRED: OQ-11 — header name and algorithm]`, verified over the raw body with the provider secret before parsing. No session.
+- **Request:** a provider-specific body, mapped by a provider adapter `[DEFERRED: OQ-11]` into this neutral event:
+  - `event_id` — string — required — provider's event id; idempotency key
+  - `type` — enum `payment_succeeded` / `payment_failed` / `card_token_saved` — required; any other provider event type is acknowledged and ignored
+  - `occurred_at` — timestamp — required
+  - `user_id` — uuid — required for `kind = initial` and `card_token_saved` (from checkout metadata)
+  - `plan` — `subscriptions.plan` enum — required for `kind = initial` and `card_token_saved`
+  - `subscription_id` — uuid — required for `kind = renewal` (from the charge metadata set by EP-49)
+  - `kind` — enum `initial` / `renewal` → `subscription_payments.kind` — required for payment events
+  - `amount_minor` / `currency` — integer > 0 / char(3) → `subscription_payments.amount_minor` / `.currency` — required for payment events
+  - `transaction_id` — string → `subscription_payments.monri_transaction_id` `[DEFERRED: OQ-11 column name]` — required for payment events
+  - `token_ref` — string → `subscriptions.monri_token_ref` `[DEFERRED: OQ-11]` — required for `card_token_saved` and `initial` succeeded
+  - `card_brand`, `card_last4` — string, char(4) → `subscriptions.card_brand`, `.card_last4` — optional (display only; never full card data)
+  - `failure_reason` — string — optional (logged only)
+- **Response:** `200 {"received": true}` — also for duplicates and ignored types (so the provider stops retrying).
+- **Errors:** `invalid_signature` (401) — signature check failed; `validation_failed` (422) — signature valid but required neutral fields missing; `internal_error` (500) — processing failed; the provider retries.
+- **States:** none directly; the next EP-47 read reflects the result (S17/S18).
+- **Side effects (in one transaction):**
+  - Idempotency: a repeat `event_id` performs nothing. Payment events dedupe on `subscription_payments.monri_transaction_id` (unique); `card_token_saved` dedupes on `subscriptions.monri_cit_id`. (See note at end of part: a dedicated event log may be needed once the provider is chosen.)
+  - `card_token_saved` (trial start, `trial_applied` checkout): insert `subscriptions{user_id, plan, status = trialing, trial_ends_at = now + 7 days, current_period_end = trial_ends_at, auto_renew = true, monri_token_ref, monri_cit_id, card_brand, card_last4}`; set `profiles.trial_used = true`.
+  - `payment_succeeded`, `kind = initial`: if a `trialing` row exists for the user and family, set `status = active` and `current_period_end = trial_ends_at + 1 month | 1 year`; otherwise insert `subscriptions{status = active, current_period_end = now + 1 month | 1 year, auto_renew = true, token/card fields}`. Insert `subscription_payments{kind = initial, result = succeeded}`.
+  - `payment_succeeded`, `kind = renewal`: `current_period_end += 1 month | 1 year`, `status = active`; insert `subscription_payments{kind = renewal, result = succeeded}`.
+  - `payment_failed`: insert `subscription_payments{result = failed}`; for `renewal` (or the first charge after a trial) set `subscriptions.status = payment_failed`; email the user (Resend) "Naplata nije uspela" with a link to S17. A failed `initial` without a trial creates no subscription.
+  - After any status change: recompute `households.read_only = NOT Premium active(owner)` for the user's household (BR-28).
+- **Budget:** `action`
+
+#### EP-47 — Get my subscription
+- **Address:** Data API `rpc:get_my_subscription()` (security invoker; reads only the caller's rows)
+- **Callers:** S17 `/premium` (trial button vs "Pretplati se", current plan), S18 `/profil` (Premium card, days remaining, renewal, card label, expired/over-limit summary)
+- **FRs:** FR-25, FR-36, FR-37, FR-38, FR-39
+- **Authorization:** Owner, Member, OrgAdmin (breeder) — own subscription only. Volunteer and shelter users → `403 forbidden_role`.
+- **Request:** none.
+- **Response:** `200` + `Subscription` — the caller's most recent row of their plan family (owner → premium_*, breeder → breeder_*); a user who never subscribed gets a `Subscription` with `id`, `plan`, `status` and all period/card fields `null` and `trial_available` computed.
+- **Errors:** `forbidden_role` (403).
+- **States:** S17 *trial_used* when `trial_available = false`; S18 *default* (`status` trialing/active, `auto_renew = true`), *cancelled* (`auto_renew = false`, period not ended), *expired* (`status = expired` or `payment_failed`, shows `over_limits`); *loading*; *error* on 5xx.
+- **Side effects:** none.
+- **Budget:** `read-small`
+
+#### EP-48 — Cancel auto-renew (and turn it back on)
+- **Address:** `action:setAutoRenew(input) → Subscription`
+- **Callers:** S18 `/profil` ("Otkaži obnovu" AlertDialog; "Uključi obnovu" in the cancelled variant)
+- **FRs:** FR-38
+- **Authorization:** as EP-47 (own subscription only; BR-25 — a household member manages only their own subscription).
+- **Request:**
+  - `auto_renew` — boolean — required — `false` cancels renewal (BR-08); `true` resumes it
+- **Response:** `ok` + `Subscription` (updated).
+- **Errors:** `subscription_not_active` (409) — no row with status `trialing`/`active`/`cancelled` and `current_period_end > now()` (e.g. already expired: use EP-45); `forbidden_role` (403).
+- **States:** S18 *cancelled* after `auto_renew = false`; S18 *default* after `true`.
+- **Side effects:** `false` → `subscriptions.auto_renew = false`, `status = cancelled` (Premium stays until `current_period_end`, BR-08); cancelling during a trial means no first charge. `true` → `auto_renew = true`, `status = trialing` if `trial_ends_at > now()` else `active`. Confirmation email (Resend). No provider call (the stored token is reused at renewal).
+- **Budget:** `write`
+
+#### EP-49 — Renewal & expiry job
+- **Address:** job: pg_cron nightly 03:00 Europe/Belgrade → `POST /api/internal/billing-nightly` (secret header, same mechanism as `/api/internal/dispatch`)
+- **Callers:** job (System)
+- **FRs:** FR-25, FR-37, FR-38, FR-31, FR-32; BR-08, BR-09, BR-16, BR-28
+- **Authorization:** System (service role, server only); a missing or wrong secret → `401 unauthenticated`.
+- **Request:** none.
+- **Response:** `200 {renewals_attempted, expired, notices_sent, households_updated}` (counts, for logs).
+- **Errors:** `unauthenticated` (401); `internal_error` (500) — the run is retried the next night; each step is idempotent.
+- **States:** none directly; S18 *expired*, S13 *read_only* follow from the data.
+- **Side effects (in order):**
+  1. **Renewals** — rows with `auto_renew = true`, `status` in (`active`, `trialing`) and `current_period_end <= now()`, whose user has no `profiles.deletion_requested_at`: request a merchant-initiated charge of `plans.price_minor` against `subscriptions.monri_token_ref` with metadata `{subscription_id, kind}` (`kind = initial` when ending a trial, else `renewal`) `[DEFERRED: OQ-11]`. The result arrives through EP-46. While the provider is not configured this step does nothing and logs a warning.
+  2. **Expiry** — rows with `status` in (`cancelled`, `payment_failed`, or `trialing`/`active` with `auto_renew = false`, or any status for a user with pending deletion) and `current_period_end <= now()` → `status = expired`.
+  3. **Notices (BR-09)** — for rows with `status` in (`trialing`, `active`, `cancelled`) whose remaining whole days in Europe/Belgrade (`current_period_end` date − today) equal 30, 7 or 1: email (Resend) and web push (if `push_subscriptions` exist) — copy "obnavlja se" when `auto_renew = true`, "ističe" when false. A notice that would fall on the period's first day (30 days on a monthly plan) is skipped. The job must run once per Belgrade date (no column records sent notices — see note).
+  4. **Household flag** — for every household whose owner's Premium-active value changed in steps 1–2: `households.read_only = NOT Premium active(owner)` (BR-28). WhatsApp/Viber fallback after expiry needs no write: the dispatch job checks Premium at send time (BR-16).
+- **Budget:** `job`
+
+#### EP-50 — Request data export / get my data overview
+- **Address:** `action:requestDataExport(input) → DataExport`; `action:getMyDataOverview() → overview` (an action, because it signs the download URL)
+- **Callers:** S19 `/profil/podaci` ("Pripremi arhivu", preparing/ready card, "Preuzmi ZIP", archive contents list, heir sentence in the delete dialog)
+- **FRs:** FR-41 (and FR-40, FR-31 for the deletion block)
+- **Authorization:** any signed-in user, own data only.
+- **Request:** `requestDataExport`: none. `getMyDataOverview`: none.
+- **Response:**
+  - `requestDataExport` → `ok` + `DataExport` (`status = preparing`).
+  - `getMyDataOverview` → `ok` + inline:
+    | Field | Type | Null | Source |
+    |---|---|---|---|
+    | latest_export | DataExport | yes | latest `data_exports` row by `requested_at` for `user_id = auth.uid()`; null if none |
+    | summary.pet_names | string[] | no | `pets.name` where `owner_id = auth.uid()` (active and memorial), ordered by name |
+    | summary.attachment_count | integer | no | computed: count of `attachments` on those pets |
+    | summary.moment_count | integer | no | computed: count of `moments` on those pets |
+    | deletion.requested_at | timestamp | yes | `profiles.deletion_requested_at` |
+    | deletion.due_at | timestamp | yes | `profiles.deletion_due_at` |
+    | deletion.days_left | integer | yes | computed: whole days from today (Europe/Belgrade) to `deletion_due_at`; null when not pending |
+    | deletion.heir_full_name | string | yes | computed (BR-27): `profiles.full_name` of the earliest `household_memberships.joined_at` member of the household where `households.owner_id = auth.uid()`; null if no household or no members |
+- **Errors:** `export_in_progress` (409) — a row with `status = preparing` exists; `internal_error` (500) — the export workflow could not be started.
+- **States:** S19 *default* (no export or `expired`/`failed`), *preparing* (`status = preparing`), *ready* (`status = ready`, `download_url` set), *error* on 5xx or `status = failed`; *pending_deletion* from `deletion.due_at` not null.
+- **Side effects:** `requestDataExport` inserts `data_exports{user_id, status = preparing, requested_at = now}` and starts the GitHub Actions export workflow (ADR-13) with the export id. The workflow writes one ZIP (all personal data, records, attachments, photos) to R2, then sets `status = ready`, `r2_key`, `size_bytes`, `ready_at = now`, `expires_at = ready_at + 7 days` and emails the user (Resend) that the archive is ready; on failure `status = failed`. Expired archives are removed by EP-52.
+- **Budget:** `action`
+
+#### EP-51 — Request account deletion / cancel deletion
+- **Address:** `action:requestAccountDeletion(input) → Me`; `action:cancelAccountDeletion() → Me`
+- **Callers:** S19 `/profil/podaci` ("Obriši nalog" AlertDialog; "Otkaži brisanje" in the pending variant)
+- **FRs:** FR-40, FR-31
+- **Authorization:** any signed-in user, self only. `cancelAccountDeletion` is the one call allowed through gate 3 (§4.1).
+- **Request:**
+  - `requestAccountDeletion`: `confirm` — boolean — required — must be `true` (the dialog's checkbox)
+  - `cancelAccountDeletion`: none
+- **Response:** `ok` + `Me` (Part B) with the deletion fields updated.
+- **Errors:** `validation_failed` (422) — `confirm` not true (`fields.confirm = "required"`); `account_pending_deletion` (403) — `requestAccountDeletion` while already pending. `cancelAccountDeletion` when nothing is pending is a no-op returning `ok`.
+- **States:** S19 *pending_deletion* after request (and every other protected call now returns `403 account_pending_deletion`); S19 *default* after cancel (E-16).
+- **Side effects:** request → `profiles.deletion_requested_at = now()`, `deletion_due_at = now() + 30 days`; confirmation email (Resend) with the due date. Subscriptions are **not** changed, so a cancel restores the account unchanged (E-16); instead EP-49 charges no renewal while deletion is pending and lets the period expire. Cancel → both columns set to `null`; confirmation email.
+- **Budget:** `action`
+
+#### EP-52 — Nightly deletion & retention job
+- **Organisation succession (BR-46):** before deleting an account that is the last Admin of an organisation, the earliest-joined remaining member becomes Admin; with no members left, the organisation enters the same 30-day grace and is then deleted with its animals and files.
+- **Address:** job: pg_cron nightly 03:30 Europe/Belgrade → `POST /api/internal/retention-nightly` (secret header)
+- **Callers:** job (System)
+- **FRs:** FR-40, FR-31, FR-13, FR-50; NFR-06, NFR-08; BR-27, BR-31, BR-38
+- **Authorization:** System (service role, server only); wrong secret → `401 unauthenticated`.
+- **Request:** none.
+- **Response:** `200 {accounts_deleted, households_transferred, r2_objects_deleted, deliveries_purged, invitations_expired, transfers_expired, exports_expired}`.
+- **Errors:** `unauthenticated` (401); `internal_error` (500) — partial progress is kept; each step is idempotent and resumes next night.
+- **States:** none directly; S13 *read_only* for an inheriting member without Premium; S14 *invitation_expired* for expired links.
+- **Side effects (in order):**
+  1. **Account deletion** — for each profile with `deletion_due_at <= now()`:
+     - **Ownership transfer (BR-27):** if the user owns a household with members, the earliest `household_memberships.joined_at` member becomes `households.owner_id`; that member's membership row is deleted; pets in `household_pets` move to the heir (`pets.owner_id = heir`); `households.read_only = NOT Premium active(heir)`; the heir is emailed. A household without members is deleted.
+     - Pets still owned by the user (not shared) are deleted (cascade); their R2 keys (`pets.photo_r2_key`, `attachments.r2_key`, `moment_photos.r2_key`) and the user's `data_exports.r2_key` are queued for removal.
+     - Organisation memberships are removed (cascade from `profiles`).
+     - `auth.users` row deleted → `profiles` cascade.
+  2. **R2 cleanup** — delete every queued R2 key (from step 1, from pet deletions FR-13, deleted moments and attachments); a key is dequeued only after R2 confirms.
+  3. **Delivery purge (NFR-08)** — delete `reminder_deliveries` with `delivered_at < now() − 12 months`.
+  4. **Expiry** — `household_invitations`, `organisation_invitations`, `record_transfers` with `status = pending` and `expires_at < now()` → `status = expired`.
+  5. **Exports** — `data_exports` with `status = ready` and `expires_at < now()` → delete R2 object, `status = expired`.
+- **Budget:** `job`
+
+### 5.7 Organisations (EPIC-06)
+
+Organisation callers act on the one organisation they belong to (a shelter or breeder user belongs to one organisation, BR-30). A pet of another organisation → `404 not_found`. Organisation writes on a `pending` organisation → `403 organisation_pending_approval`; on a `rejected` organisation the same code with `details.approval_status = "rejected"`. Breeder-only writes on an organisation without an active breeder plan → `403 breeder_plan_required` (BR-11, E-21); reads stay available (BR-10 spirit).
+
+#### EP-53 — Get my organisation
+- **Address:** Data API `rpc:get_my_organisation()`
+- **Callers:** S20 `/organizacija` (org shell header, Tim tab, pending-approval banner); S21 `/organizacija/zahtevi`, S22 `/organizacija/legla` (shell header)
+- **FRs:** FR-42, FR-43
+- **Authorization:** OrgAdmin ✅; Volunteer 👁 (no pending invitations). Users without an organisation → `404 not_found`.
+- **Request:** none.
+- **Response:** `200` + inline:
+  | Field | Type | Null | Source |
+  |---|---|---|---|
+  | organisation | Organisation | no | caller's `organisation_memberships.organisation_id` |
+  | team | OrganisationMember[] | no | `organisation_memberships` of the organisation, ordered by role (admin first) then `created_at` |
+  | pending_invitations | OrganisationInvitation[] | no | `organisation_invitations` with `status = pending`, newest first; `[]` for Volunteers |
+  | breeder_plan_active | boolean | no | computed: breeder plan active (see 5.6 intro); `false` for shelters |
+  | access | Access | no | computed: `role = org_admin` / `volunteer` from `organisation_memberships.role`; `can_edit = approval_status = approved` (and, for breeders, `breeder_plan_active`); `can_delete = can_edit AND role = org_admin` |
+- **Errors:** `not_found` (404).
+- **States:** S20 *pending_approval* when `organisation.approval_status = "pending"` (everything read-only); *read_only* when `access.can_edit = false`; *default*; *loading*; *error* on 5xx/404.
+- **Side effects:** none.
+- **Budget:** `read-small`
+
+#### EP-54 — List organisation animals
+- **Address:** Data API `rpc:list_org_animals(p_q, p_status, p_limit, p_offset)`
+- **Callers:** S20 `/organizacija` (Životinje tab: table/cards, status filter chips with counts)
+- **FRs:** FR-44, FR-45
+- **Authorization:** OrgAdmin, Volunteer (own organisation; allowed while pending — reads).
+- **Request:**
+  - `p_q` — text — optional — name search, case- and diacritic-insensitive (FR-59)
+  - `p_status` — text — optional — shelter: a `pets.shelter_status` value; breeder: a `pets.offspring_status` value or `breeding_active` / `breeding_retired` (`pets.breeding_status`); null = all
+  - `p_limit` — integer — optional, default 20, max 50
+  - `p_offset` — integer — optional, default 0
+- **Response:** `200` + `{ items: OrgAnimalRow[], total: integer, status_counts: { <status>: integer } }`. Sort: shelter — `intakes.intake_on` desc; breeder — `pets.created_at` desc. `status_counts` (computed: count per status over all the organisation's animals, ignoring `p_status`) feeds the chips. Memorial and transferred-out animals are included (status `adopted`/`sold` rows remain as the organisation's read-only copy).
+- **Errors:** `validation_failed` (422) — unknown `p_status`, `p_limit > 50`; `not_found` (404) — no organisation.
+- **States:** S20 *empty* on `items: []` with `total: 0`; *default*; *loading*; *error*.
+- **Side effects:** none.
+- **Budget:** `read-list`
+
+#### EP-55 — Create shelter intake / change animal status
+- **Address:** `action:createIntake(input) → Intake`; Data API `pets` update `shelter_status` | `breeding_status` where `id = :pet_id` (trigger writes `pet_status_history`)
+- **Callers:** S20 `/organizacija` (new intake Dialog; status menu per animal)
+- **FRs:** FR-45, FR-44
+- **Authorization:** OrgAdmin, Volunteer (BR-34 lets Volunteers add/edit; deleting is EP-05, Admin only). Intake is shelter-only: breeder → `403 forbidden_role`. `breeding_status` is breeder-only: shelter → `403 forbidden_role`.
+- **Request (`createIntake`):**
+  - `name` — string 1–80 — required
+  - `species` — `pets.species` enum — required
+  - `species_other` — string 1–60 — required when `species = other` (check)
+  - `sex` — enum `male` / `female` / `unknown` — required
+  - `breed`, `approx_age_text` — string ≤ 80 — optional
+  - `intake_on` — date — required — not in the future
+  - `arrival_type` — enum `found` / `surrendered` / `confiscated` / `other` — required
+  - `place_found` — string ≤ 200 — optional
+  - `note` — string ≤ 2000 — optional
+- **Request (status change):** `shelter_status` — `pets.shelter_status` enum — or `breeding_status` — `active` / `retired`; any value may follow any other (shelters correct mistakes; BR-35 lists the normal order). Offspring statuses are changed through EP-61.
+- **Response:** `createIntake` → `ok` + `Intake`. Status change → `200` + updated row (`OrgAnimalRow` fields).
+- **Errors:** `validation_failed` (422) — field errors; `forbidden_role` (403); `not_found` (404) — pet of another organisation; `organisation_pending_approval` (403).
+- **States:** S20 inline field errors in the Dialog; *default* after save (row appears, chip counts change).
+- **Side effects:** `createIntake` (one transaction): `pets{organisation_id, name, species, species_other, sex, breed, approx_age_text, shelter_status = intake}` + `intakes{pet_id, intake_on, arrival_type, place_found, note, created_by}` + `pet_status_history{status = intake, changed_at = now, changed_by}`. Status change: trigger inserts `pet_status_history{status, changed_at = now, changed_by = auth.uid()}`; a change to or from `available` purges the EP-62 cache for the organisation.
+- **Budget:** `write`
+
+#### EP-56 — Team: invite member / remove member / change role
+- **Address:** `action:inviteTeamMember(input) → OrganisationInvitation`; Data API `organisation_invitations` delete where `id = :id` and `status = pending` (revoke); Data API `organisation_memberships` delete where `user_id = :user_id` (remove); Data API `organisation_memberships` update `role` (change role)
+- **Callers:** S20 `/organizacija` (Tim tab: "Pozovi člana tima", "Postavi za admina", "Ukloni iz tima")
+- **FRs:** FR-43
+- **Authorization:** OrgAdmin only; Volunteer → `403 forbidden_role` (BR-34).
+- **Request:**
+  - invite: `email` — string, valid email — required; `role` — enum `admin` / `volunteer` — required; `idempotency_key` — uuid — required (§3.3)
+  - remove: `user_id` — uuid — required
+  - change role: `user_id` — uuid — required; `role` — enum `admin` / `volunteer` — required
+- **Response:** invite → `ok` + `OrganisationInvitation`; remove / revoke → `204`; change role → `200` + `OrganisationMember`.
+- **Errors:** `team_full` (409) — members + pending invitations already 20 (BR-34; trigger on memberships); `already_member` (409) — the email belongs to a current member; `validation_failed` (422) — bad email/role, or the change would leave the organisation with no admin (`fields.user_id = "last_admin"`); `forbidden_role` (403); `not_found` (404) — member/invitation not in this organisation; `organisation_pending_approval` (403).
+- **States:** S20 Tim tab *default* with the new pending invitation; inline errors in the invite Dialog.
+- **Side effects:** invite → any earlier pending invitation for the same email is set `expired`; inserts `organisation_invitations{organisation_id, email, role, token_hash, expires_at, status = pending}` with the same validity as household invitations (EP-35); emails the raw link `/poziv/<token>` (Resend). The invitee views/accepts/declines it through the invitation flow EP-39/EP-40 (Part B, `InvitationView`), which inserts `organisation_memberships{role}` and sets `status = accepted`, `accepted_by`. Remove: the user loses access; their entries remain (as BR-26). Repeat invite with the same key within 24 h returns the original invitation and sends nothing.
+- **Budget:** `action` (invite), `write` (remove, revoke, change role)
+
+#### EP-57 — List adoption requests / breeder inquiries
+- **Address:** Data API `rpc:list_org_requests(p_status, p_limit, p_offset)` — reads `adoption_requests` for a shelter, `breeder_inquiries` for a breeder
+- **Callers:** S21 `/organizacija/zahtevi`
+- **FRs:** FR-47, FR-49, FR-50
+- **Authorization:** OrgAdmin ✅; Volunteer 👁 (`access.can_edit = false`).
+- **Request:**
+  - `p_status` — enum `pending` / `accepted` / `rejected` — optional; null = all
+  - `p_limit` — integer — optional, default 20, max 50
+  - `p_offset` — integer — optional, default 0
+- **Response:** `200` + `{ kind: "adoption_request" | "breeder_inquiry", items: AdoptionRequest[] | BreederInquiry[], total, status_counts: { pending, accepted, rejected }, access: Access }`. Sort: `created_at` desc. `access` as EP-53 (Volunteer → `can_edit = false`).
+- **Errors:** `validation_failed` (422); `not_found` (404) — no organisation.
+- **States:** S21 *empty* on `[]`; *read_only* when `access.can_edit = false` (volunteer); *default*; *loading*; *error*.
+- **Side effects:** none.
+- **Budget:** `read-list`
+
+#### EP-58 — Decide request / inquiry
+- **Address:** `action:decideRequest(input) → AdoptionRequest | BreederInquiry`
+- **Callers:** S21 `/organizacija/zahtevi` ("Prihvati" / "Odbij")
+- **FRs:** FR-47, FR-49
+- **Authorization:** OrgAdmin only; Volunteer → `403 forbidden_role` (BR-34).
+- **Request:**
+  - `kind` — enum `adoption_request` / `breeder_inquiry` — required — must match the organisation type
+  - `id` — uuid — required
+  - `decision` — enum `accept` / `reject` — required
+- **Response:** `ok` + the updated `AdoptionRequest` / `BreederInquiry`.
+- **Errors:** `already_decided` (409) — status is not `pending`; `forbidden_role` (403); `not_found` (404); `breeder_plan_required` (403) — breeder without active plan; `organisation_pending_approval` (403).
+- **States:** S21 *default* with the row moved to the accepted/rejected filter; accepted rows show "Pošalji karton".
+- **Side effects:** `status`, `decided_by = auth.uid()`, `decided_at = now()`. Accept → pet `shelter_status = reserved` (shelter) or `offspring_status = reserved` (breeder) + `pet_status_history`; EP-62 cache purged. Accept and reject → email to the applicant's `email` (Resend) in the applicant's `profiles.locale`, with the organisation's contact details on accept (BR-36). Other pending requests for the same pet are left unchanged.
+- **Budget:** `action`
+
+#### EP-59 — Send record transfer / re-send
+- **Address:** `action:sendRecordTransfer(input) → RecordTransfer`; `action:resendRecordTransfer(input) → RecordTransfer`
+- **Callers:** S21 `/organizacija/zahtevi` (transfer Dialog on an accepted row, re-send on an expired one)
+- **FRs:** FR-50
+- **Authorization:** OrgAdmin only; Volunteer → `403 forbidden_role`.
+- **Request:**
+  - send: `pet_id` — uuid — required — pet of the organisation; `recipient_email` — valid email — required (prefilled from the accepted request); `idempotency_key` — uuid — required
+  - re-send: `transfer_id` — uuid — required; `idempotency_key` — uuid — required
+- **Response:** `ok` + `RecordTransfer` (the new row).
+- **Errors:** `invitation_used` (409) — the pet already has an `accepted` transfer; `validation_failed` (422) — bad email; `forbidden_role` (403); `not_found` (404); `breeder_plan_required` (403); `organisation_pending_approval` (403).
+- **States:** S21 *default* with "Poslato … · važi do …"; inline errors in the Dialog.
+- **Side effects:** any `pending` transfer for the pet → `status = expired`; insert `record_transfers{pet_id, from_organisation_id, recipient_email, token_hash, expires_at = now + 30 days, status = pending}` (re-send copies `pet_id` and `recipient_email` from `transfer_id` with a new token, BR-38); pet → `shelter_status = adopted` / `offspring_status = sold` if not already, + `pet_status_history`; email with the raw link `/poziv/<token>` (Resend). Repeat with the same key within 24 h returns the original and sends nothing.
+- **Budget:** `action`
+
+#### EP-60 — Get transfer by token / accept / decline
+- **Address:** `action:getTransfer(input) → TransferView`; `action:acceptTransfer(input) → TransferView`; `action:declineTransfer(input) → TransferView`
+- **Callers:** S14 `/poziv/[token]` (transfer, declined, expired, slot-taken, sign-in variants)
+- **FRs:** FR-50, FR-51
+- **Authorization:** `getTransfer`: anyone holding the token, Visitor included (view only). `acceptTransfer` / `declineTransfer`: a signed-in user holding the token (`401 unauthenticated` → S14 sign-in variant); accepting requires an owner account — shelter/breeder accounts → `403 forbidden_role` (BR-33).
+- **Request:** `token` — string — required — raw token from the link (matched by hash to `record_transfers.token_hash`).
+- **Response:** `ok` + `TransferView` (`status` `pending` on get; `accepted` with `new_pet_id` after accept; `declined` after decline).
+- **Errors:** `not_found` (404) — unknown token; `invitation_expired` (410) — `status = expired` or `expires_at < now()`; `invitation_used` (409) — already accepted or declined; `premium_required` (403, `details: { limit: "transfer_slot", slot_pet_id, slot_pet_name }`) — accept by a Free recipient whose active slot is taken (BR-39, E-20); `forbidden_role` (403).
+- **States:** S14 transfer *default*; *invitation_expired* (410); *invitation_declined* (`ok` with `status = "declined"`); *slot_taken* (`premium_required` / `transfer_slot`, the screen names `details.slot_pet_name`); sign-in variant on `401`; *loading*; accepted confirmation on `ok` with `status = "accepted"`.
+- **Side effects:**
+  - accept (one transaction): copy the pet into a new `pets` row with `owner_id = auth.uid()`, `organisation_id = null`, organisation-only fields cleared (`shelter_status`, `offspring_status`, `breeding_status`, `litter_id`, `price_minor`, `public_description`); copy `weight_entries`, `vaccinations`, `treatments` (+ `dose_logs`), `vet_visits` (+ `attachments`, with each R2 object copied server-side to a new key) and `pets.photo_r2_key`; `created_by` keeps the original authors; the reminder triggers create reminders for the copied vaccinations/treatments/visits/birthday (BR-12). Set `record_transfers.status = accepted`, `accepted_by`, `accepted_at = now()`, `new_pet_id`. The organisation's original stays as a read-only copy (`Access.can_edit = false` for an animal with an accepted transfer). Email to the organisation's admins.
+  - decline: `status = declined`; email to the organisation's admins ("karton nije prihvaćen").
+- **Budget:** `read-small` (get), `action` (accept, decline)
+
+#### EP-61 — Litters: list / create / update offspring status and price
+- **Address:** Data API `rpc:list_litters()`; `action:createLitter(input) → Litter`; Data API `pets` update `offspring_status`, `price_minor` where `id = :pet_id` and `litter_id is not null` (trigger writes `pet_status_history`)
+- **Callers:** S22 `/organizacija/legla` (litter cards, offspring rows, new litter Dialog with mother picker)
+- **FRs:** FR-48, FR-49
+- **Authorization:** OrgAdmin, Volunteer of a breeder organisation; shelter → `403 forbidden_role`. Writes need an active breeder plan.
+- **Request:**
+  - list: none (bounded list, §3.4)
+  - create: `mother_id` — uuid — required — female pet of the organisation (`pets.sex = female`); `father_id` — uuid — optional — male pet of the organisation; `father_name` — string ≤ 120 — optional — outside sire (at most one of `father_id`, `father_name`); `born_on` — date — required — not in the future; `offspring_count` — integer 1–20 — required
+  - update offspring: `offspring_status` — enum `available` / `reserved` / `sold` — optional; `price` — `{amount_minor ≥ 0, currency = "RSD"}` → `pets.price_minor` — optional, null clears
+- **Response:** list → `200` + `{ items: Litter[], eligible_mothers: [{pet_id, name}], eligible_fathers: [{pet_id, name}], access: Access }` (`items` sorted by `born_on` desc; mothers/fathers = the organisation's female/male non-offspring pets with `breeding_status = active`, source `pets.id`, `pets.name`). create → `ok` + `Litter`. update → `200` + updated offspring row (`Litter.offspring[]` shape).
+- **Errors:** `validation_failed` (422) — mother not female/not ours, both father fields set, `born_on` in future, count out of range, negative price; `breeder_plan_required` (403); `forbidden_role` (403); `not_found` (404); `organisation_pending_approval` (403).
+- **States:** S22 *empty* on `items: []`; *default*; *read_only* when `access.can_edit = false`; inline errors in the Dialog.
+- **Side effects:** create (one transaction): `litters{organisation_id, mother_id, father_id, father_name, born_on, offspring_count}` + `offspring_count` `pets{organisation_id, litter_id, name = "Mladunče N", species = mother's, breed = mother's, sex = unknown, birth_date = born_on, offspring_status = available}` + one `pet_status_history` row each (`available`). Names and sex are edited later through EP-04 (Part A). Status/price change → `pet_status_history` (status only) and EP-62 cache purge.
+- **Budget:** `read-small` (list), `action` (create), `write` (update)
+
+#### EP-62 — Public organisation page
+- **Address:** `GET /api/public/orgs/:slug?limit=&offset=` — cached at the edge 5 min (`Cache-Control: public, s-maxage=300`), cache tag `org:<slug>`
+- **Callers:** S23 `/o/[slug]` (Visitor and signed-in)
+- **FRs:** FR-46, FR-49
+- **Authorization:** everyone, Visitor included. Only `organisations.approval_status = approved`; a breeder organisation additionally needs an active breeder plan (E-21). Otherwise `404 not_found`.
+- **Request:** `slug` — path — required (`organisations.slug`); `limit` — integer — optional, default 20, max 50; `offset` — optional, default 0.
+- **Response:** `200` + `PublicOrgPage`. Animals: shelter — `pets.shelter_status = available`; breeder — `pets.offspring_status = available`; sort `pets.created_at` desc. Only public fields (BR-37). Photo/logo URLs are presigned GET URLs generated when the response is built (10 min) — never older than 5 min when served from cache.
+- **Errors:** `not_found` (404); `validation_failed` (422) — bad paging.
+- **States:** S23 *default*; *empty* on `animals: []`; *error* on 404/5xx. Guest vs signed-in variants come from the session (Me, Part B), not from this response.
+- **Side effects:** none. Cache purged by EP-55, EP-58, EP-59, EP-61 status/price changes and EP-68 decisions.
+- **Budget:** `public`
+
+#### EP-63 — Submit adoption request / breeder inquiry
+- **Address:** `action:submitOrgRequest(input) → { id, kind, status, created_at }`
+- **Callers:** S23 `/o/[slug]` (request Dialog, "sent" confirmation)
+- **FRs:** FR-47, FR-49
+- **Authorization:** any signed-in user (Owner, Member, OrgAdmin, Volunteer, Operator); Visitor → `401 unauthenticated` (S23 shows the sign-in prompt, E-17).
+- **Request:**
+  - `pet_id` — uuid — required — must be currently listed on EP-62 (approved org, status `available`)
+  - `name` — string 1–120 — required
+  - `phone` — string 6–30 — required
+  - `email` — valid email — required (prefilled from Me)
+  - `message` — string ≤ 2000 — optional
+  - `idempotency_key` — uuid — required (§3.3)
+- **Response:** `ok` + inline `{ id: adoption_requests.id | breeder_inquiries.id, kind: "adoption_request" | "breeder_inquiry", status: "pending", created_at }`.
+- **Errors:** `rate_limited` (429, `details.retry_after_s`) — more than 5 per hour per user; `validation_failed` (422); `not_found` (404) — pet not publicly available.
+- **States:** S23 sent confirmation on `ok`; inline field errors; sign-in prompt on `401`.
+- **Side effects:** insert into `adoption_requests` (shelter pet) or `breeder_inquiries` (breeder offspring) with `requester_id = auth.uid()`, `status = pending`; notification email to the organisation's admins (Resend). Repeat with the same key within 24 h returns the original row.
+- **Budget:** `action`
+
+### 5.8 Partners & admin (EPIC-07)
+
+#### EP-64 — List partners nearby
+- **Address:** Data API `rpc:partners_nearby(p_lat, p_lng, p_city_id, p_type, p_limit)`
+- **Callers:** S24 `/partneri` (featured section, list by distance, type chips, no-vet banner); S03 `/ljubimci/[id]` vet suggestions (`p_type = vet`, `p_limit = 3`) when `pets.vet_name` is empty (BR-43)
+- **FRs:** FR-52, FR-53, FR-55, FR-56
+- **Authorization:** any signed-in user; Visitor → `401 unauthenticated`.
+- **Request:**
+  - `p_lat`, `p_lng` — number — optional, both or neither — browser location (BR-42)
+  - `p_city_id` — uuid — required when no coordinates — normally `profiles.city_id`
+  - `p_type` — enum `vet` / `pet_shop` / `grooming` / `pet_hotel` — optional; null = all
+  - `p_limit` — integer 1–50 — optional; null = whole list (bounded, §3.4)
+- **Response:** `200` + `Partner[]` — only `partners.paid_until >= current_date` (Europe/Belgrade) (BR-40); city = `p_city_id`, or the nearest `cities` row to the coordinates; order: `featured = true` first (at most 3 per type per city, BR-41) then the rest by `distance_km` asc. Distance from the coordinates if given, else from the city's `cities.latitude/longitude`. `logo_url` is `null` in this list (cards show initials); EP-65 signs it.
+- **Errors:** `validation_failed` (422) — neither coordinates nor city (`fields.p_city_id = "required"`), one coordinate only.
+- **States:** S24 *empty* on `[]`; *default*; *loading*; *error*. S03 shows no suggestion block on `[]`.
+- **Side effects:** none.
+- **Budget:** `read-small`
+
+#### EP-65 — Get partner
+- **Address:** `action:getPartner(input) → Partner` (calls `rpc:get_partner` for distance, then signs the logo URL)
+- **Callers:** S25 `/partneri/[id]`
+- **FRs:** FR-54, FR-55
+- **Authorization:** any signed-in user; Visitor → `401 unauthenticated`.
+- **Request:** `partner_id` — uuid — required; `lat`, `lng` — number — optional (both or neither); `city_id` — uuid — optional (fallback for distance).
+- **Response:** `ok` + `Partner` (full `hours`, `today_hours`, `logo_url` presigned 10 min; `distance_km` null if no location given).
+- **Errors:** `not_found` (404) — unknown or `paid_until` passed (E-23); `validation_failed` (422).
+- **States:** S25 *default*; *minimal* when optional fields are null (those quick actions hidden, E-24); *loading*; *error* on 404/5xx.
+- **Side effects:** none.
+- **Budget:** `read-small`
+
+#### EP-66 — Record partner click
+- **Address:** Data API `rpc:record_partner_click(p_partner_id, p_action)`
+- **Callers:** S24 `/partneri`, S25 `/partneri/[id]` (Pozovi, Poruka, Mejl, Sajt) — fire-and-forget before opening the link
+- **FRs:** FR-58, FR-55
+- **Authorization:** any signed-in user; Visitor → `401 unauthenticated`.
+- **Request:** `p_partner_id` — uuid — required — visible partner; `p_action` — enum `call` / `message` / `email` / `website` — required — the partner must have the data for it (`phone`; `message_channel <> none` and `message_number`; `email`; `website`).
+- **Response:** `204` (no body).
+- **Errors:** `not_found` (404) — unknown or hidden partner; `validation_failed` (422) — action without data.
+- **States:** none (a failure never blocks the link; the client ignores errors).
+- **Side effects:** insert `partner_clicks{partner_id, action, user_id = auth.uid(), clicked_at = now()}`.
+- **Budget:** `write`
+
+#### EP-67 — List cities
+- **Address:** Data API `cities` select `id, name_sr, name_en, latitude, longitude` order by `name_sr` (RLS: readable by `anon` and `authenticated`)
+- **Callers:** S02 `/ljubimci/novi`, S15 `/registracija` (organisation city), S18 `/profil` (profile city), S26 `/admin` (partner city)
+- **FRs:** FR-53, FR-33, FR-57
+- **Authorization:** everyone, Visitor included.
+- **Request:** none (bounded list).
+- **Response:** `200` + `City[]`.
+- **Errors:** none beyond `internal_error` (500).
+- **States:** a Select's loading/default; error shows the field error.
+- **Side effects:** none. Long-cacheable on the client (reference data).
+- **Budget:** `read-small`
+
+#### EP-68 — Admin: list pending organisations / approve / reject
+- **Address:** Data API view `admin_pending_organisations` select order by `created_at` asc, `.range()` with count (RLS: `profiles.is_operator`); `action:decideOrganisation(input) → PendingOrganisation`
+- **Callers:** S26 `/admin` (Azili na čekanju tab)
+- **FRs:** FR-42, FR-57
+- **Authorization:** Operator only; everyone else → `403 forbidden_role` (the view returns `[]` to non-Operators through RLS; the action checks explicitly).
+- **Request:**
+  - list: `limit` (default 20, max 50), `offset`
+  - decide: `organisation_id` — uuid — required; `decision` — enum `approve` / `reject` — required; `rejection_reason` — string ≤ 500 — optional, only with `reject`
+- **Response:** list → `200` + `PendingOrganisation[]` with `total`. decide → `ok` + `PendingOrganisation` (updated `approval_status`).
+- **Errors:** `forbidden_role` (403); `not_found` (404); `already_decided` (409) — not `pending`; `validation_failed` (422) — reason with approve, reason too long.
+- **States:** S26 tab *empty* on `[]`; *default*; *loading*; *error*.
+- **Side effects:** approve → `organisations.approval_status = approved`; members' writes unblock immediately; email to the creator (`profiles.email` of `organisations.created_by`, Resend). Reject → `approval_status = rejected`, `rejection_reason`; email with the reason when given. EP-62 cache purge for the slug.
+- **Budget:** `read-list` (list), `action` (decide)
+
+#### EP-69 — Admin: list / create / update partner
+- **Address:** Data API `rpc:admin_list_partners(p_city_id, p_type, p_limit, p_offset)`; `action:geocodeAddress(input)`; `action:createPartnerLogoUpload(input) → UploadTicket`; `action:savePartner(input) → Partner`
+- **Callers:** S26 `/admin` (Partneri tab: table, Istaknut switch with "n / 3", add/edit Dialog, "Pronađi koordinate", logo upload, hours editor)
+- **FRs:** FR-57, FR-54
+- **Authorization:** Operator only; everyone else → `403 forbidden_role`. Writes use the service role on the server.
+- **Request:**
+  - list: `p_city_id`, `p_type` — optional filters; `p_limit` (default 20, max 50), `p_offset`
+  - geocode: `address` — string — required; `city_id` — uuid — required
+  - logo upload: `file_name` — string — required; `mime_type` — `image/*` — required (BR-05); `size_bytes` — integer ≤ 10 485 760 — required (BR-05)
+  - save: `id` — uuid — optional (absent = create; present = update, only the fields sent change)
+    - `type` — enum `vet` / `pet_shop` / `grooming` / `pet_hotel` — required on create
+    - `name`, `address` — string 1–200 — required on create
+    - `city_id` — uuid — required on create (from EP-67)
+    - `phone` — string 6–30 — required on create
+    - `email`, `website`, `instagram` — string — optional (valid email / URL / handle)
+    - `description` — string ≤ 1000 — optional
+    - `message_channel` — enum `none` / `sms` / `viber` / `whatsapp` — optional, default `none` (BR-44)
+    - `message_number` — string 6–30 — required when `message_channel <> none`
+    - `latitude`, `longitude` — number — optional; if both are null on save, the address is geocoded (ADR-11)
+    - `logo_r2_key` — string — optional — from the `UploadTicket`; null removes the logo
+    - `featured` — boolean — optional (BR-41)
+    - `paid_until` — date — required on create (BR-40)
+    - `hours` — `PartnerHours[]` — optional — replaces all rows; weekday 1–7 unique; `opens < closes` (`closes = "24:00"` allowed); a missing weekday = closed
+- **Response:** list → `200` + `{ items: (Partner & { featured_count: integer })[], total }` (sort `name`; includes hidden partners; `featured_count` computed: partners with `featured = true` in the same `city_id` and `type`, shown as "n / 3"). geocode → `ok` + `{ latitude, longitude, display_name }`. logo → `ok` + `UploadTicket`. save → `ok` + `Partner`.
+- **Errors:** `featured_limit_reached` (409) — a 4th featured partner of this type in this city (trigger, BR-41); `geocoding_failed` (502) — Nominatim found nothing or failed (the Operator enters coordinates manually and saves again); `validation_failed` (422); `file_too_large` / `file_type_not_allowed` (422) — logo; `forbidden_role` (403); `not_found` (404).
+- **States:** S26 Partneri *default*, *empty* on `[]`, *loading*, *error*; inline field errors and a toast for `featured_limit_reached` / `geocoding_failed`.
+- **Side effects:** save upserts `partners` and replaces `partner_hours` in one transaction; geocoding calls OpenStreetMap Nominatim (≤ 1 request/s, server-side, with app User-Agent). Changes show in EP-64/65 on the next read; a passed `paid_until` hides the partner automatically (E-23). A replaced logo's old R2 key is queued for EP-52.
+- **Budget:** `read-list` (list), `action` (geocode, logo, save)
+
+#### EP-70 — Admin: partner click statistics by period
+- **Address:** Data API `rpc:admin_partner_click_stats(p_period, p_limit, p_offset)`
+- **Callers:** S26 `/admin` (Statistika tab, month selector)
+- **FRs:** FR-58
+- **Authorization:** Operator only; everyone else → `403 forbidden_role`.
+- **Request:** `p_period` — string `YYYY-MM` (Europe/Belgrade calendar month) — optional, default current month; `p_limit` (default 20, max 50); `p_offset`.
+- **Response:** `200` + `{ period: "YYYY-MM", available_periods: string[] (computed: distinct months of partner_clicks.clicked_at, newest first), items: PartnerClickStats[], total }`. Sort: `total` desc, then partner name. Partners with no clicks in the period are omitted.
+- **Errors:** `forbidden_role` (403); `validation_failed` (422) — bad period format.
+- **States:** S26 Statistika *empty* on `items: []`; *default*; *loading*; *error*.
+- **Side effects:** none.
+- **Budget:** `read-list`
+
+#### EP-71 — Admin: get / set app settings
+- **Address:** Data API `app_settings` select (single row); `action:setAppSettings(input) → AppSettings`
+- **Callers:** S26 `/admin` (Kanali tab: Viber switch with cost-warning confirm)
+- **FRs:** FR-23 (BR-14b, BR-14a shown)
+- **Authorization:** Operator for this operation (`forbidden_role` for others on set). Other users learn `viber_enabled` only through the reminder-settings reads of Part B (EP-28 / EP-31).
+- **Request (set):** `viber_enabled` — boolean — required.
+- **Response:** `200` / `ok` + `AppSettings`.
+- **Errors:** `forbidden_role` (403).
+- **States:** S26 Kanali *default*, *loading*, *error*.
+- **Side effects:** updates `app_settings.viber_enabled`. Switching off: Viber disappears from channel choices (E-27); existing `reminder_preferences.channels` containing `viber` are kept but the dispatch job skips Viber while it is off, delivering by the other selected channels (email/push fallback if Viber was the only one). Switching on makes Viber selectable for Premium users.
+- **Budget:** `write`
+
+#### EP-72 — Update organisation public profile
+- **Address:** Data API `organisations` update `eq(id, :organisation_id)` — columns `description`, `phone`, `email`, `website`, `logo_r2_key`; logo bytes via EP-13 with `purpose: organisation_logo`
+- **Callers:** S29 `/organizacija/profil`
+- **FRs:** FR-60
+- **Authorization:** OrgAdmin of that organisation; Volunteer → `403 forbidden_role`; others → `404 not_found`.
+- **Request:**
+  - `description` — string | null — optional — ≤ 1000 characters
+  - `phone` — string | null — optional — ≤ 30 characters
+  - `email` — string | null — optional — valid email
+  - `website` — string | null — optional — `https://` URL
+  - `logo_r2_key` — string | null — optional — must come from a confirmed EP-13 ticket for this organisation
+- **Response:** `200` → `Organisation`
+- **Errors:** `validation_failed` (422); `forbidden_role` (403); `not_found` (404); `organisation_pending_approval` (403)
+- **States:** S29 default, read_only (Volunteer: `access.can_edit = false` from EP-53), inline field errors.
+- **Side effects:** public page cache for EP-62 refreshes within 5 minutes.
+- **Budget:** `write`.
+
+---
+
+## 6. Payload Schemas
+
+Shared object shapes referenced by §5. Each field is typed, nullability stated, and mapped to a TC v1.3 column or marked computed.
+
+
+Notation: **Null** = whether the value may be `null` (every field is always present, §3.5). Money = `{ amount_minor: integer, currency: "RSD" }`. Schemas owned by other parts are referenced by name: `ReminderOccurrence`, `Entitlements` (Part B); none from Part C.
+
+#### Access
+| Field | Type | Null | Source |
+|---|---|---|---|
+| role | enum `owner` / `member` / `org_admin` / `volunteer` / `operator` | no | computed: `owner` if `pets.owner_id = auth.uid()`; `member` if the pet is in `household_pets` of a household with a `household_memberships` row for the caller; `org_admin` / `volunteer` from `organisation_memberships.role` (`admin` / `volunteer`) of `pets.organisation_id`; `operator` if `profiles.is_operator` (file access only) |
+| can_edit | boolean | no | computed: on a pet — `role ∈ {owner, org_admin, volunteer}` and not an organisation copy after an accepted `record_transfers` row; on an entry — see Part A conventions (creator / owner / organisation), `false` when `households.read_only` |
+| can_delete | boolean | no | computed: on a pet — `role ∈ {owner, org_admin}` and not a transferred copy; on an entry — same as `can_edit` |
+
+#### PetSummary
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `pets.id` |
+| name | string | no | `pets.name` |
+| species | enum | no | `pets.species` |
+| species_other | string | yes | `pets.species_other` |
+| breed | string | yes | `pets.breed` |
+| sex | enum `male`/`female`/`unknown` | no | `pets.sex` |
+| birth_date | date | yes | `pets.birth_date` |
+| birth_year | integer | yes | `pets.birth_year` |
+| has_photo | boolean | no | computed: `pets.photo_r2_key is not null` (URL via EP-15 `pet_photo`) |
+| lifecycle | enum `active`/`memorial` | no | `pets.lifecycle` |
+| organisation_id | uuid | yes | `pets.organisation_id` |
+| owner_name | string | yes | computed: `profiles.full_name` of `pets.owner_id` (shown on shared pets) |
+| vet_name | string | yes | `pets.vet_name` (null → vet suggestion, BR-43) |
+| attachment_count | integer | no | computed: `count(attachments)` where `attachments.pet_id = pets.id` |
+| moment_count | integer | no | computed: `count(moments)` where `moments.pet_id = pets.id` |
+| next_reminder | ReminderOccurrence | yes | computed: earliest occurrence with `reminder_occurrences.status ∈ {pending, sent, resent}` and `due_at ≥ now()` of an active `reminders` row with this `pet_id`, visible to the caller per EP-25 rules; null when none |
+| memorial | MemorialRecord | yes | `memorial_records` where `pet_id = pets.id`; null when active |
+| access | Access | no | computed |
+| can_log | boolean | no | computed: `role ∈ {owner, org_admin, volunteer}`, or `role = member` and `households.read_only = false`; `false` for a transferred organisation copy |
+
+#### Pet
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `pets.id` |
+| owner_id | uuid | yes | `pets.owner_id` |
+| organisation_id | uuid | yes | `pets.organisation_id` |
+| name | string | no | `pets.name` |
+| species | enum | no | `pets.species` |
+| species_other | string | yes | `pets.species_other` |
+| breed | string | yes | `pets.breed` |
+| sex | enum | no | `pets.sex` |
+| birth_date | date | yes | `pets.birth_date` |
+| birth_year | integer | yes | `pets.birth_year` |
+| colour_markings | string | yes | `pets.colour_markings` |
+| microchip_number | string | yes | `pets.microchip_number` |
+| passport_number | string | yes | `pets.passport_number` |
+| neutered | enum `yes`/`no`/`unknown` | no | `pets.neutered` |
+| has_photo | boolean | no | computed: `pets.photo_r2_key is not null` |
+| photo_file_name | string | yes | computed: last path segment of `pets.photo_r2_key` (S02 shows the file name) |
+| vet_name | string | yes | `pets.vet_name` |
+| vet_phone | string | yes | `pets.vet_phone` |
+| weight_unit | enum `kg`/`g` | no | `pets.weight_unit` |
+| note | string | yes | `pets.note` |
+| lifecycle | enum `active`/`memorial` | no | `pets.lifecycle` |
+| shelter_status | enum | yes | `pets.shelter_status` |
+| offspring_status | enum | yes | `pets.offspring_status` |
+| breeding_status | enum `active`/`retired` | yes | `pets.breeding_status` |
+| litter_id | uuid | yes | `pets.litter_id` |
+| price | Money | yes | computed: `{ amount_minor: pets.price_minor, currency: "RSD" }`; null when `price_minor` is null |
+| public_description | string | yes | `pets.public_description` |
+| approx_age_text | string | yes | `pets.approx_age_text` |
+| created_at | timestamp | no | `pets.created_at` |
+| updated_at | timestamp | no | `pets.updated_at` |
+
+#### PetRecord
+| Field | Type | Null | Source |
+|---|---|---|---|
+| pet | Pet | no | `pets` row |
+| access | Access | no | computed |
+| can_log | boolean | no | computed (as PetSummary) |
+| read_only_reason | enum `household_member` / `household_read_only` / `transferred` | yes | computed: `transferred` when an accepted `record_transfers` row exists for this `pet_id` and caller is the organisation; `household_read_only` when caller is a member and `households.read_only`; `household_member` for other member views; null when `access.can_edit = true` |
+| owner_name | string | yes | computed: `profiles.full_name` of `pets.owner_id` (read-only banner) |
+| memorial | MemorialRecord | yes | `memorial_records` by `pet_id` |
+| upcoming_reminders | ReminderOccurrence[] | no | computed: up to 3 next open occurrences (as `PetSummary.next_reminder`), order `due_at asc` |
+| vaccinations | Vaccination[] | no | `vaccinations` by `pet_id`, order `given_on desc` |
+| treatments | Treatment[] | no | `treatments` by `pet_id`, order active first then `starts_on desc` |
+| vet_visits | VetVisit[] | no | `vet_visits` by `pet_id`, order `visited_on desc` |
+| weights | WeightEntry[] | no | `weight_entries` by `pet_id`, order `measured_on desc` (latest, change and trend computed by the client) |
+| attachment_count | integer | no | computed: `count(attachments)` by `pet_id` (Free counter "n / 10" with `Entitlements`) |
+
+#### WeightEntry
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `weight_entries.id` |
+| pet_id | uuid | no | `weight_entries.pet_id` |
+| measured_on | date | no | `weight_entries.measured_on` |
+| value | number | no | `weight_entries.value` |
+| weight_unit | enum `kg`/`g` | no | computed: `pets.weight_unit` of the pet |
+| note | string | yes | `weight_entries.note` |
+| created_by | uuid | no | `weight_entries.created_by` |
+| created_by_name | string | yes | computed: `profiles.full_name` of `created_by` |
+| created_at | timestamp | no | `weight_entries.created_at` |
+| access | Access | no | computed (per-entry rule) |
+
+#### Vaccination
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `vaccinations.id` |
+| pet_id | uuid | no | `vaccinations.pet_id` |
+| name | string | no | `vaccinations.name` |
+| given_on | date | no | `vaccinations.given_on` |
+| next_due_on | date | yes | `vaccinations.next_due_on` |
+| days_until_due | integer | yes | computed: `next_due_on − today` (Europe/Belgrade); negative = overdue; null when `next_due_on` is null |
+| clinic | string | yes | `vaccinations.clinic` |
+| batch_number | string | yes | `vaccinations.batch_number` |
+| note | string | yes | `vaccinations.note` |
+| created_by | uuid | no | `vaccinations.created_by` |
+| created_at | timestamp | no | `vaccinations.created_at` |
+| updated_at | timestamp | no | `vaccinations.updated_at` |
+
+#### Treatment
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `treatments.id` |
+| pet_id | uuid | no | `treatments.pet_id` |
+| type | enum `medication`/`deworming`/`flea_tick`/`other` | no | `treatments.type` |
+| name | string | no | `treatments.name` |
+| dose | string | yes | `treatments.dose` |
+| interval_value | integer | yes | `treatments.interval_value` (null = one-time) |
+| interval_unit | enum `hours`/`days` | yes | `treatments.interval_unit` |
+| starts_on | date | no | `treatments.starts_on` |
+| ends_on | date | yes | `treatments.ends_on` |
+| note | string | yes | `treatments.note` |
+| is_active | boolean | no | computed: `starts_on ≤ today ≤ coalesce(ends_on, ∞)` (Europe/Belgrade) |
+| next_dose_at | timestamp | yes | computed: min `reminder_occurrences.due_at` with `status ∈ {pending, sent, resent}` of the `treatment_dose` reminder whose `source_id = treatments.id` |
+| next_dose_occurrence_id | uuid | yes | computed: `reminder_occurrences.id` of `next_dose_at` (passed to EP-11) |
+| recent_doses | DoseLog[] | no | `dose_logs` by `treatment_id`, latest 4, order `given_at desc` |
+| dose_count | integer | no | computed: `count(dose_logs)` by `treatment_id` |
+| created_by | uuid | no | `treatments.created_by` |
+| created_at | timestamp | no | `treatments.created_at` |
+
+#### DoseLog
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `dose_logs.id` |
+| treatment_id | uuid | no | `dose_logs.treatment_id` |
+| given_at | timestamp | no | `dose_logs.given_at` |
+| occurrence_id | uuid | yes | `dose_logs.occurrence_id` |
+| created_by | uuid | no | `dose_logs.created_by` |
+| created_by_name | string | yes | computed: `profiles.full_name` of `created_by` |
+| access | Access | no | computed (per-entry rule) |
+
+#### VetVisit
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `vet_visits.id` |
+| pet_id | uuid | no | `vet_visits.pet_id` |
+| visited_on | date | no | `vet_visits.visited_on` |
+| clinic | string | yes | `vet_visits.clinic` |
+| reason | string | no | `vet_visits.reason` |
+| findings | string | yes | `vet_visits.findings` |
+| recommendations | string | yes | `vet_visits.recommendations` |
+| cost | Money | yes | computed: `{ amount_minor: vet_visits.cost_minor, currency: "RSD" }`; null when `cost_minor` is null |
+| follow_up_on | date | yes | `vet_visits.follow_up_on` |
+| attachments | Attachment[] | no | `attachments` by `vet_visit_id`, order `created_at asc` |
+| created_by | uuid | no | `vet_visits.created_by` |
+| created_at | timestamp | no | `vet_visits.created_at` |
+| updated_at | timestamp | no | `vet_visits.updated_at` |
+
+#### Attachment
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `attachments.id` |
+| vet_visit_id | uuid | no | `attachments.vet_visit_id` |
+| pet_id | uuid | no | `attachments.pet_id` |
+| file_name | string | yes | `attachments.file_name` |
+| mime_type | string | no | `attachments.mime_type` |
+| size_bytes | integer | no | `attachments.size_bytes` |
+| created_by | uuid | no | `attachments.created_by` |
+| created_at | timestamp | no | `attachments.created_at` |
+
+#### UploadTicket
+| Field | Type | Null | Source |
+|---|---|---|---|
+| upload_token | string | no | computed: HMAC-signed token (purpose, target id, R2 key, mime, size, expiry); passed back to confirm |
+| put_url | string | no | computed: presigned R2 `PUT` URL for the generated key |
+| method | `"PUT"` | no | computed: constant |
+| headers | object `{ "Content-Type": string, "Content-Length": string }` | no | computed: must be sent exactly; R2 rejects other values |
+| expires_at | timestamp | no | computed: issue time + 10 min |
+| file_name | string | no | computed: echo of the requested file name |
+| position | integer | yes | computed: 1–5 for moment photos (EP-21); null for EP-13 |
+
+#### FileUrl
+| Field | Type | Null | Source |
+|---|---|---|---|
+| kind | enum `attachment`/`pet_photo`/`moment_photo`/`organisation_logo`/`partner_logo` | no | computed: echo of the request |
+| id | uuid | no | computed: echo of the request |
+| url | string | yes | computed: presigned R2 `GET` for `attachments.r2_key` / `pets.photo_r2_key` / `moment_photos.r2_key` / `organisations.logo_r2_key` / `partners.logo_r2_key`, `Content-Disposition: inline; filename=<file_name>`; null when not visible or no file |
+| expires_at | timestamp | yes | computed: issue time + 10 min; null when `url` is null |
+| mime_type | string | yes | `attachments.mime_type` for attachments; null for other kinds |
+
+#### FeedingEntry
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `feeding_entries.id` |
+| pet_id | uuid | no | `feeding_entries.pet_id` |
+| fed_at | timestamp | no | `feeding_entries.fed_at` |
+| type | enum `dry`/`wet`/`treat`/`home_made`/`other` | no | `feeding_entries.type` |
+| brand | string | yes | `feeding_entries.brand` |
+| amount_g | number | yes | `feeding_entries.amount_g` |
+| note | string | yes | `feeding_entries.note` |
+| created_by | uuid | no | `feeding_entries.created_by` |
+| created_by_name | string | yes | computed: `profiles.full_name` of `created_by` |
+| created_at | timestamp | no | `feeding_entries.created_at` |
+| access | Access | no | computed (per-entry rule) |
+
+#### StoolEntry
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `stool_entries.id` |
+| pet_id | uuid | no | `stool_entries.pet_id` |
+| observed_at | timestamp | no | `stool_entries.observed_at` |
+| consistency | enum `normal`/`soft`/`diarrhoea`/`hard` | no | `stool_entries.consistency` |
+| blood_or_mucus | boolean | no | `stool_entries.blood_or_mucus` |
+| note | string | yes | `stool_entries.note` |
+| created_by | uuid | no | `stool_entries.created_by` |
+| created_by_name | string | yes | computed: `profiles.full_name` of `created_by` |
+| created_at | timestamp | no | `stool_entries.created_at` |
+| access | Access | no | computed (per-entry rule) |
+
+#### MealSchedule
+| Field | Type | Null | Source |
+|---|---|---|---|
+| pet_id | uuid | no | `reminders.pet_id` |
+| reminder_id | uuid | yes | `reminders.id` (type `meal`); null after removal |
+| meal_times | `HH:MM`[] | no | `reminders.meal_times`, ascending |
+| meal_weekdays | integer[] | no | `reminders.meal_weekdays` (1 = Monday … 7 = Sunday) |
+| every_day | boolean | no | computed: `meal_weekdays` contains all of 1…7 |
+| active | boolean | no | `reminders.active` (false for memorial pets) |
+
+#### Moment
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `moments.id` |
+| pet_id | uuid | no | `moments.pet_id` |
+| moment_date | date | no | `moments.moment_date` |
+| text | string | yes | `moments.text` |
+| photos | MomentPhoto[] | no | `moment_photos` by `moment_id`, order `position asc` |
+| photo_count | integer | no | computed: `count(moment_photos)` |
+| public_link | object `{ slug: string, active: boolean, url: string }` | yes | `moment_public_links.slug`, `moment_public_links.active`; `url` computed `"https://mojljubimac.rs/t/" + slug`; null when never enabled |
+| created_by | uuid | no | `moments.created_by` |
+| created_by_name | string | yes | computed: `profiles.full_name` of `created_by` |
+| created_at | timestamp | no | `moments.created_at` |
+| access | Access | no | computed (per-entry rule) |
+
+#### MomentPhoto
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `moment_photos.id` (URL via EP-15 `moment_photo`) |
+| moment_id | uuid | no | `moment_photos.moment_id` |
+| position | integer | no | `moment_photos.position` (1–5) |
+
+Alt text is built by the client as "<pet name>, <date>" (Design §7); no captions.
+
+#### PublicMoment
+| Field | Type | Null | Source |
+|---|---|---|---|
+| slug | string | no | `moment_public_links.slug` |
+| pet_name | string | no | `pets.name` (via `moments.pet_id`) |
+| pet_sex | enum `male`/`female`/`unknown` | no | `pets.sex` (accent colour) |
+| moment_date | date | no | `moments.moment_date` |
+| text | string | yes | `moments.text` |
+| photos | array of `{ position: integer, url: string, expires_at: timestamp }` | no | `moment_photos.position`; `url` computed: presigned R2 `GET` for `moment_photos.r2_key`; `expires_at` computed: issue time + 10 min |
+
+#### PdfExportBundle
+| Field | Type | Null | Source |
+|---|---|---|---|
+| generated_at | timestamp | no | computed: `now()` |
+| pet | Pet | no | `pets` row |
+| owner_name | string | yes | computed: `profiles.full_name` of `pets.owner_id` |
+| memorial | MemorialRecord | yes | `memorial_records` by `pet_id` |
+| vaccinations | Vaccination[] | no | `vaccinations` by `pet_id`, order `given_on asc` |
+| treatments | array of `Treatment` plus `doses: DoseLog[]` (all dose logs, order `given_at asc`) | no | `treatments`, `dose_logs` |
+| vet_visits | VetVisit[] | no | `vet_visits` by `pet_id`, order `visited_on asc` |
+| attachment_files | FileUrl[] | no | computed: one `FileUrl` per `attachments` row with `mime_type` `image/*` (embeddable); PDFs are listed by name only (ADR-12) |
+| weights | WeightEntry[] | no | `weight_entries` by `pet_id`, order `measured_on asc` |
+| photo | FileUrl | yes | computed: `pet_photo` URL when `pets.photo_r2_key` is set |
+
+#### MemorialRecord
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `memorial_records.id` |
+| pet_id | uuid | no | `memorial_records.pet_id` |
+| date | date | no | `memorial_records.date` |
+| reason | enum `passed_away`/`rehomed`/`lost` | yes | `memorial_records.reason` |
+| note | string | yes | `memorial_records.note` |
+| created_at | timestamp | no | `memorial_records.created_at` |
+
+---
+
+#### ReminderOccurrence
+One reminder **instance** (see §5.3 note) as seen by the caller.
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `reminder_occurrences.id` of the instance's final notice |
+| reminder_id | uuid | no | `reminder_occurrences.reminder_id` |
+| type | enum `vaccination` / `treatment_dose` / `vet_follow_up` / `meal` / `birthday` / `manual` | no | `reminders.type` |
+| title | string | yes | `reminders.title` for `manual`; computed for others: `vaccinations.name` / `treatments.name` / `vet_visits.reason` via `reminders.source_id`; null for `meal` and `birthday` (UI builds the label from `type` + pet name) |
+| due_at | timestamp | no | `reminder_occurrences.due_at` |
+| status | enum `pending` / `sent` / `resent` / `done` / `missed` | no | `reminder_occurrences.status` of the final notice (`done` if any row of the instance is done) |
+| display_status | enum `today` / `soon` / `missed` / `done` | no | computed: `done` if done; `missed` if final notice missed; `today` if due date (Belgrade) = today; else `soon` |
+| pet_id | uuid | yes | `reminders.pet_id` (null = "Za mene", BR-18) |
+| pet_name | string | yes | `pets.name` |
+| pet_sex | enum `male` / `female` / `unknown` | yes | `pets.sex` |
+| pet_species | enum (TC `pets.species`) | yes | `pets.species` |
+| channels | enum[] `email` / `push` / `whatsapp` / `viber` | no | computed: before sending — caller's `reminder_preferences.channels` for `type` (defaults if no row), minus channels the caller cannot use now (Free → no whatsapp/viber; member → email/push only; viber while off); after sending — distinct `reminder_deliveries.channel` where `recipient_id = caller` and `status = delivered` |
+| sent_at | timestamp | yes | `reminder_occurrences.sent_at` of the final notice |
+| done_at | timestamp | yes | `reminder_occurrences.done_at` |
+| done_by | uuid | yes | `reminder_occurrences.done_by` |
+| done_by_name | string | yes | `profiles.full_name` of `done_by` (UI shows first name) |
+| is_shared | boolean | no | computed: `reminders.user_id ≠ caller` (member viewing a shared pet's reminder) |
+| can_mark_done | boolean | no | computed: not done and (caller is owner, or member of a household with `read_only = false`) |
+
+#### Reminder
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `reminders.id` |
+| user_id | uuid | no | `reminders.user_id` |
+| pet_id | uuid | yes | `reminders.pet_id` |
+| type | enum (as ReminderOccurrence.type) | no | `reminders.type` (always `manual` from EP-27) |
+| title | string | yes | `reminders.title` |
+| starts_at | timestamp | no | `reminders.starts_at` |
+| recurrence | enum `none` / `daily` / `weekly` / `monthly` / `yearly` / `hourly_interval` | no | `reminders.recurrence` |
+| active | boolean | no | `reminders.active` |
+| next_due_at | timestamp | yes | computed: min `reminder_occurrences.due_at` of not-done instances with `due_at ≥ now()` |
+| created_at | timestamp | no | `reminders.created_at` |
+| updated_at | timestamp | no | `reminders.updated_at` |
+
+#### ReminderPreference
+| Field | Type | Null | Source |
+|---|---|---|---|
+| type | enum (as ReminderOccurrence.type) | no | `reminder_preferences.type` |
+| lead_minutes | integer[] | no | `reminder_preferences.lead_minutes`; default when no row: `vaccination` {10080, 0}, `vet_follow_up` {1440, 0}, `birthday` {0}, `manual` {0}, `treatment_dose` {0}, `meal` {0} |
+| delivery_time | string `HH:MM` | yes | `reminder_preferences.delivery_time`; default `09:00`; null for `treatment_dose` / `meal` |
+| channels | enum[] `email` / `push` / `whatsapp` / `viber` | no | `reminder_preferences.channels`; default {email, push} |
+| fixed_time | boolean | no | computed: `type` in (`treatment_dose`, `meal`) — UI shows "Stižu tačno u zadato vreme" (BR-13) |
+| is_default | boolean | no | computed: no `reminder_preferences` row stored for this type |
+| updated_at | timestamp | yes | `reminder_preferences.updated_at` (null when default) |
+
+#### PushSubscription
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `push_subscriptions.id` |
+| endpoint | string | no | `push_subscriptions.endpoint` |
+| user_agent | string | yes | `push_subscriptions.user_agent` |
+| created_at | timestamp | no | `push_subscriptions.created_at` |
+
+(`p256dh` and `auth` are write-only and never returned.)
+
+#### WhatsAppConnection
+| Field | Type | Null | Source |
+|---|---|---|---|
+| channel | enum `whatsapp` | no | `user_channels.channel` (constant) |
+| status | enum `connected` / `not_connected` | no | computed: `user_channels` row with `opted_in_at` not null exists |
+| phone | string | yes | `user_channels.address` (E.164; the caller's own number, unmasked) |
+| connected_at | timestamp | yes | `user_channels.opted_in_at` |
+
+#### ChannelUsage
+| Field | Type | Null | Source |
+|---|---|---|---|
+| month | string `YYYY-MM` | no | computed: current calendar month, Europe/Belgrade |
+| used | integer | no | computed: count `reminder_deliveries` where `recipient_id = caller`, `channel` in (whatsapp, viber), `status = delivered`, `delivered_at` within `month` |
+| used_whatsapp | integer | no | computed: as `used`, `channel = whatsapp` |
+| used_viber | integer | no | computed: as `used`, `channel = viber` |
+| cap | integer | no | computed: constant 30 (BR-14a) |
+| remaining | integer | no | computed: max(0, `cap − used`) |
+| resets_on | date | no | computed: first day of next month (Belgrade) |
+
+#### Household
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `households.id` |
+| name | string | no | `households.name` |
+| owner_id | uuid | yes | `households.owner_id` (null only transiently during BR-27 transfer) |
+| owner_name | string | yes | `profiles.full_name` of `owner_id` |
+| owner_premium_until | timestamp | yes | `subscriptions.current_period_end` of the owner's latest premium-family subscription (null if never Premium) — read-only banner |
+| read_only | boolean | no | `households.read_only` (BR-28) |
+| my_role | enum `owner` / `member` | no | computed: caller = `households.owner_id` → owner |
+| my_reminders_enabled | boolean | yes | `household_memberships.reminders_enabled` of the caller; null for the owner |
+| members | HouseholdMember[] | no | owner first, then `household_memberships` by `joined_at` asc |
+| member_count | integer | no | computed: 1 (owner) + count `household_memberships` |
+| member_limit | integer | no | computed: constant 6 (BR-20) |
+| pets | object[] | no | owner view: all pets with `pets.owner_id = households.owner_id`; member view: shared pets only |
+| pets[].pet_id | uuid | no | `pets.id` |
+| pets[].name | string | no | `pets.name` |
+| pets[].sex | enum | no | `pets.sex` |
+| pets[].species | enum | no | `pets.species` |
+| pets[].breed | string | yes | `pets.breed` |
+| pets[].lifecycle | enum `active` / `memorial` | no | `pets.lifecycle` |
+| pets[].shared | boolean | no | computed: row exists in `household_pets` (`household_id`, `pet_id`) |
+| pending_invitations | HouseholdInvitation[] | no | `household_invitations` with `status = pending` and `expires_at > now()`, newest first; `[]` for members |
+| access | Access | no | computed: role `owner` → `can_edit = not read_only`, `can_delete = false`; role `member` → both false |
+
+#### HouseholdMember
+| Field | Type | Null | Source |
+|---|---|---|---|
+| user_id | uuid | no | `household_memberships.user_id` / `households.owner_id` |
+| full_name | string | yes | `profiles.full_name` (UI derives initials) |
+| email | string | no | `profiles.email` |
+| role | enum `owner` / `member` | no | computed from `households.owner_id` |
+| joined_at | timestamp | no | `household_memberships.joined_at`; owner: `households.created_at` |
+| reminders_enabled | boolean | yes | `household_memberships.reminders_enabled`; null for the owner |
+| is_me | boolean | no | computed: `user_id = auth.uid()` |
+
+#### HouseholdInvitation
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `household_invitations.id` |
+| household_id | uuid | no | `household_invitations.household_id` |
+| kind | enum `email` / `link` | no | computed: `email` null → link |
+| email | string | yes | `household_invitations.email` |
+| status | enum `pending` / `accepted` / `declined` / `expired` | no | `household_invitations.status` (reported `expired` when `expires_at < now()`) |
+| created_at | timestamp | no | `household_invitations.created_at` |
+| expires_at | timestamp | no | `household_invitations.expires_at` |
+| decided_at | timestamp | yes | `household_invitations.decided_at` |
+| accepted_by | uuid | yes | `household_invitations.accepted_by` |
+
+#### InvitationView
+Fields marked **(session)** are `null` for a Visitor.
+| Field | Type | Null | Source |
+|---|---|---|---|
+| kind | enum `household` | no | computed: constant |
+| status | enum `pending` / `accepted` / `declined` | no | `household_invitations.status` (expired → `410`, never returned here) |
+| expires_at | timestamp | no | `household_invitations.expires_at` |
+| household_name | string | no | `households.name` |
+| inviter_name | string | yes | `profiles.full_name` of `households.owner_id` |
+| inviter_city | City | yes | **(session)** `cities` via `profiles.city_id` of the owner (schema City, part C) |
+| shared_pets | object[] | yes | **(session)** pets in `household_pets` of the household |
+| shared_pets[].name | string | no | `pets.name` |
+| shared_pets[].sex | enum | no | `pets.sex` |
+| shared_pets[].species | enum | no | `pets.species` |
+| shared_pets[].breed | string | yes | `pets.breed` |
+| member_count | integer | yes | **(session)** computed: 1 + count `household_memberships` |
+| member_limit | integer | yes | **(session)** computed: constant 6 |
+| is_signed_in | boolean | no | computed: request has a session |
+| already_member | boolean | yes | **(session)** computed: caller is owner or has a `household_memberships` row |
+
+#### Me
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `profiles.id` |
+| email | string | no | `profiles.email` |
+| full_name | string | yes | `profiles.full_name` |
+| account_type | enum `owner` / `shelter` / `breeder` | no | `profiles.account_type` |
+| locale | enum `sr-Latn` / `en` | no | `profiles.locale` |
+| city | City | yes | `cities` via `profiles.city_id` (schema City, part C) |
+| is_operator | boolean | no | `profiles.is_operator` |
+| terms_version | string | no | `profiles.terms_version` |
+| terms_accepted_at | timestamp | no | `profiles.terms_accepted_at` |
+| deletion_requested_at | timestamp | yes | `profiles.deletion_requested_at` |
+| deletion_due_at | timestamp | yes | `profiles.deletion_due_at` |
+| deletion_days_left | integer | yes | computed: ceil((`deletion_due_at` − now) / 1 day); null when no deletion pending — "N / 30" |
+| organisation | object | yes | caller's `organisation_memberships` row (at most one; organisation accounts) |
+| organisation.id | uuid | no | `organisation_memberships.organisation_id` |
+| organisation.name | string | no | `organisations.name` |
+| organisation.type | enum `shelter` / `breeder` | no | `organisations.type` |
+| organisation.slug | string | no | `organisations.slug` |
+| organisation.role | enum `admin` / `volunteer` | no | `organisation_memberships.role` |
+| organisation.approval_status | enum `pending` / `approved` / `rejected` | no | `organisations.approval_status` |
+| entitlements | Entitlements | no | computed (below) |
+| usage.active_pets | integer | no | computed: count `pets` where `owner_id = caller`, `lifecycle = active` |
+| usage.memorials | integer | no | computed: count `pets` where `owner_id = caller`, `lifecycle = memorial` |
+| usage.household_members | integer | yes | computed: member_count of the household the caller owns; null if none |
+| usage.attachments_by_pet | object[] | no | computed: per own pet, count `attachments` by `pet_id` |
+| usage.attachments_by_pet[].pet_id | uuid | no | `pets.id` |
+| usage.attachments_by_pet[].pet_name | string | no | `pets.name` |
+| usage.attachments_by_pet[].count | integer | no | computed: count `attachments.pet_id` |
+| usage.moments_by_pet | object[] | no | computed: per own pet, count `moments` by `pet_id` |
+| usage.moments_by_pet[].pet_id | uuid | no | `pets.id` |
+| usage.moments_by_pet[].pet_name | string | no | `pets.name` |
+| usage.moments_by_pet[].count | integer | no | computed: count `moments.pet_id` |
+| usage.free_slot_pet | object | yes | computed: when `entitlements.premium = false` and `usage.active_pets ≥ 1`, the earliest-created active own pet (`pets.id`, `pets.name`) — "slot taken by …" copy on S01/S06/S14 |
+| usage.whatsapp_connected | boolean | no | computed: `user_channels` whatsapp row with `opted_in_at` not null (S18 over-limit summary "WhatsApp off") |
+
+#### Entitlements
+| Field | Type | Null | Source |
+|---|---|---|---|
+| plan | enum `free` / `premium` / `breeder` | no | computed from the caller's current `subscriptions` row (status `trialing` / `active` / `cancelled` and `current_period_end > now()`): premium-family → `premium`, breeder-family → `breeder`, none → `free` |
+| premium | boolean | no | computed: `plan = premium` |
+| breeder_plan | boolean | no | computed: `plan = breeder` (BR-11) |
+| subscription_status | enum `trialing` / `active` / `cancelled` / `expired` / `payment_failed` | yes | `subscriptions.status` of the latest row (null if never subscribed) |
+| premium_until | timestamp | yes | `subscriptions.current_period_end` of the latest row |
+| days_left | integer | yes | computed: ceil((`current_period_end` − now) / 1 day) while not expired (FR-25, BR-09) |
+| auto_renew | boolean | yes | `subscriptions.auto_renew` of the latest row |
+| trial_available | boolean | no | computed: not `profiles.trial_used` (BR-07) |
+| limits.active_pets | integer | yes | computed: 1 on Free, null = unlimited (BR-01/02) |
+| limits.memorials | integer | yes | computed: 2 on Free, null |
+| limits.attachments_per_pet | integer | yes | computed: 10 on Free, null |
+| limits.moments_per_pet | integer | yes | computed: 5 on Free, null |
+| limits.household_members | integer | no | computed: 6 on Premium, 0 on Free (BR-19/20) |
+| channels | enum[] | no | computed: {email, push} + `whatsapp` if premium + `viber` if premium and `app_settings.viber_enabled` |
+| pdf_export | boolean | no | computed: `premium` |
+| household_sharing | boolean | no | computed: `premium` |
+| logo_removal | boolean | no | computed: `premium` |
+
+#### Plan
+| Field | Type | Null | Source |
+|---|---|---|---|
+| code | enum `premium_monthly` / `premium_yearly` / `breeder_monthly` / `breeder_yearly` | no | `plans.code` |
+| family | enum `premium` / `breeder` | no | computed from `code` |
+| period | enum `month` / `year` | no | computed from `code` |
+| price | `{ amount_minor: integer, currency: string }` | no | `plans.price_minor`, `plans.currency` |
+| monthly_equivalent | `{ amount_minor: integer, currency: string }` | yes | computed: yearly → round(`price_minor` / 12); null for monthly |
+| trial_days | integer | no | computed: 7 for premium family (BR-07), 0 for breeder |
+
+
+#### Subscription
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | yes | `subscriptions.id`; null if never subscribed |
+| plan | enum `premium_monthly` / `premium_yearly` / `breeder_monthly` / `breeder_yearly` | yes | `subscriptions.plan` |
+| status | enum `trialing` / `active` / `cancelled` / `expired` / `payment_failed` | yes | `subscriptions.status` |
+| trial_ends_at | timestamp | yes | `subscriptions.trial_ends_at` |
+| current_period_end | timestamp | yes | `subscriptions.current_period_end` |
+| auto_renew | boolean | yes | `subscriptions.auto_renew` |
+| price | money | yes | `plans.price_minor`, `plans.currency` where `plans.code = subscriptions.plan` |
+| period_days | integer | yes | computed: days in the current period (plan month/year ending at `current_period_end`; 7 while `trialing`) |
+| days_remaining | integer | yes | computed: whole days from today (Europe/Belgrade) to `current_period_end`, min 0; null when no row |
+| is_active | boolean | no | computed: status in (trialing, active, cancelled) and `current_period_end > now()` |
+| trial_available | boolean | no | computed: `NOT profiles.trial_used` and the family is premium_* (BR-07) |
+| card_brand | string | yes | `subscriptions.card_brand` `[DEFERRED: OQ-11 value set]` |
+| card_last4 | string | yes | `subscriptions.card_last4` |
+| over_limits | array | no | computed for owners when `is_active = false`; `[]` otherwise |
+| over_limits[].limit | enum `pets` / `attachments` / `household` / `whatsapp` | no | computed |
+| over_limits[].pet_id | uuid | yes | `pets.id` (for `attachments`) |
+| over_limits[].pet_name | string | yes | `pets.name` (for `attachments`) |
+| over_limits[].used | integer | no | computed: active pets (`pets.lifecycle = active`), attachments per pet, household members, or WhatsApp channels selected |
+| over_limits[].allowed | integer | no | computed: Free limit (1, 10, 0, 0 — BR-01) |
+
+#### CheckoutSession
+| Field | Type | Null | Source |
+|---|---|---|---|
+| checkout_url | string | no | provider hosted-checkout URL `[DEFERRED: OQ-11]` |
+| provider_session_id | string | no | provider session id `[DEFERRED: OQ-11]` |
+| plan | enum (as `subscriptions.plan`) | no | request `plan` (`plans.code`) |
+| trial_applied | boolean | no | computed: BR-07 rule (EP-45) |
+| trial_ends_at | timestamp | yes | computed: now + 7 days when `trial_applied` |
+| amount | money | no | `plans.price_minor`, `plans.currency` |
+| first_charge_at | timestamp | no | computed: `trial_ends_at` when `trial_applied`, else now |
+| expires_at | timestamp | no | provider session expiry `[DEFERRED: OQ-11]` |
+
+#### DataExport
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `data_exports.id` |
+| status | enum `preparing` / `ready` / `failed` / `expired` | no | `data_exports.status` |
+| file_name | string | no | computed: `moj-ljubimac-podaci-<requested_at date>.zip` |
+| size_bytes | integer | yes | `data_exports.size_bytes` |
+| requested_at | timestamp | no | `data_exports.requested_at` |
+| ready_at | timestamp | yes | `data_exports.ready_at` |
+| expires_at | timestamp | yes | `data_exports.expires_at` (link valid until; 7 days after ready) |
+| download_url | FileUrl | yes | computed: presigned R2 GET of `data_exports.r2_key` (10 min); only when `status = ready` |
+
+#### Organisation
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `organisations.id` |
+| type | enum `shelter` / `breeder` | no | `organisations.type` |
+| name | string | no | `organisations.name` |
+| slug | string | no | `organisations.slug` |
+| public_path | string | no | computed: `/o/<slug>` |
+| city | City | yes | `cities` via `organisations.city_id` |
+| approval_status | enum `pending` / `approved` / `rejected` | no | `organisations.approval_status` |
+| rejection_reason | string | yes | `organisations.rejection_reason` |
+| tax_id | string | yes | `organisations.tax_id` |
+| registration_note | string | yes | `organisations.registration_note` |
+| description | string | yes | `organisations.description` |
+| phone | string | yes | `organisations.phone` |
+| email | string | yes | `organisations.email` |
+| website | string | yes | `organisations.website` |
+| logo_url | FileUrl | yes | computed: presigned GET of `organisations.logo_r2_key` |
+| member_count | integer | no | computed: count of `organisation_memberships` |
+| member_limit | integer | no | computed: constant 20 (BR-34) |
+| created_at | timestamp | no | `organisations.created_at` |
+
+#### OrganisationMember
+| Field | Type | Null | Source |
+|---|---|---|---|
+| user_id | uuid | no | `organisation_memberships.user_id` |
+| full_name | string | yes | `profiles.full_name` |
+| email | string | no | `profiles.email` |
+| role | enum `admin` / `volunteer` | no | `organisation_memberships.role` |
+| joined_at | timestamp | no | `organisation_memberships.created_at` |
+| is_me | boolean | no | computed: `user_id = auth.uid()` |
+
+#### OrganisationInvitation
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `organisation_invitations.id` |
+| email | string | no | `organisation_invitations.email` |
+| role | enum `admin` / `volunteer` | no | `organisation_invitations.role` |
+| status | enum `pending` / `accepted` / `declined` / `expired` | no | `organisation_invitations.status` |
+| expires_at | timestamp | no | `organisation_invitations.expires_at` |
+| created_at | timestamp | no | `organisation_invitations.created_at` |
+
+#### OrgAnimalRow
+| Field | Type | Null | Source |
+|---|---|---|---|
+| pet_id | uuid | no | `pets.id` |
+| name | string | no | `pets.name` |
+| species | enum | no | `pets.species` |
+| species_other | string | yes | `pets.species_other` |
+| breed | string | yes | `pets.breed` |
+| sex | enum `male` / `female` / `unknown` | no | `pets.sex` |
+| approx_age_text | string | yes | `pets.approx_age_text` |
+| birth_date | date | yes | `pets.birth_date` |
+| birth_year | integer | yes | `pets.birth_year` |
+| status_kind | enum `shelter` / `offspring` / `breeding` | no | computed: which status column is set |
+| status | string | no | `pets.shelter_status` \| `pets.offspring_status` \| `pets.breeding_status` |
+| since_date | date | yes | `intakes.intake_on` (shelter) \| `litters.born_on` via `pets.litter_id` (offspring) \| null |
+| is_mother | boolean | no | computed: a `litters.mother_id = pets.id` exists (breeder "Majka") |
+| lifecycle | enum `active` / `memorial` | no | `pets.lifecycle` |
+| transferred | boolean | no | computed: a `record_transfers` row for the pet with `status = accepted` (read-only copy) |
+
+#### Intake
+| Field | Type | Null | Source |
+|---|---|---|---|
+| pet_id | uuid | no | `intakes.pet_id` |
+| organisation_id | uuid | no | `pets.organisation_id` |
+| name | string | no | `pets.name` |
+| species | enum | no | `pets.species` |
+| species_other | string | yes | `pets.species_other` |
+| sex | enum | no | `pets.sex` |
+| breed | string | yes | `pets.breed` |
+| approx_age_text | string | yes | `pets.approx_age_text` |
+| shelter_status | enum | no | `pets.shelter_status` |
+| intake_on | date | no | `intakes.intake_on` |
+| arrival_type | enum `found` / `surrendered` / `confiscated` / `other` | no | `intakes.arrival_type` |
+| place_found | string | yes | `intakes.place_found` |
+| note | string | yes | `intakes.note` |
+| created_by | uuid | no | `intakes.created_by` |
+| created_at | timestamp | no | `intakes.created_at` |
+
+#### AdoptionRequest
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `adoption_requests.id` |
+| status | enum `pending` / `accepted` / `rejected` | no | `adoption_requests.status` |
+| requester_id | uuid | no | `adoption_requests.requester_id` |
+| name | string | no | `adoption_requests.name` |
+| phone | string | no | `adoption_requests.phone` |
+| email | string | no | `adoption_requests.email` |
+| message | string | yes | `adoption_requests.message` |
+| created_at | timestamp | no | `adoption_requests.created_at` |
+| decided_at | timestamp | yes | `adoption_requests.decided_at` |
+| decided_by_name | string | yes | `profiles.full_name` via `adoption_requests.decided_by` |
+| pet.pet_id | uuid | no | `pets.id` via `adoption_requests.pet_id` |
+| pet.name | string | no | `pets.name` |
+| pet.species | enum | no | `pets.species` |
+| pet.species_other | string | yes | `pets.species_other` |
+| pet.breed | string | yes | `pets.breed` |
+| pet.sex | enum | no | `pets.sex` |
+| pet.approx_age_text | string | yes | `pets.approx_age_text` |
+| pet.birth_date | date | yes | `pets.birth_date` |
+| pet.birth_year | integer | yes | `pets.birth_year` |
+| transfer | RecordTransfer | yes | latest `record_transfers` row for `pet_id` by `created_at`; null if none |
+
+#### BreederInquiry
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `breeder_inquiries.id` |
+| status | enum `pending` / `accepted` / `rejected` | no | `breeder_inquiries.status` |
+| requester_id | uuid | no | `breeder_inquiries.requester_id` |
+| name | string | no | `breeder_inquiries.name` |
+| phone | string | no | `breeder_inquiries.phone` |
+| email | string | no | `breeder_inquiries.email` |
+| message | string | yes | `breeder_inquiries.message` |
+| created_at | timestamp | no | `breeder_inquiries.created_at` |
+| decided_at | timestamp | yes | `breeder_inquiries.decided_at` |
+| decided_by_name | string | yes | `profiles.full_name` via `breeder_inquiries.decided_by` |
+| pet.pet_id | uuid | no | `pets.id` via `breeder_inquiries.pet_id` |
+| pet.name | string | no | `pets.name` |
+| pet.species | enum | no | `pets.species` |
+| pet.species_other | string | yes | `pets.species_other` |
+| pet.breed | string | yes | `pets.breed` |
+| pet.sex | enum | no | `pets.sex` |
+| pet.approx_age_text | string | yes | `pets.approx_age_text` |
+| pet.birth_date | date | yes | `pets.birth_date` |
+| pet.birth_year | integer | yes | `pets.birth_year` |
+| pet.price | money | yes | `pets.price_minor` + `"RSD"` |
+| transfer | RecordTransfer | yes | latest `record_transfers` row for `pet_id` by `created_at`; null if none |
+
+#### RecordTransfer
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `record_transfers.id` |
+| pet_id | uuid | no | `record_transfers.pet_id` |
+| status | enum `pending` / `accepted` / `declined` / `expired` | no | `record_transfers.status` |
+| recipient_email | string | no | `record_transfers.recipient_email` |
+| sent_at | timestamp | no | `record_transfers.created_at` |
+| expires_at | timestamp | no | `record_transfers.expires_at` |
+| is_expired | boolean | no | computed: `status = expired` or (`status = pending` and `expires_at < now()`) |
+| accepted_at | timestamp | yes | `record_transfers.accepted_at` |
+
+#### TransferView
+| Field | Type | Null | Source |
+|---|---|---|---|
+| transfer_id | uuid | no | `record_transfers.id` (matched by `token_hash`) |
+| status | enum `pending` / `accepted` / `declined` | no | `record_transfers.status` |
+| expires_at | timestamp | no | `record_transfers.expires_at` |
+| organisation.name | string | no | `organisations.name` via `from_organisation_id` |
+| organisation.city | City | yes | `cities` via `organisations.city_id` |
+| animal.name | string | no | `pets.name` |
+| animal.sex | enum | no | `pets.sex` |
+| animal.species | enum | no | `pets.species` |
+| animal.species_other | string | yes | `pets.species_other` |
+| animal.breed | string | yes | `pets.breed` |
+| animal.approx_age_text | string | yes | `pets.approx_age_text` |
+| animal.birth_date | date | yes | `pets.birth_date` |
+| animal.microchip_number | string | yes | `pets.microchip_number` |
+| animal.photo_url | FileUrl | yes | computed: presigned GET of `pets.photo_r2_key` |
+| counts.vaccinations | integer | no | computed: count of `vaccinations` for the pet |
+| counts.vet_visits | integer | no | computed: count of `vet_visits` for the pet |
+| counts.attachments | integer | no | computed: count of `attachments` for the pet |
+| new_pet_id | uuid | yes | `record_transfers.new_pet_id` — only to the accepting user after accept |
+
+#### Litter
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `litters.id` |
+| mother.pet_id | uuid | no | `litters.mother_id` |
+| mother.name | string | no | `pets.name` via `mother_id` |
+| breed | string | yes | `pets.breed` of the mother |
+| father_id | uuid | yes | `litters.father_id` |
+| father_name | string | yes | computed: `pets.name` via `father_id`, else `litters.father_name` |
+| father_external | boolean | no | computed: `litters.father_name is not null` (screen adds "spoljni pastuv") |
+| born_on | date | no | `litters.born_on` |
+| offspring_count | integer | no | `litters.offspring_count` |
+| available_count | integer | no | computed: offspring with `offspring_status = available` |
+| offspring[].pet_id | uuid | no | `pets.id` where `pets.litter_id = litters.id` |
+| offspring[].name | string | no | `pets.name` |
+| offspring[].sex | enum | no | `pets.sex` |
+| offspring[].offspring_status | enum `available` / `reserved` / `sold` | no | `pets.offspring_status` |
+| offspring[].price | money | yes | `pets.price_minor` + `"RSD"` |
+
+#### PublicOrgPage
+| Field | Type | Null | Source |
+|---|---|---|---|
+| organisation.name | string | no | `organisations.name` |
+| organisation.type | enum `shelter` / `breeder` | no | `organisations.type` |
+| organisation.slug | string | no | `organisations.slug` |
+| organisation.initials | string | no | computed: initials of `organisations.name` |
+| organisation.city | City | yes | `cities` via `organisations.city_id` |
+| organisation.description | string | yes | `organisations.description` |
+| organisation.phone | string | yes | `organisations.phone` |
+| organisation.email | string | yes | `organisations.email` |
+| organisation.website | string | yes | `organisations.website` |
+| organisation.logo_url | FileUrl | yes | computed: presigned GET of `organisations.logo_r2_key` |
+| animals | PublicAnimal[] | no | see EP-62 filter |
+| total | integer | no | computed: count of listed animals |
+
+#### PublicAnimal
+| Field | Type | Null | Source |
+|---|---|---|---|
+| pet_id | uuid | no | `pets.id` |
+| name | string | no | `pets.name` |
+| species | enum | no | `pets.species` |
+| species_other | string | yes | `pets.species_other` |
+| breed | string | yes | `pets.breed` |
+| sex | enum | no | `pets.sex` |
+| approx_age_text | string | yes | `pets.approx_age_text` |
+| birth_date | date | yes | `pets.birth_date` (client computes age when `approx_age_text` is null) |
+| birth_year | integer | yes | `pets.birth_year` |
+| public_description | string | yes | `pets.public_description` |
+| neutered | enum `yes` / `no` / `unknown` | no | `pets.neutered` |
+| vaccinated | boolean | no | computed: at least one `vaccinations` row for the pet |
+| price | money | yes | `pets.price_minor` + `"RSD"` (breeder only; null for shelters) |
+| photo_url | FileUrl | yes | computed: presigned GET of `pets.photo_r2_key` |
+
+#### Partner
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `partners.id` |
+| type | enum `vet` / `pet_shop` / `grooming` / `pet_hotel` | no | `partners.type` |
+| name | string | no | `partners.name` |
+| initials | string | no | computed: initials of `partners.name` |
+| address | string | no | `partners.address` |
+| city | City | no | `cities` via `partners.city_id` |
+| phone | string | no | `partners.phone` |
+| message_channel | enum `none` / `sms` / `viber` / `whatsapp` | no | `partners.message_channel` |
+| message_number | string | yes | `partners.message_number` |
+| email | string | yes | `partners.email` |
+| website | string | yes | `partners.website` |
+| instagram | string | yes | `partners.instagram` |
+| description | string | yes | `partners.description` |
+| logo_url | FileUrl | yes | computed: presigned GET of `partners.logo_r2_key` (EP-65, EP-69 save); null in EP-64 |
+| latitude | number | yes | `partners.latitude` |
+| longitude | number | yes | `partners.longitude` |
+| featured | boolean | no | `partners.featured` |
+| paid_until | date | no | `partners.paid_until` |
+| active | boolean | no | computed: `paid_until >= current_date` (Europe/Belgrade) |
+| distance_km | number | yes | computed in DB: great-circle distance from the given coordinates or city centre; null without a reference point |
+| hours | PartnerHours[] | no | `partner_hours` for the partner, ordered by weekday |
+| today_hours | PartnerHours | yes | computed: the `partner_hours` row for today's ISO weekday (Europe/Belgrade); null = closed today |
+
+#### PartnerHours
+| Field | Type | Null | Source |
+|---|---|---|---|
+| weekday | integer 1–7 (1 = Monday) | no | `partner_hours.weekday` |
+| opens | time `HH:MM` | no | `partner_hours.opens` |
+| closes | time `HH:MM` | no | `partner_hours.closes` |
+
+#### PartnerClickStats
+| Field | Type | Null | Source |
+|---|---|---|---|
+| partner_id | uuid | no | `partner_clicks.partner_id` |
+| partner_name | string | no | `partners.name` |
+| partner_type | enum | no | `partners.type` |
+| city_name_sr | string | no | `cities.name_sr` via `partners.city_id` |
+| call | integer | no | computed: count of `partner_clicks.action = call` in the period |
+| message | integer | no | computed: count of `action = message` |
+| email | integer | no | computed: count of `action = email` |
+| website | integer | no | computed: count of `action = website` |
+| total | integer | no | computed: sum of the four |
+
+#### City
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `cities.id` |
+| name_sr | string | no | `cities.name_sr` |
+| name_en | string | no | `cities.name_en` |
+| latitude | number | no | `cities.latitude` |
+| longitude | number | no | `cities.longitude` |
+
+#### AppSettings
+| Field | Type | Null | Source |
+|---|---|---|---|
+| viber_enabled | boolean | no | `app_settings.viber_enabled` |
+| whatsapp_monthly_cap | integer | no | computed: constant 30 (BR-14a) |
+| updated_at | timestamp | no | `app_settings.updated_at` |
+
+#### PendingOrganisation
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `organisations.id` |
+| type | enum `shelter` / `breeder` | no | `organisations.type` |
+| name | string | no | `organisations.name` |
+| city | City | yes | `cities` via `organisations.city_id` |
+| tax_id | string | yes | `organisations.tax_id` |
+| registration_note | string | yes | `organisations.registration_note` |
+| email | string | yes | `organisations.email` |
+| phone | string | yes | `organisations.phone` |
+| contact_full_name | string | yes | `profiles.full_name` via `organisations.created_by` |
+| contact_email | string | no | `profiles.email` via `organisations.created_by` |
+| approval_status | enum `pending` / `approved` / `rejected` | no | `organisations.approval_status` |
+| rejection_reason | string | yes | `organisations.rejection_reason` |
+| registered_at | timestamp | no | `organisations.created_at` |
+
+---
+
+## 7. Error Model & Response→State Mapping
+
+### 7.1 Envelope
+```ts
+type ApiError = {
+  code: string            // stable snake_case — the client switches on this
+  message: string         // English, for logs only — never rendered
+  fields?: Record<string, string>  // field name → field error code (validation only)
+  details?: Record<string, unknown> // machine-readable extras, e.g. { limit: "pets" }, { retry_after_s: 1800 }
+}
+```
+Database errors raised by triggers use `RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = '<code>'`; the client maps `message` → `code` so a rule fails with the same code on every surface. User-facing copy for each code is owned by the Design System (§8, §9).
+
+**Field error codes** (values inside `fields`, not catalog codes): `required`, `invalid`, `too_long`, `out_of_range`, `before_start` (date before its paired start date), `invalid_state` (not valid for the record's current state), `not_uploaded` (confirm called but the file is missing), `plan_not_allowed`, `last_admin`.
+
+### 7.2 Error-code catalog
+
+| Code | HTTP / surface | Meaning | PRD edge case |
+|---|---|---|---|
+| `unauthenticated` | 401 | No valid session | — |
+| `email_not_verified` | 403 | Email not yet verified (BR-29) | — |
+| `account_pending_deletion` | 403 | Account in its 30-day deletion window (BR-31) | E-16 |
+| `organisation_pending_approval` | 403 | Shelter not yet approved (BR-32) | — |
+| `not_found` | 404 | Resource missing or not related to the caller | — |
+| `forbidden_role` | 403 | Caller's role may not do this (BR-22, BR-25, BR-34) | E-12 |
+| `household_read_only` | 403 | Household owner has no Premium (BR-28) | E-13, E-14 |
+| `premium_required` | 403 | Free limit reached; `details.limit` ∈ `pets`, `memorials`, `attachments`, `moments`, `pdf_export`, `household`, `whatsapp`, `logo_removal`, `transfer_slot` | E-02, E-03, E-04, E-08, E-09, E-10, E-20, E-25, E-26 |
+| `breeder_plan_required` | 403 | Breeder features without an active breeder plan (BR-11) | E-21 |
+| `validation_failed` | 422 | One or more fields invalid; see `fields` | E-04, E-08 |
+| `file_too_large` | 422 | Attachment/photo > 10 MB (BR-05) | E-04 |
+| `file_type_not_allowed` | 422 | Not an image or PDF (BR-05) | E-04 |
+| `too_many_photos` | 422 | Moment with more than 5 photos (BR-06) | E-08 |
+| `household_full` | 409 | Household already has 6 members (BR-20) | E-11 |
+| `team_full` | 409 | Organisation already has 20 users (BR-34) | — |
+| `featured_limit_reached` | 409 | Already 3 featured partners of this type in this city (BR-41) | — |
+| `already_member` | 409 | Invitee is already in the household / team | — |
+| `invitation_expired` | 410 | Invitation or transfer link past its expiry (BR-38) | E-19 |
+| `invitation_used` | 409 | Invitation or transfer already accepted or declined | — |
+| `whatsapp_cap_reached` | — (internal) | 30 WhatsApp/Viber messages used this month (BR-14a); recorded on the delivery row by EP-33, never returned to a client — the reminder falls back to email + push | — |
+| `whatsapp_not_connected` | 409 | WhatsApp (or Viber, `details.channel`) chosen but no verified identity | — |
+| `verification_code_invalid` | 422 | Wrong or expired WhatsApp verification code | — |
+| `channel_disabled` | 409 | Viber selected while switched off (BR-14b) | E-27 |
+| `trial_already_used` | 409 | User already had the 7-day trial (BR-07) — informational for checkout | E-15 |
+| `subscription_not_active` | 409 | Cancel or change on a subscription that is not active | — |
+| `payment_provider_unavailable` | 503 | Payment provider not configured (OQ-11) | — |
+| `subscription_already_active` | 409 | Checkout for a plan family the user already has running (use EP-48 to resume renewal) | — |
+| `already_decided` | 409 | Request, inquiry or organisation approval is no longer pending | — |
+| `export_in_progress` | 409 | A data export is already being prepared | — |
+| `rate_limited` | 429 | Too many requests; `details.retry_after_s` | — |
+| `invalid_action_token` | 400 | Signed action link invalid, expired, or used | — |
+| `invalid_signature` | 401 | Webhook signature check failed | — |
+| `geocoding_failed` | 502 | Address could not be converted to coordinates (ADR-11) | — |
+| `internal_error` | 500 | Unexpected failure | — |
+
+### 7.3 Response → screen-state mapping
+
+| Design state | Produced by | Screens |
+|---|---|---|
+| **loading** | Request in flight (no response yet) | all with L |
+| **default** | `200` / `ok: true` with data | all |
+| **empty** | `200` / `ok: true` with an empty array (`[]`, `total: 0`) | S01, S03 tabs, S06, S07, S08, S10, S13, S20, S21, S22, S23, S24 |
+| **error** | `5xx`, network failure, or `404 not_found` on a screen's primary resource | all with X |
+| **premium_locked** | `403 premium_required` (any `details.limit`), or a read whose `entitlements.premium = false` for a gated feature | S01, S03, S05, S06, S08, S12, S13, S14, S17 |
+| **read_only** | `200` with `access.can_edit = false` on the primary resource (member view, household read-only, organisation copy after transfer, volunteer on requests); a write returns `403 forbidden_role` / `403 household_read_only` | S03, S13, S21 |
+| **pending_approval** | `200` on EP-53 with `organisation.approval_status = "pending"` | S20 |
+| **link_disabled** | `404 not_found` on EP-24 (disabled, deleted, or unknown slug — indistinguishable on purpose) | S09 |
+| **invitation_expired** | `410 invitation_expired` | S14 |
+| **invitation_declined** | `ok: true` from EP-40 / EP-60 with `status = "declined"` | S14 |
+| **slot_taken** | `403 premium_required` with `details.limit = "transfer_slot"` | S14 |
+| **email_sent** | `ok: true` from EP-41 sign-up (verification pending) | S15 |
+| **pending_deletion** | `403 account_pending_deletion`, or EP-43 profile with `deletion_due_at` not null | S19 |
+| **trial_used** | EP-47 with `trial_available = false` | S17 |
+| **expired / cancelled** | EP-47 with `status = "expired"` / `auto_renew = false` | S18 |
+| **inline field errors** | `422 validation_failed` with `fields` | all forms |
+
+No two states share a response: *empty* is always `200` + `[]`; *error* is never `200`; *premium_locked* is only `premium_required`; *read_only* is a successful read with `access.can_edit = false`.
+
+
+---
+
+## 8. Realtime & Event Channels
+
+_Not applicable — Technical Constraints §9 rules out real-time updates; members see changes on the next page load._
+
+---
+
+## 9. Webhooks & External Integrations
+
+### 9.1 Inbound — WhatsApp Business Platform (`POST /api/webhooks/whatsapp`, plus `GET` for Meta's verification handshake)
+- **Verification:** `GET` echoes `hub.challenge` when `hub.verify_token` matches the server secret; every `POST` must carry a valid `X-Hub-Signature-256` (HMAC-SHA256 of the raw body with the app secret) or gets `401 invalid_signature`.
+- **Events handled:**
+  - *message status* (`sent`, `delivered`, `failed`) → updates the matching `reminder_deliveries` row by `provider_message_id`;
+  - *button reply* "Urađeno" → the reply payload carries the same signed done token as the email link (§9.3) and is processed exactly like EP-32 / EP-26;
+  - anything else → ignored, `200`.
+- **Idempotency:** Meta may deliver twice; status updates are last-write-wins by timestamp, and marking done is naturally idempotent.
+- **Response:** always `200` within 5 s once the signature is valid, even if processing fails internally (failures are logged), so Meta does not retry storms.
+
+### 9.2 Inbound — Payment provider (`POST /api/webhooks/payments`) — provider deferred (OQ-11)
+Contracted provider-neutrally in EP-46: signature verification, idempotency by provider event id, events `payment_succeeded`, `payment_failed`, `card_token_saved`. Exact header names and payload fields are filled in when the provider is chosen.
+
+### 9.3 Signed action links (`GET /api/a/<action>?t=<token>`)
+- Used by email and push "Urađeno" (EP-32) and by invitation/transfer emails (opened in S14).
+- Token = base64url(`kind | id | expires_at | nonce`) + HMAC-SHA256 with a server secret. Prefixes: `dn_` reminder done, `hh_` household invitation, `og_` organisation team invitation, `tr_` record transfer.
+- Done tokens are single-use and valid 24 h; invitation and transfer tokens follow their table's `expires_at` (BR-38) and are additionally stored hashed (`token_hash`).
+- Invalid, expired, or used → `400 invalid_action_token` and a page explaining what happened (Design S14 states).
+- `HEAD` and link-preview requests (no cookies, known scanner user agents) do nothing (see RISK-19).
+
+### 9.4 Outbound
+| Target | Purpose | Payload | Retry | On permanent failure |
+|---|---|---|---|---|
+| Resend | email reminders, invitations, transfers, request outcomes, expiry notices, auth email (SMTP) | template id + locale + variables | 3 tries, exponential (1 min, 5 min, 15 min) inside the dispatch job | delivery row `failed`; Operator alert per RISK-14 |
+| Web Push (VAPID) | push reminders | `{ title, body, url, done_url }`, ≤ 4 KB | 1 retry | `410 Gone` from the push service deletes the `push_subscriptions` row |
+| WhatsApp Cloud API | reminders (utility template + "Urađeno" quick reply), verification code (authentication template) | template name + language + variables | 2 tries | delivery row `failed`; falls back to email + push for that occurrence |
+| Viber chatbot | reminders when switched on (BR-14b) | — | — | built, inactive in v1 |
+| Payment provider | checkout session, recurring charge | [DEFERRED: OQ-11] | — | — |
+| OpenStreetMap Nominatim | geocode partner address (EP-69) | `q=<address, city, Serbia>` with app User-Agent, max 1 request/s | none | `502 geocoding_failed`; Operator enters coordinates manually |
+
+---
+
+## 10. File & Media Transfer
+
+Implements ADR-07 (Cloudflare R2).
+1. Client calls an upload action (EP-13 attachments and pet photos, EP-21 moment photos, EP-69 partner logo) with `file_name`, `mime_type`, `size_bytes`.
+2. Server checks permission, Free limits (BR-01), type (images or PDF) and size (≤ 10 MB) — failing with `premium_required`, `file_type_not_allowed`, `file_too_large`, `too_many_photos`.
+3. Server returns an **upload ticket**: presigned R2 `PUT` URL (expires 10 min) + `r2_key` + signed ticket.
+4. Client uploads the bytes directly to R2, then calls the confirm action with the ticket; the server verifies the object exists (`HEAD`), then inserts the row.
+5. Viewing: EP-15 returns presigned `GET` URLs (expire 10 min). Public moment photos are served only through EP-24, which signs them for the page.
+6. **Keys:** `u/<owner_id>/pets/<pet_id>/<kind>/<uuid>-<file_name>` and `o/<org_id>/...` for organisations; `p/<partner_id>/logo-<uuid>` for partners.
+7. **Deletion:** deleting a row queues its key; the nightly job (EP-52) deletes queued keys and orphaned objects older than 24 h with no row.
+
+---
+
+## 11. Rate Limiting & Abuse Controls
+
+| Operation | Limit | Scope | On exceed |
+|---|---|---|---|
+| EP-63 adoption request / breeder inquiry | 5 per hour | user | `429 rate_limited`, `details.retry_after_s` |
+| EP-35 household invitation, EP-56 team invitation | 20 per day | user | `429 rate_limited` |
+| EP-30 send WhatsApp code | 5 per hour | user | `429 rate_limited` |
+| EP-42 sign-in, sign-up, password reset | Supabase Auth built-in limits | IP / email | Supabase error mapped to `429 rate_limited` |
+| EP-24, EP-62 public pages | none; 5-minute cache | — | — |
+
+Counters live in the database (a small counter per user + operation + window), so they hold across server instances.
+
+---
+
+## 12. NFR → API Budgets
+
+Classes used in §5. Budgets are server-side p95 under v1 volumes; they are targets, not measurements.
+
+| Class | Budget | Applies to | Derives from |
+|---|---|---|---|
+| `read-small` | ≤ 300 ms, ≤ 50 KB | single-resource reads (EP-02, EP-34, EP-43, EP-47, EP-53, EP-65) | NFR-03 usable on phones |
+| `read-list` | ≤ 400 ms, ≤ 50 items, ≤ 100 KB | lists (EP-01, EP-17, EP-20, EP-25, EP-54, EP-57, EP-64) | NFR-03 |
+| `write` | ≤ 400 ms | single-row writes and RPCs | NFR-03 |
+| `action` | ≤ 1.5 s (≤ 5 s when calling a third party) | server actions | NFR-03 |
+| `public` | ≤ 300 ms cached, ≤ 800 ms uncached | EP-24, EP-62 | NFR-03 |
+| `job` | dispatch run ≤ 50 s (fits the 60 s cadence); nightly ≤ 10 min | EP-33, EP-49, EP-52 | NFR-01 (≥ 95 % within 5 min), ADR-04 |
+| uploads | ≤ 10 MB per file, direct to R2 | §10 | NFR-09 |
+| cost | WhatsApp ≤ 30 messages / Premium user / month; Viber off | EP-33 | NFR-10 |
+
+---
+
+## 13. Traceability Matrix
+
+| FR | Screens | EP |
+|---|---|---|
+| FR-01 Create pet | S01, S02 | EP-01, EP-03, EP-13 |
+| FR-02 Edit pet | S02 | EP-02, EP-04 |
+| FR-03 Weight unit | S02 | EP-04 |
+| FR-04 Weight | S03 | EP-02, EP-08 |
+| FR-05 Vaccination | S03, S04 | EP-09 |
+| FR-06 Treatment & doses | S03, S27, S10 | EP-10, EP-11 |
+| FR-07 Vet visit | S03, S05 | EP-12 |
+| FR-08 Attachments | S05, S03 | EP-13, EP-14, EP-15 |
+| FR-09 Birthday | S02 | EP-03, EP-04 (birthday reminder trigger) |
+| FR-10 PDF export | S03 | EP-16 |
+| FR-11 Memorial | S03, S06 | EP-06, EP-01 |
+| FR-12 Restore | S06 | EP-07 |
+| FR-13 Delete pet | S03 | EP-05 |
+| FR-14 Feeding | S07 | EP-17, EP-18 |
+| FR-15 Meal reminders | S07 | EP-19 |
+| FR-16 Stool | S07 | EP-17, EP-18 |
+| FR-17 Moments | S08 | EP-20, EP-21, EP-22 |
+| FR-18 Share as image | S08 | EP-20, EP-15 (image composed in the browser) |
+| FR-19 Public link | S08, S09 | EP-23, EP-24 |
+| FR-20 Automatic reminders | S01, S03, S10 | EP-09, EP-10, EP-12, EP-19, EP-03 (triggers), EP-25 |
+| FR-21 Manual reminders (create, edit, delete) | S11 | EP-27 |
+| FR-22 Lead times | S12 | EP-28 |
+| FR-23 Channels | S12 | EP-28, EP-29, EP-30, EP-31, EP-33 |
+| FR-24 Mark done / re-send | S01, S03, S10, messages | EP-26, EP-32, EP-33, §9.1 |
+| FR-25 Expiry notices & fallback | S18 | EP-47, EP-49, EP-33 |
+| FR-26 Invite | S13, S14 | EP-35, EP-39, EP-40 |
+| FR-27 Shared pets | S13 | EP-37 |
+| FR-28 Member permissions | S03, S13 | EP-02 (`access`), RLS on all writes |
+| FR-29 Member opt-in | S13 | EP-38 |
+| FR-30 Leave / remove | S13 | EP-36 |
+| FR-31 Owner deletion | — (job) | EP-52 |
+| FR-32 Owner's Premium lapses | S13 | EP-34, EP-49 |
+| FR-33 Register | S15 | EP-41, EP-67 |
+| FR-34 Sign in/out, password reset | S16, S28 | EP-42 |
+| FR-35 Language | S15, S18 | EP-41, EP-43 |
+| FR-36 Free limits | S01, S17 | EP-43 (`entitlements`), DB triggers |
+| FR-37 Subscribe with trial | S17 | EP-44, EP-45, EP-46 |
+| FR-38 Cancel | S18 | EP-48 |
+| FR-39 Downgrade | S18 | EP-47, EP-49 |
+| FR-40 Delete account | S19 | EP-51, EP-52 |
+| FR-41 Data download | S19 | EP-50 |
+| FR-42 Shelter approval, breeder plan | S20, S26 | EP-53, EP-68, EP-45 |
+| FR-43 Team | S20, S14 | EP-53, EP-56, EP-39, EP-40 |
+| FR-44 Unlimited animals | S20 | EP-54, EP-02 |
+| FR-45 Intake & status | S20 | EP-55 |
+| FR-46 Public adoption page | S23 | EP-62 |
+| FR-47 Adoption requests | S21, S23 | EP-57, EP-58, EP-63 |
+| FR-48 Litters | S22 | EP-61 |
+| FR-49 Breeder page & inquiries | S21, S23 | EP-57, EP-58, EP-62, EP-63 |
+| FR-50 Record transfer | S21, S14 | EP-59, EP-60 |
+| FR-51 Transfer & Free limit | S14 | EP-60 |
+| FR-52 Partner directory | S24 | EP-64 |
+| FR-53 Nearby | S24 | EP-64, EP-67 |
+| FR-54 Partner profile | S25 | EP-65 |
+| FR-55 Quick actions | S24, S25 | EP-64, EP-65, EP-66 |
+| FR-56 Vet suggestion | S03, S24 | EP-64 |
+| FR-57 Admin | S26 | EP-68, EP-69, EP-71 |
+| FR-58 Click statistics | S26 | EP-66, EP-70 |
+| FR-59 Search pets | S01, S20 | EP-01 (client-side filter of a bounded list), EP-54 (`p_q`) |
+| FR-60 Organisation profile | S29 | EP-53, EP-72, EP-13 |
+
+**Reverse checks.** Every EP-01 … EP-72 appears above with a caller (a screen, an external sender in §9, or a job). Every screen S01 … S29 is supplied by at least one EP; S09 and S23 are public (EP-24, EP-62); S16 is served by Supabase Auth (EP-42).
+
+---
+
+## 14. API Non-Goals / Out of Scope (v1)
+
+| Not in v1 | Reason |
+|---|---|
+| Public or third-party API | No PRD requirement; one builder (Brief §13). |
+| API versioning | Client and server deploy together (§3.2). |
+| GraphQL or a separate API server | ADR-01 single app. |
+| Real-time subscriptions | TC §9. |
+| Bulk import/export beyond the personal archive | Not in the PRD. |
+| Client SDK or OpenAPI file | This document is the contract; the build uses typed Supabase clients and server-action types. |
+| Payment-provider specifics | Deferred (OQ-11). |
+
+---
+
+## 15. Risks
+
+| ID | Risk | Severity | Mitigation |
+|---|---|---|---|
+| RISK-18 | Business rules split between DB triggers and server actions drift apart. | Medium | Rules live only in the database; server actions call the same RPCs and never re-implement limits. |
+| RISK-19 | Email security scanners open the "Urađeno" GET link and mark reminders done. | Medium | Ignore `HEAD` and known scanner user agents; the link opens a page with a one-click confirm if the request has no browser cookies. |
+| RISK-20 | EP-02 (full pet record) grows heavy for old pets with many entries and attachments. | Low | Limit embedded lists to the latest 50 per type with per-tab paging if needed. |
+| RISK-21 | Payment-provider contract (EP-45, EP-46, EP-49) may need reshaping once the provider is chosen. | Medium | Provider-neutral event names; provider specifics isolated in one adapter. |
+| RISK-22 | The single dispatch route is reachable from the internet. | Medium | Secret header + constant-time compare; rejects without it; rate-limited at the edge. |
+
+---
+
+## 16. Assumptions
+
+_No assumptions were recorded at the owner's request. Defaults proposed while writing §5 are listed for confirmation in OQ-12._
+
+---
+
+## 17. Open Questions
+
+| ID | Origin | Question | Blocking for Build Plan? |
+|---|---|---|---|
+| OQ-01 | Brief | Metric targets. | No |
+| OQ-03 | Brief | Prices (data in `plans`). | No |
+| OQ-04 | Brief | Partner pricing. | No |
+| OQ-10 | Design | Approve proposed composites. | No |
+| OQ-11 | API | `[NEEDS CLARIFICATION]` Payment provider (Monri deferred). Until answered, EP-45 returns `503 payment_provider_unavailable` and the provider parts of EP-46/EP-49 stay unbuilt. | Yes — payment steps only |
+| OQ-12 | API | ✅ Resolved (v1.1): defaults confirmed, recorded as PRD BR-47 … BR-52. | — |
+| OQ-13 | API | ✅ Resolved (v1.1): added in TC v1.4. | — |
+| OQ-14 | API | ✅ Resolved (v1.1): S28, S11 edit variant, S29 + EP-72. | — |
+
+---
+
+## 18. Glossary Additions
+
+| Term | Definition |
+|---|---|
+| ApiError | The single error envelope `{ code, message, fields?, details? }`. |
+| ActionResult | Server-action return shape `{ ok, data }` or `{ ok, error }`. |
+| Access | Per-resource object (`can_edit`, `can_delete`, `role`) that drives the read-only state. |
+| Entitlements | The caller's Premium status, limits, and usage counters (in EP-43). |
+| Upload ticket | Presigned R2 PUT URL plus signed confirmation token for one file. |
+| Action token | Signed single-use token in a link (`dn_`, `hh_`, `og_`, `tr_`). |
+| Dispatch run | One execution of EP-33. |
+| Budget class | `read-small`, `read-list`, `write`, `action`, `public`, `job` (§12). |
+
+---
+
+## 19. Appendix
+
+- WhatsApp Business Platform pricing and webhooks — https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing
+- Nominatim usage policy (1 request/s, identifying User-Agent) — https://operations.osmfoundation.org/policies/nominatim/

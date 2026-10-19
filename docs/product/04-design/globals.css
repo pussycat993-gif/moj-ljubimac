@@ -1,0 +1,92 @@
+/* app/globals.css — Tailwind CSS v4 */
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: #F6F1EB;
+  --foreground: #2A1D14;
+  --card: #FFFFFF;
+  --card-foreground: #2A1D14;
+  --popover: #FFFFFF;
+  --popover-foreground: #2A1D14;
+  --muted: #EFE7DF;
+  --muted-foreground: #6B5B4E;
+  --primary: #563218;
+  --primary-foreground: #FFFFFF;
+  --secondary: #EFE7DF;
+  --secondary-foreground: #2A1D14;
+  --accent: #EFE7DF;
+  --accent-foreground: #2A1D14;
+  --border: #D9CCBF;
+  --input: #D9CCBF;
+  --ring: #563218;
+  --pet-female: #9E2F59;
+  --pet-female-soft: #F9DCE5;
+  --pet-male: #4A6624;
+  --pet-male-soft: #D6E6B8;
+  --pet-neutral: #57534E;
+  --pet-neutral-soft: #EFE7DF;
+  --pet-accent: var(--pet-neutral);
+  --pet-accent-soft: var(--pet-neutral-soft);
+  --success: #15803D;
+  --success-foreground: #FFFFFF;
+  --warning: #B45309;
+  --warning-foreground: #FFFFFF;
+  --destructive: #B91C1C;
+  --destructive-foreground: #FFFFFF;
+  --success-soft: #D9EBC8;
+  --warning-soft: #F8E3A3;
+  --destructive-soft: #F6D0D0;
+  --radius: 0.75rem;
+}
+
+[data-pet-sex="female"] { --pet-accent: var(--pet-female); --pet-accent-soft: var(--pet-female-soft); }
+[data-pet-sex="male"]   { --pet-accent: var(--pet-male); --pet-accent-soft: var(--pet-male-soft); }
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-pet-accent: var(--pet-accent);
+  --color-pet-accent-soft: var(--pet-accent-soft);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success-soft: var(--success-soft);
+  --color-warning-soft: var(--warning-soft);
+  --color-destructive-soft: var(--destructive-soft);
+
+  --font-heading: var(--font-nunito), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-sm: 0.5rem;   /* 8 px — inputs, buttons, chips */
+  --radius-md: 0.75rem;  /* 12 px — cards, dialogs */
+  --radius-lg: 0.75rem;
+
+  --shadow-soft: 0 1px 2px rgb(42 29 20 / 0.06), 0 2px 8px rgb(42 29 20 / 0.06);
+  --shadow-raised: 0 8px 24px rgb(42 29 20 / 0.14);
+}
+
+body { background: var(--background); color: var(--foreground); }
+
+* { border-color: var(--border); }
+:focus-visible { outline-color: var(--ring); }
