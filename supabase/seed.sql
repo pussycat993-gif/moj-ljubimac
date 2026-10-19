@@ -197,3 +197,13 @@ insert into public.moments (id, pet_id, moment_date, text, created_by) values
 
 insert into public.moment_public_links (moment_id, slug) values
   ('c4000000-0000-4000-8000-000000000002', 'Lu7nAk3QpZ9xRtW2mVb4Ys');
+
+-- Reminders -----------------------------------------------------------------------------
+-- Luna's vaccinations, treatment, vet visit and date of birth already produced their
+-- reminders through the Step 08 triggers. One manual reminder for Ivana, for her only
+-- (BR-18), monthly.
+
+insert into public.reminders (user_id, pet_id, type, title, starts_at, recurrence) values (
+  'a1000000-0000-4000-8000-000000000001', null, 'manual', 'Kupiti hranu za Lunu',
+  '2026-11-01 09:00:00+01', 'monthly'
+);

@@ -122,6 +122,12 @@ isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "dose_logs_occurrence_id_fkey"
+      columns: ["occurrence_id"]
+isOneToOne: true
+      referencedRelation: "reminder_occurrences"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "dose_logs_treatment_id_fkey"
       columns: ["treatment_id"]
 isOneToOne: false
@@ -511,6 +517,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"push_subscriptions": {
+                  Row: {
+                    "auth": string,"created_at": string,"endpoint": string,"id": string,"p256dh": string,"updated_at": string,"user_agent": string | null,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "auth": string,"created_at"?: string,"endpoint": string,"id"?: string,"p256dh": string,"updated_at"?: string,"user_agent"?: string | null,"user_id"?: string
+                  }
+                  Update: {
+                    "auth"?: string,"created_at"?: string,"endpoint"?: string,"id"?: string,"p256dh"?: string,"updated_at"?: string,"user_agent"?: string | null,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "push_subscriptions_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"r2_deletion_queue": {
                   Row: {
                     "queued_at": string,"r2_key": string
@@ -539,6 +565,104 @@ isOneToOne: false
                   Relationships: [
                     {
       foreignKeyName: "rate_limit_counters_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"reminder_deliveries": {
+                  Row: {
+                    "channel": Database["public"]['Enums']["delivery_channel"],"created_at": string,"delivered_at": string | null,"error": string | null,"id": string,"occurrence_id": string,"provider_message_id": string | null,"recipient_id": string,"status": Database["public"]['Enums']["delivery_status"],"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "channel": Database["public"]['Enums']["delivery_channel"],"created_at"?: string,"delivered_at"?: string | null,"error"?: string | null,"id"?: string,"occurrence_id": string,"provider_message_id"?: string | null,"recipient_id": string,"status": Database["public"]['Enums']["delivery_status"],"updated_at"?: string
+                  }
+                  Update: {
+                    "channel"?: Database["public"]['Enums']["delivery_channel"],"created_at"?: string,"delivered_at"?: string | null,"error"?: string | null,"id"?: string,"occurrence_id"?: string,"provider_message_id"?: string | null,"recipient_id"?: string,"status"?: Database["public"]['Enums']["delivery_status"],"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "reminder_deliveries_occurrence_id_fkey"
+      columns: ["occurrence_id"]
+isOneToOne: false
+      referencedRelation: "reminder_occurrences"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "reminder_deliveries_recipient_id_fkey"
+      columns: ["recipient_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"reminder_occurrences": {
+                  Row: {
+                    "created_at": string,"done_at": string | null,"done_by": string | null,"due_at": string,"id": string,"notify_at": string,"reminder_id": string,"resent_at": string | null,"sent_at": string | null,"status": Database["public"]['Enums']["occurrence_status"],"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"done_at"?: string | null,"done_by"?: string | null,"due_at": string,"id"?: string,"notify_at": string,"reminder_id": string,"resent_at"?: string | null,"sent_at"?: string | null,"status"?: Database["public"]['Enums']["occurrence_status"],"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"done_at"?: string | null,"done_by"?: string | null,"due_at"?: string,"id"?: string,"notify_at"?: string,"reminder_id"?: string,"resent_at"?: string | null,"sent_at"?: string | null,"status"?: Database["public"]['Enums']["occurrence_status"],"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "reminder_occurrences_done_by_fkey"
+      columns: ["done_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "reminder_occurrences_reminder_id_fkey"
+      columns: ["reminder_id"]
+isOneToOne: false
+      referencedRelation: "reminders"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"reminder_preferences": {
+                  Row: {
+                    "channels": (Database["public"]['Enums']["delivery_channel"])[],"created_at": string,"delivery_time": string | null,"id": string,"lead_minutes": (number)[],"type": Database["public"]['Enums']["reminder_type"],"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "channels"?: (Database["public"]['Enums']["delivery_channel"])[],"created_at"?: string,"delivery_time"?: string | null,"id"?: string,"lead_minutes"?: (number)[],"type": Database["public"]['Enums']["reminder_type"],"updated_at"?: string,"user_id"?: string
+                  }
+                  Update: {
+                    "channels"?: (Database["public"]['Enums']["delivery_channel"])[],"created_at"?: string,"delivery_time"?: string | null,"id"?: string,"lead_minutes"?: (number)[],"type"?: Database["public"]['Enums']["reminder_type"],"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "reminder_preferences_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"reminders": {
+                  Row: {
+                    "active": boolean,"created_at": string,"ends_at": string | null,"id": string,"interval_value": number | null,"meal_times": (string)[] | null,"meal_weekdays": (number)[] | null,"pet_id": string | null,"recurrence": Database["public"]['Enums']["reminder_recurrence"],"source_id": string | null,"starts_at": string | null,"title": string | null,"type": Database["public"]['Enums']["reminder_type"],"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "active"?: boolean,"created_at"?: string,"ends_at"?: string | null,"id"?: string,"interval_value"?: number | null,"meal_times"?: (string)[] | null,"meal_weekdays"?: (number)[] | null,"pet_id"?: string | null,"recurrence"?: Database["public"]['Enums']["reminder_recurrence"],"source_id"?: string | null,"starts_at"?: string | null,"title"?: string | null,"type": Database["public"]['Enums']["reminder_type"],"updated_at"?: string,"user_id"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"created_at"?: string,"ends_at"?: string | null,"id"?: string,"interval_value"?: number | null,"meal_times"?: (string)[] | null,"meal_weekdays"?: (number)[] | null,"pet_id"?: string | null,"recurrence"?: Database["public"]['Enums']["reminder_recurrence"],"source_id"?: string | null,"starts_at"?: string | null,"title"?: string | null,"type"?: Database["public"]['Enums']["reminder_type"],"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "reminders_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "reminders_user_id_fkey"
       columns: ["user_id"]
 isOneToOne: false
       referencedRelation: "profiles"
@@ -637,6 +761,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"user_channels": {
+                  Row: {
+                    "address": string,"channel": Database["public"]['Enums']["user_channel_type"],"created_at": string,"id": string,"opted_in_at": string | null,"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "address": string,"channel": Database["public"]['Enums']["user_channel_type"],"created_at"?: string,"id"?: string,"opted_in_at"?: string | null,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "address"?: string,"channel"?: Database["public"]['Enums']["user_channel_type"],"created_at"?: string,"id"?: string,"opted_in_at"?: string | null,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "user_channels_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"vaccinations": {
                   Row: {
                     "batch_number": string | null,"clinic": string | null,"created_at": string,"created_by": string | null,"given_on": string,"id": string,"name": string,"next_due_on": string | null,"note": string | null,"pet_id": string,"updated_at": string
@@ -726,7 +870,7 @@ isOneToOne: false
                            }
           }
           Enums: {
-            "account_type": "owner"|"shelter"|"breeder","app_locale": "sr-Latn"|"en","approval_status": "pending"|"approved"|"rejected","breeding_status": "active"|"retired","data_export_status": "preparing"|"ready"|"failed"|"expired","feeding_type": "dry"|"wet"|"treat"|"home_made"|"other","invitation_status": "pending"|"accepted"|"declined"|"expired","memorial_reason": "passed_away"|"rehomed"|"lost","neutered_status": "yes"|"no"|"unknown","offspring_status": "available"|"reserved"|"sold","organisation_role": "admin"|"volunteer","organisation_type": "shelter"|"breeder","payment_kind": "initial"|"renewal","payment_result": "succeeded"|"failed","pet_lifecycle": "active"|"memorial","pet_sex": "male"|"female"|"unknown","pet_species": "dog"|"cat"|"rabbit"|"hamster"|"guinea_pig"|"chinchilla"|"ferret"|"bird"|"fish"|"turtle"|"lizard"|"snake"|"other","shelter_status": "intake"|"in_care"|"available"|"reserved"|"adopted"|"deceased"|"returned_to_owner","stool_consistency": "normal"|"soft"|"diarrhoea"|"hard","subscription_plan": "premium_monthly"|"premium_yearly"|"breeder_monthly"|"breeder_yearly","subscription_status": "trialing"|"active"|"cancelled"|"expired"|"payment_failed","treatment_interval_unit": "hours"|"days","treatment_type": "medication"|"deworming"|"flea_tick"|"other","weight_unit": "kg"|"g"
+            "account_type": "owner"|"shelter"|"breeder","app_locale": "sr-Latn"|"en","approval_status": "pending"|"approved"|"rejected","breeding_status": "active"|"retired","data_export_status": "preparing"|"ready"|"failed"|"expired","delivery_channel": "email"|"push"|"whatsapp"|"viber","delivery_status": "delivered"|"failed","feeding_type": "dry"|"wet"|"treat"|"home_made"|"other","invitation_status": "pending"|"accepted"|"declined"|"expired","memorial_reason": "passed_away"|"rehomed"|"lost","neutered_status": "yes"|"no"|"unknown","occurrence_status": "pending"|"sent"|"resent"|"done"|"missed","offspring_status": "available"|"reserved"|"sold","organisation_role": "admin"|"volunteer","organisation_type": "shelter"|"breeder","payment_kind": "initial"|"renewal","payment_result": "succeeded"|"failed","pet_lifecycle": "active"|"memorial","pet_sex": "male"|"female"|"unknown","pet_species": "dog"|"cat"|"rabbit"|"hamster"|"guinea_pig"|"chinchilla"|"ferret"|"bird"|"fish"|"turtle"|"lizard"|"snake"|"other","reminder_recurrence": "none"|"hourly_interval"|"daily"|"weekly"|"monthly"|"yearly","reminder_type": "vaccination"|"treatment_dose"|"vet_follow_up"|"meal"|"birthday"|"manual","shelter_status": "intake"|"in_care"|"available"|"reserved"|"adopted"|"deceased"|"returned_to_owner","stool_consistency": "normal"|"soft"|"diarrhoea"|"hard","subscription_plan": "premium_monthly"|"premium_yearly"|"breeder_monthly"|"breeder_yearly","subscription_status": "trialing"|"active"|"cancelled"|"expired"|"payment_failed","treatment_interval_unit": "hours"|"days","treatment_type": "medication"|"deworming"|"flea_tick"|"other","user_channel_type": "whatsapp"|"viber","weight_unit": "kg"|"g"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -846,7 +990,7 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "account_type": ["owner", "shelter", "breeder"],"app_locale": ["sr-Latn", "en"],"approval_status": ["pending", "approved", "rejected"],"breeding_status": ["active", "retired"],"data_export_status": ["preparing", "ready", "failed", "expired"],"feeding_type": ["dry", "wet", "treat", "home_made", "other"],"invitation_status": ["pending", "accepted", "declined", "expired"],"memorial_reason": ["passed_away", "rehomed", "lost"],"neutered_status": ["yes", "no", "unknown"],"offspring_status": ["available", "reserved", "sold"],"organisation_role": ["admin", "volunteer"],"organisation_type": ["shelter", "breeder"],"payment_kind": ["initial", "renewal"],"payment_result": ["succeeded", "failed"],"pet_lifecycle": ["active", "memorial"],"pet_sex": ["male", "female", "unknown"],"pet_species": ["dog", "cat", "rabbit", "hamster", "guinea_pig", "chinchilla", "ferret", "bird", "fish", "turtle", "lizard", "snake", "other"],"shelter_status": ["intake", "in_care", "available", "reserved", "adopted", "deceased", "returned_to_owner"],"stool_consistency": ["normal", "soft", "diarrhoea", "hard"],"subscription_plan": ["premium_monthly", "premium_yearly", "breeder_monthly", "breeder_yearly"],"subscription_status": ["trialing", "active", "cancelled", "expired", "payment_failed"],"treatment_interval_unit": ["hours", "days"],"treatment_type": ["medication", "deworming", "flea_tick", "other"],"weight_unit": ["kg", "g"]
+            "account_type": ["owner", "shelter", "breeder"],"app_locale": ["sr-Latn", "en"],"approval_status": ["pending", "approved", "rejected"],"breeding_status": ["active", "retired"],"data_export_status": ["preparing", "ready", "failed", "expired"],"delivery_channel": ["email", "push", "whatsapp", "viber"],"delivery_status": ["delivered", "failed"],"feeding_type": ["dry", "wet", "treat", "home_made", "other"],"invitation_status": ["pending", "accepted", "declined", "expired"],"memorial_reason": ["passed_away", "rehomed", "lost"],"neutered_status": ["yes", "no", "unknown"],"occurrence_status": ["pending", "sent", "resent", "done", "missed"],"offspring_status": ["available", "reserved", "sold"],"organisation_role": ["admin", "volunteer"],"organisation_type": ["shelter", "breeder"],"payment_kind": ["initial", "renewal"],"payment_result": ["succeeded", "failed"],"pet_lifecycle": ["active", "memorial"],"pet_sex": ["male", "female", "unknown"],"pet_species": ["dog", "cat", "rabbit", "hamster", "guinea_pig", "chinchilla", "ferret", "bird", "fish", "turtle", "lizard", "snake", "other"],"reminder_recurrence": ["none", "hourly_interval", "daily", "weekly", "monthly", "yearly"],"reminder_type": ["vaccination", "treatment_dose", "vet_follow_up", "meal", "birthday", "manual"],"shelter_status": ["intake", "in_care", "available", "reserved", "adopted", "deceased", "returned_to_owner"],"stool_consistency": ["normal", "soft", "diarrhoea", "hard"],"subscription_plan": ["premium_monthly", "premium_yearly", "breeder_monthly", "breeder_yearly"],"subscription_status": ["trialing", "active", "cancelled", "expired", "payment_failed"],"treatment_interval_unit": ["hours", "days"],"treatment_type": ["medication", "deworming", "flea_tick", "other"],"user_channel_type": ["whatsapp", "viber"],"weight_unit": ["kg", "g"]
           }
         }
 } as const

@@ -64,7 +64,7 @@ The build runs in 33 steps (Step 01 … Step 32 plus Step 30a), each one coding 
 | 05 | Schema: households & organisations | ✅ | 04 | — | 2026-10-19 |
 | 06 | Schema: pets & health record | ✅ | 05 | — | 2026-10-19 |
 | 07 | Schema: care log & moments | ✅ | 06 | — | 2026-10-19 |
-| 08 | Schema: reminders & delivery | ⬜ | 07 | — | |
+| 08 | Schema: reminders & delivery | ✅ | 07 | — | 2026-10-20 |
 | 09 | Schema: organisation workflows & partners | ⬜ | 08 | — | |
 | 10 | Design foundation | ⬜ | 01 | — | |
 | 11 | Authentication, gates & server utilities | ⬜ | 04, 10 | — | |
@@ -1229,7 +1229,32 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+**2026-10-20**
+- **Built:** five migrations.
+  - `20261020010000_reminders.sql`: `reminders` and `reminder_preferences` per TC §5.5, index `reminders_source_id_idx`, unique partial index `reminders_one_meal_per_pet`. The BR-17 trigger keeps reminders of memorial pets inactive for every writer. The EP-27 client write check raises `forbidden_role`; the EP-28 preference check covers lead `{0}` for doses/meals, `channel_disabled`, `premium_required:whatsapp` and `whatsapp_not_connected[:viber]`. Also RLS helpers and policies.
+  - `20261020010005_reminder_occurrences.sql`: `reminder_occurrences` (partial indexes on pending `notify_at` and sent `sent_at`) and `reminder_deliveries` (indexes on recipient/channel/delivered_at and delivered_at). The FK `dose_logs.occurrence_id → reminder_occurrences` (on delete set null). Occurrence generation runs on the Europe/Belgrade wall clock and stores UTC. It writes one row per lead time inside the rolling 60-day window, and doses/meals get lead 0 at the exact time. Regeneration deletes only future pending rows and never touches done/missed rows. It is called from reminders insert/update and reminder_preferences changes; `private.generate_all_reminder_occurrences()` covers every active reminder.
+  - `20261020010010_reminder_triggers.sql`: personal-pet-only triggers (BR-51) on vaccinations, treatments, vet_visits and pets (birthday). BR-49 first dose. BR-17 memorial deactivation that removes pending occurrences. BR-48 six default preference rows on profile insert.
+  - `20261020010015_delivery_channels.sql`: `push_subscriptions` and `user_channels` with self-only RLS. `user_channels` has no client write path.
+  - `20261020010020_occurrence_schedule.sql`: pg_cron job `nightly-reminder-occurrences`, `0 1 * * *` UTC, which calls `private.generate_all_reminder_occurrences()`.
+
+  Seed: one monthly manual reminder for Ivana, with no pet. Luna's records produce their reminders through the triggers. `lib/supabase/database.types.ts` regenerated. pgTAP: 7 new files with 211 assertions (reminders 41, reminder_triggers 43, reminder_occurrences 29, reminder_preferences 16, reminder_rls 33, delivery_channels 38, occurrence_schedule 11).
+- **Nightly occurrence generation run time (owner, 2026-10-19):** 03:00 Europe/Belgrade, scheduled at 01:00 UTC. That is 03:00 in summer time and 02:00 in winter time; the owner accepts the one-hour seasonal shift.
+- **Verification:** `npx supabase db reset` ✅ (18 migrations + both seed files) · `npm run db:types` ✅ exit 0 · `npm run typecheck` ✅ exit 0 · `npm run lint` ✅ exit 0 · `npm test` ✅ 5 files / 38 tests · `npx supabase test db` ✅ 27 files / 892 tests · `npm run build` ✅ exit 0.
+- **Deviations / decisions:**
+  - Owner approval (2026-10-20): Step 08 was also allowed to touch `supabase/tests/health_record.test.sql` (Step 06). Its test 18 now expects the `dose_logs.occurrence_id` FK to `reminder_occurrences`. Tests 29–30 now use a real seeded occurrence id (preferring one of Luna's treatment reminder) instead of an invented uuid, which the new FK would reject. The previous run stopped on exactly these 3 failures and left everything uncommitted.
+  - The owner accepted these decisions from the previous run (2026-10-20):
+    - A manual reminder's same-day notice (lead 0) fires at the reminder's own time (`starts_at`), not at the manual delivery time.
+    - Household members read the reminders (not only the occurrences) of shared pets when they have opted in (`reminders_enabled`), so EP-25 can join them.
+    - A treatment without a frequency (`interval_value` null) gets a single dose reminder at the BR-49 first-dose time.
+    - Time handling: all schedule arithmetic runs on the Europe/Belgrade wall clock and is stored as UTC. Date-based reminders (vaccination, vet follow-up, birthday) take the date of `starts_at` at the delivery time. Monthly and yearly recurrences count from `starts_at`, so month ends do not drift. Hourly intervals use elapsed time. Treatment `ends_at` = the end of `ends_on`.
+    - The reminder_preferences checks of EP-28: lead `{0}` and no delivery time for doses and meals; the WhatsApp/Viber Premium, connection and `channel_disabled` rules.
+    - Access-rule fix: a client manual reminder linked to a pet requires the caller to own the pet. A household member gets `forbidden_role`; a pet with no relation falls through to the RLS check.
+    - No `reminder_occurrences(reminder_id)` index without a change request (TC §5.5 lists none).
+- **Follow-ups:**
+  - Steps 17–19: the RPCs `list_reminder_occurrences`, `mark_occurrence_done`, `get_reminder_settings`, `register_push_subscription`, `get_channel_usage`, `claim_due_occurrences`, and the dispatch cron (Step 19).
+  - Step 16: re-enable reminders on restore from memorial.
+  - Step 20: EP-19 writes meal schedule reminders; their occurrences are already generated here.
+  - Possible CR: an index on `reminder_occurrences(reminder_id)` if regeneration or the cascade gets slow.
 
 ---
 

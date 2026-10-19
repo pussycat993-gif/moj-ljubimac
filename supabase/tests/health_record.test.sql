@@ -47,9 +47,10 @@ select col_is_unique('public', 'dose_logs', 'occurrence_id', 'occurrence_id is u
 select is(
   (select count(*)::int from pg_constraint
    where conrelid = 'public.dose_logs'::regclass and contype = 'f'
+     and confrelid = 'public.reminder_occurrences'::regclass
      and conkey = array[(select attnum from pg_attribute
                          where attrelid = 'public.dose_logs'::regclass and attname = 'occurrence_id')]),
-  0, 'occurrence_id has no FK yet (Step 08)'
+  1, 'occurrence_id references reminder_occurrences (Step 08)'
 );
 
 select columns_are('public', 'vet_visits', array[
@@ -88,6 +89,14 @@ select is(
 );
 
 -- Checks ----------------------------------------------------------------------------------------
+-- A real seeded occurrence (the FK to reminder_occurrences exists since Step 08), preferring
+-- one of Luna's treatment reminder.
+create temp table seeded_occurrence on commit drop as
+select o.id from public.reminder_occurrences o
+join public.reminders r on r.id = o.reminder_id
+order by (r.source_id = 'c2000000-0000-4000-8000-000000000001') desc, o.due_at, o.id
+limit 1;
+
 select throws_ok(
   $$insert into public.weight_entries (pet_id, measured_on, value, created_by)
     values ('c1000000-0000-4000-8000-000000000001', current_date, 0, 'a1000000-0000-4000-8000-000000000001')$$,
@@ -107,13 +116,13 @@ select throws_ok(
 );
 select lives_ok(
   $$insert into public.dose_logs (treatment_id, given_at, occurrence_id, created_by)
-    values ('c2000000-0000-4000-8000-000000000001', now(), 'f0000000-0000-4000-8000-000000000001',
+    values ('c2000000-0000-4000-8000-000000000001', now(), (select id from seeded_occurrence),
             'a1000000-0000-4000-8000-000000000001')$$,
   'a dose log with an occurrence id'
 );
 select throws_ok(
   $$insert into public.dose_logs (treatment_id, given_at, occurrence_id, created_by)
-    values ('c2000000-0000-4000-8000-000000000001', now(), 'f0000000-0000-4000-8000-000000000001',
+    values ('c2000000-0000-4000-8000-000000000001', now(), (select id from seeded_occurrence),
             'a1000000-0000-4000-8000-000000000001')$$,
   '23505', null, 'one dose log per occurrence'
 );
