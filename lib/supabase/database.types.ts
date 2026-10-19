@@ -71,6 +71,78 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"household_invitations": {
+                  Row: {
+                    "accepted_by": string | null,"created_at": string,"decided_at": string | null,"email": string | null,"expires_at": string,"household_id": string,"id": string,"status": Database["public"]['Enums']["invitation_status"],"token_hash": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "accepted_by"?: string | null,"created_at"?: string,"decided_at"?: string | null,"email"?: string | null,"expires_at"?: string,"household_id": string,"id"?: string,"status"?: Database["public"]['Enums']["invitation_status"],"token_hash": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "accepted_by"?: string | null,"created_at"?: string,"decided_at"?: string | null,"email"?: string | null,"expires_at"?: string,"household_id"?: string,"id"?: string,"status"?: Database["public"]['Enums']["invitation_status"],"token_hash"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "household_invitations_accepted_by_fkey"
+      columns: ["accepted_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "household_invitations_household_id_fkey"
+      columns: ["household_id"]
+isOneToOne: false
+      referencedRelation: "households"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"household_memberships": {
+                  Row: {
+                    "created_at": string,"household_id": string,"id": string,"joined_at": string,"reminders_enabled": boolean,"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"household_id": string,"id"?: string,"joined_at"?: string,"reminders_enabled"?: boolean,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"household_id"?: string,"id"?: string,"joined_at"?: string,"reminders_enabled"?: boolean,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "household_memberships_household_id_fkey"
+      columns: ["household_id"]
+isOneToOne: false
+      referencedRelation: "households"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "household_memberships_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"households": {
+                  Row: {
+                    "created_at": string,"id": string,"name": string,"owner_id": string | null,"read_only": boolean,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"name": string,"owner_id"?: string | null,"read_only"?: boolean,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"name"?: string,"owner_id"?: string | null,"read_only"?: boolean,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "households_owner_id_fkey"
+      columns: ["owner_id"]
+isOneToOne: true
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"idempotency_keys": {
                   Row: {
                     "created_at": string,"id": string,"key": string,"operation": string,"result": Json | null,"updated_at": string,"user_id": string
@@ -86,6 +158,84 @@ isOneToOne: false
                     {
       foreignKeyName: "idempotency_keys_user_id_fkey"
       columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"organisation_invitations": {
+                  Row: {
+                    "accepted_by": string | null,"created_at": string,"email": string,"expires_at": string,"id": string,"organisation_id": string,"role": Database["public"]['Enums']["organisation_role"],"status": Database["public"]['Enums']["invitation_status"],"token_hash": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "accepted_by"?: string | null,"created_at"?: string,"email": string,"expires_at"?: string,"id"?: string,"organisation_id": string,"role": Database["public"]['Enums']["organisation_role"],"status"?: Database["public"]['Enums']["invitation_status"],"token_hash": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "accepted_by"?: string | null,"created_at"?: string,"email"?: string,"expires_at"?: string,"id"?: string,"organisation_id"?: string,"role"?: Database["public"]['Enums']["organisation_role"],"status"?: Database["public"]['Enums']["invitation_status"],"token_hash"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "organisation_invitations_accepted_by_fkey"
+      columns: ["accepted_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "organisation_invitations_organisation_id_fkey"
+      columns: ["organisation_id"]
+isOneToOne: false
+      referencedRelation: "organisations"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"organisation_memberships": {
+                  Row: {
+                    "created_at": string,"id": string,"organisation_id": string,"role": Database["public"]['Enums']["organisation_role"],"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"organisation_id": string,"role": Database["public"]['Enums']["organisation_role"],"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"organisation_id"?: string,"role"?: Database["public"]['Enums']["organisation_role"],"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "organisation_memberships_organisation_id_fkey"
+      columns: ["organisation_id"]
+isOneToOne: false
+      referencedRelation: "organisations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "organisation_memberships_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"organisations": {
+                  Row: {
+                    "approval_status": Database["public"]['Enums']["approval_status"],"city_id": string | null,"created_at": string,"created_by": string | null,"description": string | null,"email": string | null,"id": string,"logo_r2_key": string | null,"name": string,"phone": string | null,"registration_note": string | null,"rejection_reason": string | null,"slug": string,"tax_id": string | null,"type": Database["public"]['Enums']["organisation_type"],"updated_at": string,"website": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "approval_status"?: Database["public"]['Enums']["approval_status"],"city_id"?: string | null,"created_at"?: string,"created_by"?: string | null,"description"?: string | null,"email"?: string | null,"id"?: string,"logo_r2_key"?: string | null,"name": string,"phone"?: string | null,"registration_note"?: string | null,"rejection_reason"?: string | null,"slug": string,"tax_id"?: string | null,"type": Database["public"]['Enums']["organisation_type"],"updated_at"?: string,"website"?: string | null
+                  }
+                  Update: {
+                    "approval_status"?: Database["public"]['Enums']["approval_status"],"city_id"?: string | null,"created_at"?: string,"created_by"?: string | null,"description"?: string | null,"email"?: string | null,"id"?: string,"logo_r2_key"?: string | null,"name"?: string,"phone"?: string | null,"registration_note"?: string | null,"rejection_reason"?: string | null,"slug"?: string,"tax_id"?: string | null,"type"?: Database["public"]['Enums']["organisation_type"],"updated_at"?: string,"website"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "organisations_city_id_fkey"
+      columns: ["city_id"]
+isOneToOne: false
+      referencedRelation: "cities"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "organisations_created_by_fkey"
+      columns: ["created_by"]
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
@@ -224,7 +374,7 @@ isOneToOne: false
                            }
           }
           Enums: {
-            "account_type": "owner"|"shelter"|"breeder","app_locale": "sr-Latn"|"en","data_export_status": "preparing"|"ready"|"failed"|"expired","payment_kind": "initial"|"renewal","payment_result": "succeeded"|"failed","subscription_plan": "premium_monthly"|"premium_yearly"|"breeder_monthly"|"breeder_yearly","subscription_status": "trialing"|"active"|"cancelled"|"expired"|"payment_failed"
+            "account_type": "owner"|"shelter"|"breeder","app_locale": "sr-Latn"|"en","approval_status": "pending"|"approved"|"rejected","data_export_status": "preparing"|"ready"|"failed"|"expired","invitation_status": "pending"|"accepted"|"declined"|"expired","organisation_role": "admin"|"volunteer","organisation_type": "shelter"|"breeder","payment_kind": "initial"|"renewal","payment_result": "succeeded"|"failed","subscription_plan": "premium_monthly"|"premium_yearly"|"breeder_monthly"|"breeder_yearly","subscription_status": "trialing"|"active"|"cancelled"|"expired"|"payment_failed"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -344,7 +494,7 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "account_type": ["owner", "shelter", "breeder"],"app_locale": ["sr-Latn", "en"],"data_export_status": ["preparing", "ready", "failed", "expired"],"payment_kind": ["initial", "renewal"],"payment_result": ["succeeded", "failed"],"subscription_plan": ["premium_monthly", "premium_yearly", "breeder_monthly", "breeder_yearly"],"subscription_status": ["trialing", "active", "cancelled", "expired", "payment_failed"]
+            "account_type": ["owner", "shelter", "breeder"],"app_locale": ["sr-Latn", "en"],"approval_status": ["pending", "approved", "rejected"],"data_export_status": ["preparing", "ready", "failed", "expired"],"invitation_status": ["pending", "accepted", "declined", "expired"],"organisation_role": ["admin", "volunteer"],"organisation_type": ["shelter", "breeder"],"payment_kind": ["initial", "renewal"],"payment_result": ["succeeded", "failed"],"subscription_plan": ["premium_monthly", "premium_yearly", "breeder_monthly", "breeder_yearly"],"subscription_status": ["trialing", "active", "cancelled", "expired", "payment_failed"]
           }
         }
 } as const

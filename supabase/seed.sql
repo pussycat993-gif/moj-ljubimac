@@ -70,3 +70,35 @@ insert into public.subscriptions (
   now() + interval '1 month', true, 'visa', '4242'
 );
 
+
+-- Households --------------------------------------------------------------------
+-- Ivana (Premium owner) owns a household; Jelena (second owner) is a member.
+
+insert into public.households (id, owner_id, name) values (
+  'b1000000-0000-4000-8000-000000000001',
+  'a1000000-0000-4000-8000-000000000001', 'Domaćinstvo Petrović'
+);
+
+insert into public.household_memberships (household_id, user_id, joined_at) values (
+  'b1000000-0000-4000-8000-000000000001',
+  'a1000000-0000-4000-8000-000000000003', now()
+);
+
+-- Organisations -------------------------------------------------------------------
+-- Milica's shelter (pending, BR-32) and Nikola's breeding kennel (approved), each
+-- with its user as admin.
+
+insert into public.organisations (id, type, name, slug, city_id, created_by)
+select o.id, o.type, o.name, o.slug, c.id, o.created_by
+from (
+  values
+    ('b2000000-0000-4000-8000-000000000001'::uuid, 'shelter'::public.organisation_type,
+     'Azil Šapica', 'azil-sapica', 'Bečej', 'a1000000-0000-4000-8000-000000000004'::uuid),
+    ('b2000000-0000-4000-8000-000000000002'::uuid, 'breeder'::public.organisation_type,
+     'Odgajivačnica Đorđević', 'odgajivacnica-djordjevic', 'Beograd', 'a1000000-0000-4000-8000-000000000005'::uuid)
+) as o (id, type, name, slug, city, created_by)
+join public.cities c on c.name_sr = o.city;
+
+insert into public.organisation_memberships (organisation_id, user_id, role) values
+  ('b2000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000004', 'admin'),
+  ('b2000000-0000-4000-8000-000000000002', 'a1000000-0000-4000-8000-000000000005', 'admin');
