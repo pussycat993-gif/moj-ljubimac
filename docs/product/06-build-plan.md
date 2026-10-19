@@ -58,7 +58,7 @@ The build runs in 33 steps (Step 01 … Step 32 plus Step 30a), each one coding 
 | Step | Name | Status | Depends on | Blocked by | Done |
 |---|---|---|---|---|---|
 | 01 | Repository scaffold & tooling | ✅ | — | — | 2026-10-19 |
-| 02 | Supabase project, local dev & clients | ⬜ | 01 | — | |
+| 02 | Supabase project, local dev & clients | ✅ | 01 | — | 2026-10-19 |
 | 03 | CI pipeline & Cloudflare deploy | ⬜ | 02 | — | |
 | 04 | Schema: accounts, reference & billing tables | ⬜ | 02 | — | |
 | 05 | Schema: households & organisations | ⬜ | 04 | — | |
@@ -363,7 +363,16 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+**2026-10-19**
+- **Built:** `supabase init` (CLI 2.121.0 as a dev dependency): `supabase/config.toml` with generated defaults (`project_id = "moj-ljubimac"`, Postgres 17; auth/SMTP/redirect untouched), `supabase/.gitignore`, empty `supabase/seed.sql`. `.env.example` with the 21 TC §8.1 application names in order, empty values, one-line purpose comments. Root `.gitignore` also ignores `supabase/.temp/` and `supabase/.branches/`. Packages: `@supabase/supabase-js` 2.118, `@supabase/ssr` 0.12.7, `server-only`. Clients: `lib/supabase/server.ts` (`createServerSupabase(cookieStore)` + `createClient()` over `next/headers` cookies, `cookieOptions: { httpOnly: true }`), `lib/supabase/browser.ts` (public URL + anon key only), `lib/supabase/service-role.ts` (`import "server-only"`, no session persistence, throws without the key). `npm run db:types` → `lib/supabase/database.types.ts`. README "Local development" section. Tests: `tests/supabase/clients.test.ts` (real `@supabase/ssr` server client reading a session cookie and writing httpOnly cookies on sign-out; browser client args; service-role guard and missing-key error), `tests/tooling/env-example.test.ts` (exact names in order, empty values, `git check-ignore` for real env files and `.env.example`).
+- **Verification:** `npx supabase start` ✅ stack running, API URL `http://127.0.0.1:54321` and anon key printed · `npm run db:types` ✅ exit 0, file written · `npm run typecheck` ✅ exit 0 · `npm run lint` ✅ exit 0 · `npm test` ✅ 5 files / 38 tests passed · `npm run build` ✅ exit 0.
+- **Deviations / decisions:**
+  - **httpOnly session (owner decision, 2026-10-19):** `@supabase/ssr` sets auth cookies with `httpOnly: false` by default so its browser client can read the session; API §4.1 requires httpOnly. The owner chose httpOnly: the server client passes `cookieOptions: { httpOnly: true }`, so the browser client is anonymous (no session), and sign-in, sign-out, password reset and `updateUser` must run on the server.
+  - The first `npx supabase start` failed because another local Supabase project (`ysb`) held ports 54321–54327; it was stopped with `supabase stop --project-id ysb` (data volumes kept). No ports were changed in `config.toml`.
+  - The generated `database.types.ts` is unformatted (the CLI suggests `oxfmt`, which isn't an approved package); lint and typecheck pass on it as is.
+- **Follow-ups:**
+  - **Amend Step 11 before running it:** S16 (`sign-in-form.tsx`) and S28 must call `signInWithPassword`, `signInWithOAuth`, `resetPasswordForEmail`, `updateUser` and `signOut` through server actions / route handlers using `lib/supabase/server.ts`, not the browser client; request interception must keep `httpOnly: true` when refreshing cookies. Check EP-42 wording ("Supabase Auth client") against this.
+  - Only one local Supabase stack can run on the default ports at a time (stop the other project first).
 
 ---
 

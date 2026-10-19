@@ -12,6 +12,10 @@ next-env.d.ts
 .env*
 !.env.example
 
+# Supabase local temp output
+/supabase/.temp/
+/supabase/.branches/
+
 # Playwright
 /test-results/
 /playwright-report/
