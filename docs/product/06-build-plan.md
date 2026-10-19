@@ -57,7 +57,7 @@ The build runs in 33 steps (Step 01 … Step 32 plus Step 30a), each one coding 
 
 | Step | Name | Status | Depends on | Blocked by | Done |
 |---|---|---|---|---|---|
-| 01 | Repository scaffold & tooling | ⬜ | — | — | |
+| 01 | Repository scaffold & tooling | ✅ | — | — | 2026-10-19 |
 | 02 | Supabase project, local dev & clients | ⬜ | 01 | — | |
 | 03 | CI pipeline & Cloudflare deploy | ⬜ | 02 | — | |
 | 04 | Schema: accounts, reference & billing tables | ⬜ | 02 | — | |
@@ -256,7 +256,16 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+**2026-10-19**
+- **Built:** Next.js 16.4.2 App Router + TypeScript app (React 19.3) in the repo root; Tailwind CSS v4 via `@tailwindcss/postcss`, `app/globals.css` = `@import "tailwindcss"` only; minimal `app/layout.tsx`; create-next-app samples removed (no `public/`). ESLint 9 flat config with `eslint-config-next` (core-web-vitals + typescript). Vitest 5 + jsdom + Testing Library (`tests/setup.ts` registers jest-dom matchers, `@/*` alias). Playwright with `testDir: "e2e"`, `next dev` as web server, `--pass-with-no-tests`. Scripts `typecheck`, `lint`, `test`, `e2e`, `build` (plus `dev`, `start`). ADR-16 skeleton with `.gitkeep` files. `.gitignore`, `README.md`. Tests: `tests/tooling/testing-library.test.tsx`, `scripts.test.ts`, `layout.test.ts`.
+- **Verification:** `npm run typecheck` ✅ exit 0 · `npm run lint` ✅ exit 0 · `npm test` ✅ 3 files / 25 tests passed · `npm run e2e` ✅ exit 0, no specs · `npm run build` ✅ exit 0.
+- **Deviations:**
+  - `tsconfig.json` excludes `docs/`: the design mockups in `docs/product/04-design/` import shadcn/lucide modules that don't exist until Step 10, so `tsc` over them fails.
+  - `app/layout.tsx` types `children` as `React.ReactNode` instead of the generated `LayoutProps<"/">` global: that type only exists after `next dev`/`next build` generates `.next/types`, so `npm run typecheck` on a clean checkout (as in CI) failed.
+  - `playwright.config.ts` waits for `port: 3000` instead of a `url`: with no routes `/` returns 404, which Playwright does not accept as ready, so the run timed out.
+  - `next.config.ts`: `cacheComponents` and `partialPrefetching` are create-next-app 16.4 defaults (kept); `agentRules: false` added so `next dev` doesn't write an `AGENTS.md` (`CLAUDE.md` is the agent instruction file).
+  - `next-env.d.ts` is gitignored (create-next-app default; Next regenerates it).
+- **Follow-ups:** Step 03 (CI): `npm run typecheck` runs before `next build`, so any later code that uses Next's generated route types (`PageProps`, `LayoutProps`, typed routes) needs `next typegen` before `tsc`. Step 10: remove the `docs` exclusion only if the mockups are meant to be type-checked in place (they are meant to be copied, per 04-design/README.md). The Status cell in the Step 01 header table still reads "⬜ not started" because this step may only edit the §3 row and the Session log.
 
 ---
 
