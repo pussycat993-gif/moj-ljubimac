@@ -6,10 +6,10 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 05 — API & Integration Contract |
-| Version | 1.2 |
+| Version | 1.3 |
 | Date | 2026-10-19 |
 | Author | Keti Vrtunić (interview facilitated by "Vuk", API/Integration Engineer persona) |
-| Traces to | Brief v1.6 · PRD v1.6 · Technical Constraints v1.6 · Design System v1.5 |
+| Traces to | Brief v1.7 · PRD v1.7 · TC v1.7 · Design v1.6 (37 screens) |
 | Status | Draft — payment-provider operations deferred (OQ-11) |
 
 **Change log**
@@ -19,23 +19,24 @@
 | 1.0 | 2026-10-19 | Initial contract: conventions, auth, 72 operations, schemas, error model, integrations. |
 | 1.1 | 2026-10-19 | OQ-12 defaults confirmed (PRD BR-47 … BR-52); OQ-13 data model in TC v1.4; OQ-14 screens added (S28, S29, S11 edit); EP-72 organisation profile; search on EP-54 (FR-59); BR-46 in EP-52. |
 | 1.2 | 2026-10-19 | Owner-approved change requests from the Build Plan review: CR-07 `<code>:<detail>` database error mapping (§7.1); CR-10 one R2 key layout (§10, referenced from §5.1); CR-17 public pages EP-24 / EP-62 not cached — all cache headers and purges removed (EP-05, EP-22, EP-23, EP-24, EP-55, EP-58, EP-61, EP-62, EP-68, EP-72, §3.1, §11, §12); CR-18 organisation team invitations through EP-39 / EP-40 (`InvitationView.kind`); CR-19 WhatsApp templates in §9.4; CR-20 data export archives built in-app (EP-50); CR-22 EP-44 / EP-45 before payments, EP-25 count badge, EP-64 S03 vet suggestion block. |
+| 1.3 | 2026-10-19 | CAP-08 "Šapa pomoći" (Brief v1.7, PRD v1.7 FR-61 … FR-72, TC v1.7 §5.10, Design v1.6 S32 … S37): new §5.9 with EP-73 … EP-88 (public listing list/detail/profile route handlers, not cached per ADR-18; listings, my listings, extend/resolve/delete, donation info, conversations and messages with new-message email + push, report, block, Operator moderation, daily listing expiry job, shelter donation info); 15 new schemas in §6 (ListingSummary, Listing, ListingPhoto, ListingAuthor, MyListing, MarketplaceStatus, DonationInfo, PublicProfile, ConversationSummary, Conversation, Message, UserBlock, Report, ModerationItem, Restriction); `Me.display_name` + `Me.marketplace`, `Organisation.donation`; EP-13 purpose `listing_photo`, EP-15 kind `listing_photo`, EP-28 preference type `message`, EP-43 writes `display_name`, EP-52 cascade note; error codes `listing_not_active`, `cannot_message_self`, `user_blocked`, `marketplace_suspended`, `listing_type_not_allowed`, `category_not_allowed` and `premium_required:listings` (§7); §7.3 states signed_out / blocked / suspended / unavailable; §4.4 rows; §9.4 notification templates; §10 listing photo keys; §11 30 messages / hour; §12, §13 (FR-61 … FR-72), §14, §15 (RISK-33 … RISK-36), §17 (OQ-16, OQ-17), §18. |
 
 ---
 
 ## 1. Executive Summary
 
-This contract defines everything that crosses the wire in Moj Ljubimac. Reads and simple writes of a user's own data go through the Supabase data API protected by row-level security, with every Free limit and business rule enforced inside the database; multi-step or privileged work goes through Next.js server actions; external systems (WhatsApp, the payment provider, message action links) and the reminder dispatch job reach the app through a small set of route handlers. It defines 72 operations (EP-01 … EP-72), one error envelope with a catalog of stable codes, and the exact response that puts each screen into its loading, empty, error, Premium-locked, or read-only state. Payment-provider-specific operations are contracted provider-neutrally and deferred until the provider is chosen (OQ-11). Traces to Brief v1.6, PRD v1.6, Technical Constraints v1.6, Design System v1.5.
+This contract defines everything that crosses the wire in Moj Ljubimac. Reads and simple writes of a user's own data go through the Supabase data API protected by row-level security, with every Free limit and business rule enforced inside the database; multi-step or privileged work goes through Next.js server actions; external systems (WhatsApp, the payment provider, message action links) and the reminder dispatch job reach the app through a small set of route handlers. It defines 88 operations (EP-01 … EP-88), one error envelope with a catalog of stable codes, and the exact response that puts each screen into its loading, empty, error, Premium-locked, read-only, signed-out, blocked, or suspended state. The Šapa pomoći community board (EP-73 … EP-88) adds public, uncached listing and profile pages, 1:1 messaging with email and push notifications, report and block, and Operator moderation. Payment-provider-specific operations are contracted provider-neutrally and deferred until the provider is chosen (OQ-11). Traces to Brief v1.7, PRD v1.7, Technical Constraints v1.7, Design System v1.6 (37 screens).
 
 ---
 
 ## 2. Inherited Context
 
-- **Scope ceiling:** 7 epics, FR-01 … FR-58 (PRD v1.4).
+- **Scope ceiling:** 8 epics, FR-01 … FR-72 (PRD v1.7; EPIC-08 / CAP-08 Šapa pomoći = FR-61 … FR-72, BR-54 … BR-61, E-28 … E-35, NFR-11).
 - **Binding ADRs (TC v1.6):** ADR-01 Next.js + Supabase · ADR-02 schema · ADR-04 reminder dispatch job every minute · ADR-05 web push · ADR-06 Supabase Auth (email + Google) · ADR-07 files on R2 · ADR-08 Resend email · ADR-09 payments (**provider deferred**, see OQ-11) · ADR-11 OpenStreetMap geocoding · ADR-12 PDF in the browser · ADR-13 backups/exports · ADR-14 shadcn/Tailwind · ADR-15 tests · ADR-16 folder layout · ADR-17 approved libraries · ADR-18 no edge caching of public pages.
-- **Design System v1.3:** 27 screens (S01 … S27). State vocabulary used as keys in §7.3: **default, loading, empty, error, premium_locked, read_only**, plus screen-specific variants: *pending_approval* (S20), *link_disabled* (S09), *invitation_expired / invitation_declined / slot_taken* (S14), *email_sent* (S15), *pending_deletion* (S19), *trial_used / expired / cancelled* (S17, S18).
+- **Design System v1.6:** 37 screens (S01 … S37; S32 … S37 are Šapa pomoći). State vocabulary used as keys in §7.3: **default, loading, empty, error, premium_locked, read_only**, plus (v1.6) **signed_out** (O), **blocked** (B), **suspended** (S), and screen-specific variants: *pending_approval* (S20), *link_disabled* (S09), *invitation_expired / invitation_declined / slot_taken* (S14), *email_sent* (S15), *pending_deletion* (S19), *trial_used / expired / cancelled* (S17, S18), *unavailable / own / resolved* (S33, S37).
 - **Formatting (Design §9):** dates `19. 10. 2026.`, time `08:00`, money `2.990 RSD`, Europe/Belgrade time; pet names always nominative.
-- **NFRs that become budgets (§12):** NFR-01 reminder delivery, NFR-03/04 usability, NFR-09 attachment size, NFR-10 cost.
-- **Highest upstream ids:** RISK-17, ASM-09 → this document continues at RISK-18 and ASM-10.
+- **NFRs that become budgets (§12):** NFR-01 reminder delivery, NFR-03/04 usability, NFR-09 attachment size, NFR-10 cost, NFR-11 no real-time messaging (v1.3).
+- **Highest upstream ids:** RISK-17, ASM-09 → this document continues at RISK-18 and ASM-10. v1.3: upstream now reaches RISK-32 (TC v1.7) and OQ-16 (PRD v1.7) → new risks continue at RISK-33, new open questions at OQ-17.
 
 **Carried-forward open questions**
 
@@ -46,6 +47,7 @@ This contract defines everything that crosses the wire in Moj Ljubimac. Reads an
 | OQ-04 | Brief | Open — partner pricing, billed outside the product |
 | OQ-10 | Design | Open — proposed composites; no wire impact |
 | OQ-11 | API (new) | Open — payment provider deferred; blocks EP-45, EP-46, EP-49 provider specifics |
+| OQ-16 | PRD v1.7 | Open — breeder plan and the Free listing limit; contract uses the PRD default (`MarketplaceStatus.active_listing_limit`) |
 
 ---
 
@@ -66,7 +68,7 @@ No versioning in v1: client and server deploy together and there is no public AP
 
 ### 3.3 Request conventions
 - JSON bodies (`application/json`, UTF-8); file bytes never go through the app (see §10).
-- **Idempotency:** operations that cost money or send a message to another person take `idempotency_key` (UUID v4 generated by the client per user intent). A repeat with the same key within 24 h returns the original result and performs nothing (results stored in `idempotency_keys`, TC §5.7). Applies to EP-30 (send code), EP-35, EP-45, EP-56 (invite), EP-59, EP-63.
+- **Idempotency:** operations that cost money or send a message to another person take `idempotency_key` (UUID v4 generated by the client per user intent). A repeat with the same key within 24 h returns the original result and performs nothing (results stored in `idempotency_keys`, TC §5.7). Applies to EP-30 (send code), EP-35, EP-45, EP-56 (invite), EP-59, EP-63, EP-82 (send message, v1.3).
 - Naturally idempotent operations (marking done, toggling a switch, setting preferences) need no key.
 
 ### 3.4 Collection conventions
@@ -172,8 +174,18 @@ Route handlers return the HTTP status from §7.2 with `ApiError` as the body on 
 | EP-64 – EP-67 | Partners, partner, click, cities | ✅ | ✅ | ✅ | ✅ | ✅ | cities only |
 | EP-68 – EP-71 | Admin | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
 | EP-72 | Organisation public profile | — | — | ✅ | 👁 | — | — |
+| EP-73 / EP-74 | Šapa pomoći list / listing detail | ✅ | ✅ | ✅ | ✅ | ✅ all statuses | ✅ |
+| EP-75 | Create / update listing | ✅ giving, selling, seeking | ✅ giving, selling, seeking | ✅ + need (approved shelter) | ✅ + need (approved shelter) | ✅ giving, selling, seeking | ❌ `401` |
+| EP-13 (`listing_photo`) | Listing photo upload | ✅ own listing | ✅ own listing | ✅ own listing | ✅ own listing | ✅ own listing | ❌ `401` |
+| EP-76 / EP-77 | My listings / extend, resolve, delete | ✅ own | ✅ own | ✅ own | ✅ own | ✅ own | ❌ `401` |
+| EP-78 | Donation info | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ `401` |
+| EP-79 | Public user profile | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| EP-80 – EP-83 | Conversations, thread, send, mark read | ✅ party | ✅ party | ✅ party | ✅ party | ✅ party (no access to others' messages) | ❌ `401` |
+| EP-84 / EP-85 | Report / block | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ `401` |
+| EP-86 | Moderation | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| EP-88 | Shelter donation info | — | — | ✅ shelter | 👁 (via EP-53) | — | — |
 
-Jobs EP-49, EP-52 and webhook EP-46 run as System.
+Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Member" means a household member acting with their own account (listings and messages are personal, not household data); a user suspended from Šapa pomoći keeps only the read, delete, report and block rows (§5.9).
 
 ---
 
@@ -359,22 +371,22 @@ Jobs EP-49, EP-52 and webhook EP-46 run as System.
 - **Side effects:** trigger syncs the `vet_follow_up` reminder from `follow_up_on` exactly as EP-09 does for `next_due_on`. Delete cascades `attachments` rows; the deleted rows' R2 keys are queued for the nightly cleanup by an `after delete` trigger.
 - **Budget:** `write`
 
-#### EP-13 — Request upload ticket + confirm (attachment, pet photo)
-- **Address:** `action:request_upload({ purpose, target_id, file_name, mime_type, size_bytes }) → UploadTicket`, then client `PUT` to `UploadTicket.put_url` (direct to R2), then `action:confirm_upload({ upload_token }) → Attachment | Pet`.
-- **Callers:** S05 `/ljubimci/[id]/pregledi/novi` (one ticket per file after the visit is saved); S02 `/ljubimci/novi`, `/ljubimci/[id]/izmena` (pet photo).
-- **FRs:** FR-01, FR-08
-- **Authorization:** Owner ✅; OrgAdmin/Volunteer ✅; Member ❌ `403 forbidden_role`; organisation copy after transfer ❌ `403 forbidden_role`. No relation → `404`.
+#### EP-13 — Request upload ticket + confirm (attachment, pet photo, listing photo)
+- **Address:** `action:request_upload({ purpose, target_id, file_name, mime_type, size_bytes }) → UploadTicket`, then client `PUT` to `UploadTicket.put_url` (direct to R2), then `action:confirm_upload({ upload_token }) → Attachment | Pet | ListingPhoto`.
+- **Callers:** S05 `/ljubimci/[id]/pregledi/novi` (one ticket per file after the visit is saved); S02 `/ljubimci/novi`, `/ljubimci/[id]/izmena` (pet photo); S34 `/sapa-pomoci/nova`, `/sapa-pomoci/[id]/izmeni` (listing photos, one ticket per file after EP-75 saved the listing — v1.3).
+- **FRs:** FR-01, FR-08, FR-63
+- **Authorization:** Owner ✅; OrgAdmin/Volunteer ✅; Member ❌ `403 forbidden_role`; organisation copy after transfer ❌ `403 forbidden_role`. No relation → `404`. `listing_photo`: the listing's author only, whatever their role (someone else's visible listing → `403 forbidden_role`); suspended → `403 marketplace_suspended` (BR-60).
 - **Request (`request_upload`):**
-  - `purpose` — enum `attachment|pet_photo|organisation_logo` — required (`organisation_logo`: OrgAdmin only, images only, confirm sets `organisations.logo_r2_key` — EP-72)
-  - `target_id` — uuid — required — `vet_visits.id` for `attachment`, `pets.id` for `pet_photo`
+  - `purpose` — enum `attachment|pet_photo|organisation_logo|listing_photo` — required (`organisation_logo`: OrgAdmin only, images only, confirm sets `organisations.logo_r2_key` — EP-72)
+  - `target_id` — uuid — required — `vet_visits.id` for `attachment`, `pets.id` for `pet_photo`, `listings.id` for `listing_photo` (listing `status` `active` or `expired`, else `409 listing_not_active`)
   - `file_name` — string — required — 1–200
-  - `mime_type` — string — required — `image/*` or `application/pdf` for `attachment`; `image/jpeg|image/png|image/webp|image/heic` for `pet_photo` (BR-05)
+  - `mime_type` — string — required — `image/*` or `application/pdf` for `attachment`; `image/jpeg|image/png|image/webp|image/heic` for `pet_photo` and `listing_photo` (BR-05)
   - `size_bytes` — integer — required — 1 … 10 485 760 (BR-05)
 - **Request (`confirm_upload`):** `upload_token` — string — required — from the ticket, unexpired.
-- **Response:** `request_upload` → `ok` `UploadTicket` (PUT URL expires in 10 min). `confirm_upload` → `ok` `Attachment` (purpose `attachment`) or `Pet` (purpose `pet_photo`).
-- **Errors:** `file_too_large` (422); `file_type_not_allowed` (422); `premium_required` (403, `details.limit = "attachments"`) — Free owner already has 10 attachments on the pet (BR-01, E-04), checked at ticket time and again by the insert trigger at confirm; `validation_failed` (422) — `fields.upload_token = "invalid"` (bad/expired token) or `"not_uploaded"` (object missing in R2 at confirm); `forbidden_role` (403); `not_found` (404).
-- **States:** S05 attachment zone: chip per file (uploading → done); inline file error on `file_too_large` / `file_type_not_allowed`; premium_locked on `premium_required`; S02 photo preview.
-- **Side effects:** `request_upload` builds the `r2_key` from the §10 key layout (step 6) and signs a stateless `upload_token` (HMAC over purpose, target, r2_key, mime, size, expiry) — no row is written. `confirm_upload` does an R2 `HEAD` to verify the object exists with the declared size and content type (mismatch → `file_too_large` / `file_type_not_allowed` and the object is deleted), then inserts `attachments` (`pet_id` from the visit) or sets `pets.photo_r2_key` (old key queued for deletion). Objects never confirmed are removed by the nightly R2 cleanup (no DB row older than 24 h).
+- **Response:** `request_upload` → `ok` `UploadTicket` (PUT URL expires in 10 min). `confirm_upload` → `ok` `Attachment` (purpose `attachment`), `Pet` (purpose `pet_photo`) or `ListingPhoto` (purpose `listing_photo`, with a signed `url`).
+- **Errors:** `file_too_large` (422); `file_type_not_allowed` (422); `premium_required` (403, `details.limit = "attachments"`) — Free owner already has 10 attachments on the pet (BR-01, E-04), checked at ticket time and again by the insert trigger at confirm; `too_many_photos` (422) — the listing already has 5 photos (BR-55, E-30; checked at ticket time; the `listing_photos_max` trigger backs it at confirm with `validation_failed`); `listing_not_active` (409); `marketplace_suspended` (403); `validation_failed` (422) — `fields.upload_token = "invalid"` (bad/expired token) or `"not_uploaded"` (object missing in R2 at confirm); `forbidden_role` (403); `not_found` (404).
+- **States:** S05 attachment zone: chip per file (uploading → done); inline file error on `file_too_large` / `file_type_not_allowed`; premium_locked on `premium_required`; S02 photo preview; S34 photo tiles "N / 5" (the *Dodaj* tile disappears at 5; inline error on `too_many_photos`).
+- **Side effects:** `request_upload` builds the `r2_key` from the §10 key layout (step 6) and signs a stateless `upload_token` (HMAC over purpose, target, r2_key, mime, size, expiry) — no row is written. `confirm_upload` does an R2 `HEAD` to verify the object exists with the declared size and content type (mismatch → `file_too_large` / `file_type_not_allowed` and the object is deleted), then inserts `attachments` (`pet_id` from the visit), sets `pets.photo_r2_key` (old key queued for deletion), or inserts `listing_photos { listing_id, r2_key, position = lowest free 1–5 }`. Objects never confirmed are removed by the nightly R2 cleanup (no DB row older than 24 h).
 - **Budget:** `action`
 
 #### EP-14 — Delete attachment
@@ -391,10 +403,10 @@ Jobs EP-49, EP-52 and webhook EP-46 run as System.
 
 #### EP-15 — Get file view URLs
 - **Address:** `action:get_file_urls({ items }) → FileUrl[]`
-- **Callers:** S03 `/ljubimci/[id]` (open attachment, pet photo), S05 (attachment preview), S08 `/ljubimci/[id]/trenuci` (moment photo grid), S01 / S06 (pet photos on cards).
-- **FRs:** FR-08, FR-17
-- **Authorization:** per item, by relation to the file's pet: Owner, Member (shared pet), OrgAdmin/Volunteer (organisation pet) ✅. `organisation_logo` / `partner_logo`: any signed-in user for approved organisations / partners with `paid_until ≥ today`; Operator for any. Items the caller may not see are returned with `url = null` (the batch does not fail).
-- **Request:** `items` — array — required — 1–50 entries of `{ kind: "attachment"|"pet_photo"|"moment_photo"|"organisation_logo"|"partner_logo", id: uuid }` (`attachments.id`, `pets.id`, `moment_photos.id`, `organisations.id`, `partners.id`).
+- **Callers:** S03 `/ljubimci/[id]` (open attachment, pet photo), S05 (attachment preview), S08 `/ljubimci/[id]/trenuci` (moment photo grid), S01 / S06 (pet photos on cards), S35 `/sapa-pomoci/moje` (listing thumbnails, `MyListing.cover_photo_id` — v1.3).
+- **FRs:** FR-08, FR-17, FR-64
+- **Authorization:** per item, by relation to the file's pet: Owner, Member (shared pet), OrgAdmin/Volunteer (organisation pet) ✅. `organisation_logo` / `partner_logo`: any signed-in user for approved organisations / partners with `paid_until ≥ today`; Operator for any. `listing_photo`: whenever the caller may read the listing (§5.9 visibility; the author in any status; Operator any). Items the caller may not see are returned with `url = null` (the batch does not fail).
+- **Request:** `items` — array — required — 1–50 entries of `{ kind: "attachment"|"pet_photo"|"moment_photo"|"organisation_logo"|"partner_logo"|"listing_photo", id: uuid }` (`attachments.id`, `pets.id`, `moment_photos.id`, `organisations.id`, `partners.id`, `listing_photos.id`).
 - **Response:** `ok` `FileUrl[]` in request order (presigned R2 GET, expires in 10 min).
 - **Errors:** `validation_failed` (422, `fields.items = "out_of_range"`).
 - **States:** images render when URLs arrive (skeleton until then); `url = null` → placeholder avatar / "Fajl nije dostupan".
@@ -578,20 +590,20 @@ Jobs EP-49, EP-52 and webhook EP-46 run as System.
 
 #### EP-28 — Get / update reminder preferences
 - **Address:** **get** Data API: `rpc:get_reminder_settings()`; **update** Data API: `reminder_preferences` `upsert { type, lead_minutes, delivery_time, channels }` `onConflict: "user_id,type"` `.select()` (one call per changed type card)
-- **Callers:** S12 `/podesavanja/podsetnici`
-- **FRs:** FR-22, FR-23, FR-25
+- **Callers:** S12 `/podesavanja/podsetnici` (including the *Šapa pomoći → Poruke* card, v1.3)
+- **FRs:** FR-22, FR-23, FR-25, FR-69
 - **Authorization:** any signed-in user, self only (`user_id = auth.uid()`, set by default).
 - **Request (update):**
-  - `type` — enum `vaccination` | `treatment_dose` | `vet_follow_up` | `meal` | `birthday` | `manual` — required.
+  - `type` — enum `vaccination` | `treatment_dose` | `vet_follow_up` | `meal` | `birthday` | `manual` | `message` — required. `message` (v1.3, FR-69) is the new-message notification switch for Šapa pomoći: `lead_minutes` and `delivery_time` are ignored (stored `{0}` / null); `channels` is a subset of `email` | `push` and **may be empty** (= notifications off; `whatsapp` / `viber` → `fields.channels = "invalid"`). The rules below apply to the six reminder types.
   - `lead_minutes` — integer[] — required — 1–6 distinct values from {0, 1440, 4320, 10080, 20160, 43200} (UI days 0/1/3/7/14/30) (BR-13; `fields.lead_minutes`: `required` | `invalid`). For `treatment_dose` and `meal` the value is ignored and stored as `{0}` (BR-13: exact time).
   - `delivery_time` — `"HH:MM"` — required except for `treatment_dose` / `meal` (stored as null) (`fields.delivery_time`: `required`).
   - `channels` — enum[] subset of `email` | `push` | `whatsapp` | `viber` — required — at least one (`fields.channels: required`) (BR-14).
     - `whatsapp`: caller must have Premium (BR-14) → else `premium_required` `details.limit = "whatsapp"`; and a connected number (`user_channels` row, channel `whatsapp`, `opted_in_at` not null) → else `whatsapp_not_connected`.
     - `viber`: while `app_settings.viber_enabled = false` → `channel_disabled` (BR-14b, E-27); when on, Premium required as for WhatsApp, and a connected Viber identity → else `whatsapp_not_connected` with `details.channel = "viber"`.
-- **Response:** get `200` `{ preferences: ReminderPreference[] /* always 6, one per type */, viber_enabled: boolean /* app_settings.viber_enabled */, whatsapp: WhatsAppConnection }`; update `200` `ReminderPreference`.
+- **Response:** get `200` `{ preferences: ReminderPreference[] /* always 7, one per type incl. message (v1.3) */, viber_enabled: boolean /* app_settings.viber_enabled */, whatsapp: WhatsAppConnection }`; update `200` `ReminderPreference`.
 - **Errors:** `validation_failed` (422); `premium_required` (403, `details.limit = "whatsapp"`); `whatsapp_not_connected` (409); `channel_disabled` (409).
-- **States:** S12 *default*; Free user (`Me.entitlements.premium = false`) → WhatsApp checkbox *premium_locked* (G); `403 premium_required` on save → *premium_locked*; Viber checkbox absent while `viber_enabled = false`; `whatsapp.status = "connected"` → "WhatsApp connected" variant.
-- **Side effects:** future pending occurrences of the caller's own reminders of that type are regenerated with the new lead times / delivery time (done/missed history untouched). Channel changes apply from the next dispatch. Stored `whatsapp`/`viber` choices survive Premium expiry; EP-33 falls back at send time (BR-16).
+- **States:** S12 *default*; Free user (`Me.entitlements.premium = false`) → WhatsApp checkbox *premium_locked* (G); `403 premium_required` on save → *premium_locked*; Viber checkbox absent while `viber_enabled = false`; `whatsapp.status = "connected"` → "WhatsApp connected" variant. *Poruke* card: two Switches from the `message` row's `channels`; both off → *"Nove poruke ćeš videti samo u aplikaciji…"*.
+- **Side effects:** future pending occurrences of the caller's own reminders of that type are regenerated with the new lead times / delivery time (done/missed history untouched). Channel changes apply from the next dispatch. Stored `whatsapp`/`viber` choices survive Premium expiry; EP-33 falls back at send time (BR-16). `message`: no occurrences; EP-82 reads the row at send time.
 - **Budget:** get `read-small`, update `write`
 
 #### EP-29 — Register / unregister web push subscription
@@ -818,14 +830,15 @@ Jobs EP-49, EP-52 and webhook EP-46 run as System.
 - **Budget:** `action`
 
 #### EP-43 — Get / update me
-- **Address:** **get** Data API: `rpc:get_me()`; **update** Data API: `profiles` `update { full_name?, city_id?, locale? }` `.eq("id", auth.uid())` `.select()` (column grant limits writable columns to these three)
-- **Callers:** every app/organisation/admin shell on load (entitlements, locale, role routing); S18 `/profil` (name, city, language form); S19 `/profil/podaci` (deletion status); S12 (Premium gating); S13 (Premium gating); S14 `/poziv/[token]` ("signed in as"); S17 `/premium` (`trial_available`); S01 / S06 / S14 (Free slot holder)
-- **FRs:** FR-25, FR-35, FR-36, FR-39, FR-40
+- **Address:** **get** Data API: `rpc:get_me()`; **update** Data API: `profiles` `update { full_name?, city_id?, locale?, display_name? }` `.eq("id", auth.uid())` `.select()` (column grant limits writable columns to these four)
+- **Callers:** every app/organisation/admin shell on load (entitlements, locale, role routing; *Poruke* unread badge from `marketplace.unread_conversations` — v1.3); S18 `/profil` (name, city, language form); S19 `/profil/podaci` (deletion status); S12 (Premium gating); S13 (Premium gating); S14 `/poziv/[token]` ("signed in as"); S17 `/premium` (`trial_available`); S01 / S06 / S14 (Free slot holder); S32 … S36 (`marketplace`: suspension, Free listing counter, *Potreba* option — v1.3)
+- **FRs:** FR-25, FR-35, FR-36, FR-39, FR-40, FR-63, FR-67, FR-68
 - **Authorization:** any signed-in user, self only. The **read** is exempt from the `account_pending_deletion` gate so S19 can render *pending_deletion*; the update is not.
 - **Request (update):**
   - `full_name` — string | null — optional — ≤ 100 chars (`fields.full_name: too_long`).
   - `city_id` — uuid | null — optional — existing `cities.id` (`fields.city_id: unknown`) (city chosen from EP-67 list).
   - `locale` — enum `sr-Latn` | `en` — optional (FR-35).
+  - `display_name` — string | null — optional — 2–40 chars (TC check) (`fields.display_name`: `invalid` (under 2 chars) | `too_long`) — public nickname for Šapa pomoći (FR-67, v1.3); null = `full_name` is shown.
 - **Response:** get `200` `Me`, or `200 null` when the session has no `profiles` row yet (client routes to the S15 completion step); update `200` `Me`.
 - **Errors:** `validation_failed` (422); `account_pending_deletion` (403) — update during the deletion window.
 - **States:** shells *loading* → *default*; S18 *default*, `entitlements.subscription_status = expired` → *expired* variant with over-limit summary from `usage`; S19 `deletion_due_at` not null → *pending_deletion*; `422` → inline field errors; `5xx` → *error*.
@@ -987,6 +1000,7 @@ Common to every operation below: the §4.1 gates run first (`401 unauthenticated
      - **Ownership transfer (BR-27):** if the user owns a household with members, the earliest `household_memberships.joined_at` member becomes `households.owner_id`; that member's membership row is deleted; pets in `household_pets` move to the heir (`pets.owner_id = heir`); `households.read_only = NOT Premium active(heir)`; the heir is emailed. A household without members is deleted.
      - Pets still owned by the user (not shared) are deleted (cascade); their R2 keys (`pets.photo_r2_key`, `attachments.r2_key`, `moment_photos.r2_key`) and the user's `data_exports.r2_key` are queued for removal.
      - Organisation memberships are removed (cascade from `profiles`).
+     - Šapa pomoći (v1.3, TC §5.9): the user's `listing_photos.r2_key`s are queued; `listings` (and their photos), `conversations` where the user is a party (and their `messages`) and `user_blocks` cascade; `reports` stay with `reporter_id` / `reported_user_id` set null.
      - `auth.users` row deleted → `profiles` cascade.
   2. **R2 cleanup** — delete every queued R2 key (from step 1, from pet deletions FR-13, deleted moments and attachments); a key is dequeued only after R2 confirms.
   3. **Delivery purge (NFR-08)** — delete `reminder_deliveries` with `delivered_at < now() − 12 months`.
@@ -1000,8 +1014,8 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 
 #### EP-53 — Get my organisation
 - **Address:** Data API `rpc:get_my_organisation()`
-- **Callers:** S20 `/organizacija` (org shell header, Tim tab, pending-approval banner); S21 `/organizacija/zahtevi`, S22 `/organizacija/legla` (shell header)
-- **FRs:** FR-42, FR-43
+- **Callers:** S20 `/organizacija` (org shell header, Tim tab, pending-approval banner); S21 `/organizacija/zahtevi`, S22 `/organizacija/legla` (shell header); S29 `/organizacija/profil` (profile fields and the *Donacije* card via `organisation.donation` — v1.3)
+- **FRs:** FR-42, FR-43, FR-72
 - **Authorization:** OrgAdmin ✅; Volunteer 👁 (no pending invitations). Users without an organisation → `404 not_found`.
 - **Request:** none.
 - **Response:** `200` + inline:
@@ -1311,11 +1325,268 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Side effects:** none; EP-62 (not cached) shows the change on the next request.
 - **Budget:** `write`.
 
+### 5.9 Šapa pomoći (EPIC-08)
+
+Community listings (needs, giving, selling, seeking), 1:1 messaging about a listing, report and block, Operator moderation, and shelter donation info (CAP-08, FR-61 … FR-72; TC v1.7 §5.10). Added in v1.3.
+
+**Conventions for EP-73 … EP-88**
+- **Gates.** The §4.1 gates and `500 internal_error` apply as in §5.3 and are not repeated. Gate 4 (`organisation_pending_approval`) applies only to organisation writes here — need listings and EP-88; giving / selling / seeking listings, messages, reports and blocks are personal writes of the signed-in user.
+- **Suspension gate (BR-60).** A caller with `profiles.marketplace_suspended_at` set gets `403 marketplace_suspended` on EP-75, EP-77 `extend` / `resolve`, EP-13 `listing_photo` and EP-82. Reading (EP-73, EP-74, EP-76, EP-79 … EP-81, EP-83), EP-77 `delete`, EP-84 and EP-85 stay available. Enforced by the TC trigger `marketplace_not_suspended`, so every surface fails the same way.
+- **Public visibility.** A listing is *publicly visible* when `listings.status = active` and the author's `profiles.marketplace_suspended_at is null` (TC RLS). For a signed-in caller, listings whose `author_id` the caller has blocked (`user_blocks.blocker_id = auth.uid()`) are additionally excluded (BR-59). The author and the Operator see their / all rows in every status.
+- **Public routes (EP-73, EP-74, EP-79)** are route handlers that read with the caller's own Supabase session (anonymous or signed in), so RLS decides visibility, then sign photo URLs (10 min) when the response is built. They are **not cached** — `Cache-Control: no-store`, rendered on every request (TC ADR-18) — so hiding, resolving, expiring, blocking and suspension show on the next request. `X-Robots-Tag` is not set (listings may be indexed).
+- **Display name rule.** Wherever a person is shown, `display_name` = `coalesce(profiles.display_name, profiles.full_name)`; `null` when both are null (the client shows *Korisnik*). For a need listing the author is shown as the shelter: `organisations.name` via `listings.organisation_id` (FR-67). Email and phone are never returned by any operation in this section (BR-61).
+- **Photos.** Listing photos are uploaded through EP-13 with `purpose = listing_photo` after the listing exists (as pet photos). Public routes return signed `FileUrl`s; Data API reads return photo ids and the client signs them with EP-15 (`kind = listing_photo`).
+- **Not real-time (NFR-11).** Inbox, threads and unread counts are read on each page load (EP-80, EP-81, `Me.marketplace`); no subscription, socket or polling loop.
+
+#### EP-73 — List listings
+- **Address:** `GET /api/public/listings?type=&category=&species=&city_id=&limit=&offset=` (route handler; reads `rpc:list_listings(p_type, p_category, p_species, p_city_id, p_limit, p_offset)`, security invoker) — not cached (`Cache-Control: no-store`, TC ADR-18)
+- **Callers:** S32 `/sapa-pomoci` (filters, card grid, "48 oglasa · najnoviji prvo", *Prethodna · Strana 1 od 3 · Sledeća*), signed in (AppShell) and signed out (`PublicShell wide`)
+- **FRs:** FR-61
+- **Authorization:** everyone, Visitor included. Rows follow the public-visibility rule above (block filter only with a session).
+- **Request:**
+  - `type` — enum `need` / `giving` / `selling` / `seeking` — optional; absent = all
+  - `category` — enum `food` / `equipment_toys` / `furniture` / `carriers` / `medicine_care` / `other` — optional
+  - `species` — enum `dog` / `cat` / `other` — optional
+  - `city_id` — uuid — optional — existing `cities.id` (`fields.city_id = "unknown"`)
+  - `limit` — integer — optional — 1–50, default 20 (S32 uses 18 for a 3-column grid)
+  - `offset` — integer — optional — ≥ 0, default 0
+- **Response:** `200` `{ items: ListingSummary[], total: integer }` — every filter must match (AND); order `published_at desc, id desc` (newest first). `cover_photo` is signed (10 min). Empty → `items: []`, `total: 0`.
+- **Errors:** `validation_failed` (422) — unknown enum value, `limit` out of range, unknown `city_id`.
+- **States:** S32 *loading* → *default*; `total = 0` → *empty* (with filters: *"Nema oglasa za ove filtere"* + *Poništi filtere*; without: *"Još nema oglasa"*); 5xx → *error*. *signed_out* (O) and *suspended* (S) come from the session and `Me.marketplace.suspended_at` (EP-43), not from this response.
+- **Side effects:** none.
+- **Budget:** `public`
+
+#### EP-74 — Get listing
+- **Address:** `GET /api/public/listings/:id` (route handler; reads `rpc:get_listing(p_listing_id)`, security invoker) — not cached (`Cache-Control: no-store`, TC ADR-18)
+- **Callers:** S33 `/sapa-pomoci/[id]` (gallery, tags, price, author card, action card, *Doniraj* flag, own-listing card, resolved variant); S34 `/sapa-pomoci/[id]/izmeni` (edit preload); S36 thread header link target
+- **FRs:** FR-62, FR-66, FR-67, FR-68
+- **Authorization:** everyone, Visitor included, for a publicly visible listing. The author and the Operator get the listing in any status. Anyone else asking for a listing that is resolved, expired, hidden, by a suspended author, by a user the caller blocked, or deleted → `404 not_found` (indistinguishable on purpose, FR-62).
+- **Request:** `id` — path — required — uuid.
+- **Response:** `200` `Listing` (photos signed, 10 min). `viewer` fields depend on the session.
+- **Errors:** `not_found` (404).
+- **States:** S33 *default* (selling/giving/seeking) or *need* (`type = need`; *Doniraj* shown when `has_donation_info = true`); *signed_out* when `viewer.signed_in = false` (message, Doniraj, report, block replaced by *"Prijavi se da pošalješ poruku"*); *own* when `viewer.is_author = true` (*"Ovo je tvoj oglas"*, `viewer.conversation_count`, edit / extend / resolve; no message button); author's *resolved* variant when `status = resolved` (*Rešeno — <outcome>*, `resolved_at`); *suspended* (S) from `Me.marketplace.suspended_at`; "Pošalji poruku" opens the existing thread when `viewer.my_conversation_id` is set (BR-61); *unavailable* on `404`; *loading*; *error* on 5xx.
+- **Side effects:** none.
+- **Budget:** `public`
+
+#### EP-75 — Create / update listing
+- **Address:** `action:saveListing(input) → Listing` (one transaction; photo bytes via EP-13 `listing_photo` after the listing exists)
+- **Callers:** S34 `/sapa-pomoci/nova` (*Objavi oglas*), `/sapa-pomoci/[id]/izmeni` (*Sačuvaj izmene*, photo remove / reorder)
+- **FRs:** FR-63, FR-64
+- **Authorization:** any signed-in user creates `giving` / `selling` / `seeking` listings (BR-54). `need`: only an Admin or Volunteer of an `approved` organisation of type `shelter` — the action sets `organisation_id` to the caller's shelter (`Me.marketplace.need_organisation`); otherwise `403 listing_type_not_allowed`. Update: the author only — a visible listing of someone else → `403 forbidden_role`; not visible → `404 not_found`. Suspended → `403 marketplace_suspended`.
+- **Request:**
+  - `id` — uuid — optional — absent = create; present = update (only the fields sent change)
+  - `type` — enum `listing_type` — required on create; on update it may change only among `giving` / `selling` / `seeking` (to or from `need` → `fields.type = "invalid_state"`)
+  - `title` — string — required on create — 1–80 chars after trim (TC check; S34 additionally asks for ≥ 5 client-side) (`fields.title`: `required` | `too_long`)
+  - `description` — string — required on create — 1–2000 chars (TC check, FR-63) (`fields.description`: `required` | `too_long`)
+  - `category` — enum `listing_category` — required on create — `medicine_care` only with `type = need` (BR-54) → else `422 category_not_allowed`
+  - `species` — enum `listing_species` — required on create
+  - `city_id` — uuid — required on create — existing `cities.id` (`fields.city_id = "unknown"`)
+  - `price` — Money | null — `selling` only: required unless `price_negotiable = true`; `amount_minor` > 0, whole RSD (multiple of 100), ≤ 999 999 900 (`fields.price`: `required` | `invalid` | `out_of_range`); must be null for other types (BR-57)
+  - `price_negotiable` — boolean — optional, default false — `selling` only ("Po dogovoru"); `true` together with a `price` → `fields.price = "invalid"`
+  - `photo_ids` — uuid[] — optional, update only — the listing's existing `listing_photos.id` in the wanted order (first = *Naslovna*); photos left out are deleted; unknown ids → `fields.photo_ids = "invalid"`
+- **Response:** `ok` `Listing` (photos signed). Create returns `status = active`, `expires_at = published_at + 30 days`.
+- **Errors:** `premium_required` (403, `details.limit = "listings"`) — create of a non-need listing by a Free user without a Shelter account who already has 3 active listings (BR-55, E-28; trigger `listings_active_limit`); `listing_type_not_allowed` (403) — `need` without approved-shelter membership (BR-54, E-29); `category_not_allowed` (422) — `medicine_care` on a non-need listing (BR-54, E-29); `listing_not_active` (409) — update of a `resolved` or `hidden` listing (active and expired listings can be edited); `marketplace_suspended` (403) (E-35); `organisation_pending_approval` (403) — need listing of a pending shelter; `validation_failed` (422); `forbidden_role` (403); `not_found` (404).
+- **States:** S34 *default* / *shelter* (need) / *edit* → toast + redirect to S33; *invalid* — inline field errors on `422` and `category_not_allowed` (under *Kategorija*); *premium_locked* (G, `PremiumLock` over the form) on `premium_required`; *suspended* (S) from `Me.marketplace.suspended_at`; *error* (X) on 5xx.
+- **Side effects:** create: inserts `listings { author_id = auth.uid(), organisation_id, type, title, description, category, species, city_id, price_minor, price_negotiable, status = active, published_at = now(), expires_at = now() + 30 days }` (triggers: `listings_active_limit`, `listings_need_shelter_only`, `marketplace_not_suspended`, price check). Update: writes the changed columns; `published_at` and `expires_at` never change (BR-56); `photo_ids` deletes the omitted `listing_photos` rows (their `r2_key`s go to `r2_deletion_queue`) and rewrites `position` 1…n in the given order. The listing shows in EP-73 on the next request (not cached).
+- **Budget:** `action`
+
+#### EP-76 — List my listings
+- **Address:** Data API `rpc:list_my_listings(p_group, p_limit, p_offset)` (security invoker; author's own rows)
+- **Callers:** S35 `/sapa-pomoci/moje` (tabs *Aktivni* / *Istekli* / *Rešeni* with counts, row cards, counter card "2 / 3"); thumbnails via EP-15 (`listing_photo`)
+- **FRs:** FR-64, FR-65
+- **Authorization:** any signed-in user, own listings only (`author_id = auth.uid()`). Allowed while suspended.
+- **Request:**
+  - `p_group` — enum `active` (status `active` or `hidden`) / `expired` / `resolved` — required
+  - `p_limit` — integer — optional — 1–50, default 20
+  - `p_offset` — integer — optional — ≥ 0, default 0
+- **Response:** `200` `{ items: MyListing[], total: integer, counts: { active: integer, expired: integer, resolved: integer }, usage: MarketplaceStatus }`. Order: `active` — `expires_at asc` (soonest first); `expired` — `expires_at desc`; `resolved` — `resolved_at desc`.
+- **Errors:** `validation_failed` (422) — unknown `p_group`, `p_limit` out of range.
+- **States:** S35 *loading* → *default*; tab with `items: []` → *empty* (*"Još nemaš aktivnih oglasa"* + *Novi oglas*); *premium_locked* (G) when `usage.active_listing_limit` is not null and `usage.active_listings ≥ usage.active_listing_limit` (`PremiumLock` card above the list, *Objavi ponovo* disabled); *suspended* (S) when `usage.suspended_at` is set (edit / extend hidden, delete allowed); *error* on 5xx.
+- **Side effects:** none.
+- **Budget:** `read-list`
+
+#### EP-77 — Extend / resolve / delete listing
+- **Address:** `action:changeListing(input) → Listing | { deleted_listing_id }`
+- **Callers:** S35 `/sapa-pomoci/moje` (*Produži 30 dana*, *Objavi ponovo (30 dana)*, *Označi kao rešeno* AlertDialog, *Obriši* AlertDialog); S33 own-listing card (*Produži 30 dana*, *Označi kao rešeno*); S34 edit (*Obriši oglas* → *Da, obriši*); `listing_expiring` email *Produži* (opens S35 `/sapa-pomoci/moje?produzi=<listing_id>`, which calls `extend` after sign-in — EP-87)
+- **FRs:** FR-64, FR-65
+- **Authorization:** the author only — someone else's visible listing → `403 forbidden_role`; not visible → `404 not_found`. `extend` and `resolve` are blocked while suspended (`403 marketplace_suspended`); `delete` is always allowed.
+- **Request:** discriminated by `op`:
+  - `listing_id` — uuid — required
+  - `op: "extend"` — no further fields; listing `status` must be `active` or `expired`
+  - `op: "resolve"` — `outcome` — enum `given` / `sold` / `donated` / `found` — optional, default by type (`giving` → `given`, `selling` → `sold`, `need` → `donated`, `seeking` → `found`); listing must be `active`
+  - `op: "delete"` — `confirm` — boolean — required — must be `true` (`fields.confirm = "required"`)
+- **Response:** `extend` / `resolve` → `ok` `Listing`; `delete` → `ok` `{ deleted_listing_id: uuid /* listings.id */ }`.
+- **Errors:** `premium_required` (403, `details.limit = "listings"`) — `extend` of an expired non-need listing by a Free user who already has 3 active listings (BR-55, BR-56, E-28); `listing_not_active` (409) — `extend` of a `resolved` / `hidden` listing, `resolve` of a non-active listing; `marketplace_suspended` (403) (E-35); `validation_failed` (422); `forbidden_role` (403); `not_found` (404).
+- **States:** S35 / S33 row or card updates with a toast (*"Oglas je produžen do …"*, *"Oglas je označen kao rešen — Poklonjeno."*); *premium_locked* on `premium_required`; delete → row removed (S35) or redirect to S35 (S33, S34).
+- **Side effects:** `extend`: `status = active`, `expires_at = now() + 30 days`, `expiry_notice_sent_at = null` (BR-56; trigger `listings_active_limit` runs when the status changes from `expired`). `resolve`: `status = resolved`, `resolved_outcome`; the listing leaves EP-73 / EP-79 on the next request; its conversations continue (BR-61). `delete`: collects `listing_photos.r2_key`, deletes the `listings` row (cascade `listing_photos`; `conversations.listing_id` and `reports.listing_id` set null — threads show *"oglas obrisan"*), queues the keys in `r2_deletion_queue`.
+- **Budget:** `action`
+
+#### EP-78 — Get shelter donation info
+- **Address:** Data API `rpc:get_donation_info(p_listing_id uuid)` (security definer; requires the `authenticated` role)
+- **Callers:** S33 `/sapa-pomoci/[id]` (*Doniraj* Dialog: *Uplata na račun* + *Kopiraj*, *Online uplata*, *Donošenje u azil*; each block omitted when its field is null)
+- **FRs:** FR-66, FR-72
+- **Authorization:** any signed-in user (FR-66); Visitor → `401 unauthenticated` (S33 shows sign-in first, E-32). The listing must be publicly visible to the caller and of type `need`.
+- **Request:** `p_listing_id` — uuid — required.
+- **Response:** `200` `DonationInfo` of the listing's shelter (`listings.organisation_id`), with `payment_purpose` filled. A shelter with no donation info returns all four fields `null` and `has_any = false` (not an error).
+- **Errors:** `unauthenticated` (401); `not_found` (404) — listing not visible; `validation_failed` (422, `fields.p_listing_id = "invalid_state"`) — listing is not a need.
+- **States:** S33 Doniraj Dialog *default*; `has_any = false` → *"Azil još nije dodao podatke za donacije"* + *Pošalji poruku azilu* (FR-66); sign-in prompt on `401`; error toast on 5xx.
+- **Side effects:** none. No money is collected or processed (BR-58).
+- **Budget:** `read-small`
+
+#### EP-79 — Get public user profile
+- **Address:** `GET /api/public/users/:id?limit=&offset=` (route handler; reads `rpc:get_public_profile(p_user_id, p_limit, p_offset)`, security definer returning only the TC-listed fields) — not cached (`Cache-Control: no-store`, TC ADR-18)
+- **Callers:** S37 `/korisnik/[id]` (header card, *Aktivni oglasi* grid, `⋯` menu state); S33 author card link; S36 thread header link
+- **FRs:** FR-67, FR-70
+- **Authorization:** everyone, Visitor included. Profiles of users who are suspended from Šapa pomoći, pending deletion, or unknown → `404 not_found`.
+- **Request:** `id` — path — required — `profiles.id`; `limit` — 1–50, default 18; `offset` — ≥ 0, default 0.
+- **Response:** `200` `PublicProfile` (listing cover photos signed). Never email or phone (FR-67).
+- **Errors:** `not_found` (404); `validation_failed` (422) — bad paging.
+- **States:** S37 *default*; *signed_out* when `viewer.signed_in = false` (menu hidden); *empty* when `listings_total = 0`; *blocked* (B) when `viewer.i_blocked = true` (`ReadOnlyBanner` + *Odblokiraj*, listings hidden — returned as `[]`); *unavailable* on `404`; *loading*; *error* on 5xx.
+- **Side effects:** none.
+- **Budget:** `public`
+
+#### EP-80 — List my conversations
+- **Address:** Data API `rpc:list_my_conversations(p_limit, p_offset)` (security definer; only conversations where the caller is `starter_id` or `owner_id`)
+- **Callers:** S36 `/poruke` (inbox pane); S35 row footer *"Razgovora: N · nepročitano: N"* uses `MyListing` instead
+- **FRs:** FR-68
+- **Authorization:** any signed-in user, own conversations only. Allowed while suspended (BR-60).
+- **Request:** `p_limit` — integer — optional — 1–50, default 20; `p_offset` — integer — optional — ≥ 0, default 0.
+- **Response:** `200` `{ items: ConversationSummary[], total: integer, unread_conversations: integer }` — order `conversations.last_message_at desc`; `unread_conversations` (computed: conversations with at least one message from the other party with `read_at is null`) equals `Me.marketplace.unread_conversations`, which feeds the *Poruke* badge on every shell load.
+- **Errors:** `validation_failed` (422).
+- **States:** S36 *loading* → *default*; `items: []` → *empty* (*"Još nema poruka"* + *Pogledaj oglase*); inbox row *Blokiran korisnik* when `i_blocked_other = true`; *error* on 5xx.
+- **Side effects:** none.
+- **Budget:** `read-list`
+
+#### EP-81 — Get conversation with messages
+- **Address:** Data API `rpc:get_conversation(p_conversation_id, p_limit, p_offset)` (security definer; caller must be a party)
+- **Callers:** S36 `/poruke/[id]` (thread header, message list, "Učitaj starije", composer state)
+- **FRs:** FR-68, FR-70
+- **Authorization:** the two parties only; anyone else → `404 not_found`. Allowed while suspended (old messages stay readable, BR-60).
+- **Request:** `p_conversation_id` — uuid — required; `p_limit` — integer — optional — 1–50, default 50; `p_offset` — integer — optional — ≥ 0, default 0 — counted back from the newest message.
+- **Response:** `200` `{ conversation: Conversation, messages: Message[], total: integer }` — the page holds the `p_limit` newest messages after skipping `p_offset`, returned **oldest → newest** (newest last, FR-68); `total` counts all messages, so "Učitaj starije" shows while `p_offset + p_limit < total`. Day separators are computed by the client in Europe/Belgrade.
+- **Errors:** `not_found` (404); `validation_failed` (422).
+- **States:** S36 thread *default* / *thread open* (phone); *blocked* (B) when `conversation.i_blocked_other = true` (composer hidden, *Odblokiraj*); *suspended* (S) from `Me.marketplace.suspended_at` (composer replaced by a note); listing line *"· oglas više nije aktivan"* when `listing.active = false`, *"oglas obrisan"* when `listing.deleted = true`; *loading*; *error* on `404` / 5xx. After a successful read the client calls EP-83.
+- **Side effects:** none (reading does not mark as read; EP-83 does).
+- **Budget:** `read-list`
+
+#### EP-82 — Start conversation / send message
+- **Address:** `action:sendMessage(input) → { conversation: ConversationSummary, message: Message, created_conversation: boolean }`
+- **Callers:** S33 `/sapa-pomoci/[id]` (*Pošalji poruku* / *Pošalji poruku azilu* Dialog with the first message); S36 `/poruke/[id]` (composer)
+- **FRs:** FR-68, FR-69
+- **Authorization:** any signed-in user who is not suspended. Starting: on a publicly visible, active listing the caller did not post. Replying: a party of the conversation. Visitor → `401 unauthenticated` (sign-in, then back to the listing — E-32).
+- **Request:**
+  - `listing_id` — uuid — start a conversation (or continue the caller's existing one about this listing, BR-61); exactly one of `listing_id`, `conversation_id` (`fields.listing_id = "invalid"` when both or neither)
+  - `conversation_id` — uuid — reply in an existing conversation
+  - `body` — string — required — 1–2000 chars after trim, text only (`fields.body`: `required` | `too_long`)
+  - `idempotency_key` — uuid v4 — required (§3.3). A repeat within 24 h returns the original result and sends nothing.
+- **Response:** `ok` `{ conversation: ConversationSummary, message: Message, created_conversation: boolean /* computed: true when this call inserted the conversations row */ }`.
+- **Errors:** `listing_not_active` (409) — starting a conversation on a listing that is not active (E-33; trigger `conversations_listing_active`); `cannot_message_self` (409) — the caller is the listing's author (E-33); `user_blocked` (403) — the other party has blocked the caller (BR-59, E-34; trigger `messages_not_blocked`; nothing is sent); `marketplace_suspended` (403) (E-35); `rate_limited` (429, `details.retry_after_s`) — more than 30 messages per hour per user (§11); `validation_failed` (422); `not_found` (404) — listing not visible or conversation not the caller's; `unauthenticated` (401).
+- **States:** S33 Dialog → *"Poruka je poslata…"* + *Otvori razgovor* (`/poruke/<conversation.id>`); S36 the message appears at the bottom; `422` → inline error under the composer (*"Napiši poruku pre slanja."*); `rate_limited` and `user_blocked` → inline error under the composer (Design S36); `listing_not_active` / `cannot_message_self` → the message action is not available (E-33).
+- **Side effects:** in one transaction: when starting and no `conversations` row exists for (`listing_id`, `starter_id = auth.uid()`), inserts `conversations { listing_id, starter_id = auth.uid(), owner_id = listings.author_id, last_message_at = now() }` (unique pair, BR-61); inserts `messages { conversation_id, sender_id = auth.uid(), body = btrim(body) }` (triggers `messages_not_blocked`, `marketplace_not_suspended`, `messages_touch_conversation`); increments the `rate_limit_counters` row. **After commit — new-message notification (FR-69):** reads the recipient's `reminder_preferences` row of type `message` (default `{email, push}`; empty = off); skipped entirely when the recipient's `deletion_requested_at` is set. `email` → Resend template `new_message` in the recipient's `profiles.locale` (`{first_name}` from `profiles.full_name`, `{listing}` = `listings.title` or the "listing deleted" label, `{sender}` = sender display name, `{preview}` = first 120 characters, button to `/poruke/<conversation_id>`); `push` → Web Push to every `push_subscriptions` endpoint of the recipient (`{ title: sender, body: "<listing>: <preview>", url: "/poruke/<conversation_id>" }`; endpoints answering `404` / `410` are deleted). Never WhatsApp or Viber. Delivery failures are logged and never fail the send; nothing is written to `reminder_deliveries` (that table is per reminder occurrence).
+- **Budget:** `action` (≤ 5 s including the notification calls)
+
+#### EP-83 — Mark conversation read
+- **Address:** Data API `rpc:mark_conversation_read(p_conversation_id uuid)` (security definer; caller must be a party)
+- **Callers:** S36 `/poruke/[id]` (right after EP-81 returns)
+- **FRs:** FR-68
+- **Authorization:** the two parties only; others → `404 not_found`. Allowed while suspended. Naturally idempotent — no key.
+- **Request:** `p_conversation_id` — uuid — required.
+- **Response:** `200` `{ conversation_id: uuid /* conversations.id */, marked: integer /* computed: rows updated */, unread_conversations: integer /* computed, as EP-80 */ }`.
+- **Errors:** `not_found` (404).
+- **States:** S36 the row's unread pill disappears and the *Poruke* badge decreases; the other party sees *"· Pročitano"* on their messages on their next load.
+- **Side effects:** `messages.read_at = now()` where `conversation_id` matches, `sender_id <> auth.uid()` and `read_at is null` (FR-68: the conversation's unread count becomes 0).
+- **Budget:** `write`
+
+#### EP-84 — Report listing or user
+- **Address:** `action:submitReport(input) → { report: Report, already_submitted: boolean }`
+- **Callers:** S33 `/sapa-pomoci/[id]` (`⋯` *Prijavi oglas*); S36 thread (`⋯` *Prijavi korisnika*); S37 `/korisnik/[id]` (`⋯` *Prijavi korisnika*) — shared `ReportDialog`
+- **FRs:** FR-70
+- **Authorization:** any signed-in user (suspended users included); Visitor → `401 unauthenticated` (menu hidden signed out).
+- **Request:**
+  - `listing_id` — uuid — the listing to report; exactly one of `listing_id`, `user_id` (`fields.listing_id = "invalid"` when both or neither); the caller's own listing → `fields.listing_id = "invalid"`
+  - `user_id` — uuid — the user to report (`profiles.id`); the caller → `fields.user_id = "invalid"`
+  - `reason` — enum `spam` / `scam` / `inappropriate` / `animal_welfare` / `other` — required
+  - `note` — string | null — optional — ≤ 500 chars; required when `reason = other` (`fields.note`: `required` | `too_long`)
+- **Response:** `ok` `{ report: Report, already_submitted: boolean }` — when the caller already has an `open` report on the same target, that report is returned with `already_submitted = true` and nothing is written (FR-70).
+- **Errors:** `validation_failed` (422); `not_found` (404) — listing not visible to the caller, or unknown user; `unauthenticated` (401).
+- **States:** S33 / S36 / S37 `ReportDialog` → confirmation (*"Prijava je poslata…"*); `already_submitted = true` → *"Već si prijavio/la ovaj oglas / korisnika."*; inline field errors on `422`.
+- **Side effects:** inserts `reports { reporter_id = auth.uid(), listing_id, reported_user_id (= listings.author_id for a listing report), reason, note, status = open }` (unique partial indexes give one open report per reporter and target). It appears in EP-86 and the S26 *Moderacija* count on the next read. No email.
+- **Budget:** `action`
+
+#### EP-85 — Block / unblock user
+- **Address:** Data API `rpc:block_user(p_user_id uuid) → UserBlock`; `rpc:unblock_user(p_user_id uuid)` (security invoker; RLS: the blocker inserts, reads and deletes only their own `user_blocks` rows)
+- **Callers:** S33 (`⋯` *Blokiraj korisnika* — not offered on shelter needs), S36 thread (`⋯` *Blokiraj*, *Odblokiraj* in the blocked state), S37 (`⋯` *Blokiraj*, *Odblokiraj* in the banner) — shared `BlockDialog`
+- **FRs:** FR-70
+- **Authorization:** any signed-in user, own blocks only (suspended users included); Visitor → `401 unauthenticated`. Naturally idempotent — no key.
+- **Request:** `p_user_id` — uuid — required — `profiles.id`, not the caller (`fields.p_user_id = "invalid"`).
+- **Response:** block → `200` `UserBlock` (the existing row when already blocked); unblock → `204` (also when no block existed).
+- **Errors:** `validation_failed` (422); `not_found` (404) — unknown user.
+- **States:** S36 *blocked* (B) / S37 *blocked* (B) after block, *default* after unblock; S33 → *unavailable* after blocking from the menu (the listing is now hidden for the caller).
+- **Side effects:** block inserts `user_blocks { blocker_id = auth.uid(), blocked_id }`; unblock deletes it. Effects on the next request (BR-59): the blocked user's listings disappear from the blocker's EP-73 / EP-74 / EP-79 results; EP-82 from the blocked user to the blocker fails with `user_blocked` and sends no notification; the blocked user is never told beyond that refusal. Existing conversations stay readable for both.
+- **Budget:** `write`
+
+#### EP-86 — Operator moderation
+- **Address:** Data API `rpc:admin_list_moderation(p_view, p_limit, p_offset)` (RLS: `profiles.is_operator`); `action:moderate(input) → { report: ModerationItem | null, restriction: Restriction | null }` (service role on the server)
+- **Callers:** S26 `/admin` (*Moderacija* tab and nav badge: *Otvorene prijave* cards with *Odbaci prijavu* / *Sakrij oglas* / *Isključi autora / korisnika*, AlertDialog *"Razlog za korisnika"*, *"Obrađeno ovog meseca: N"*; section *Sakriveni oglasi i isključeni korisnici* with *Vrati oglas* / *Vrati pristup*)
+- **FRs:** FR-71
+- **Authorization:** Operator only; everyone else → `403 forbidden_role` (the list returns nothing to non-Operators through RLS; the action checks explicitly).
+- **Request (list):**
+  - `p_view` — enum `open_reports` / `restrictions` — required
+  - `p_limit` — integer — optional — 1–50, default 20; `p_offset` — integer — optional — ≥ 0, default 0
+- **Request (`moderate`)** — discriminated by `op`:
+  - `op: "dismiss_report"` — `report_id` — uuid — required
+  - `op: "hide_listing"` — `report_id` — uuid — required — an open report with `listing_id`; `reason_note` — string | null — optional — ≤ 500 chars (goes only into the email, §9.4)
+  - `op: "suspend_user"` — `report_id` — uuid — required — an open report; the target is its `reported_user_id`; `reason_note` — as above
+  - `op: "restore_listing"` — `listing_id` — uuid — required — a listing with `status = hidden`
+  - `op: "restore_user"` — `user_id` — uuid — required — a user with `marketplace_suspended_at` set
+- **Response:** list → `200` `{ view, items: ModerationItem[] | Restriction[], total: integer, open_count: integer /* computed: reports with status open — tab and nav badge */, handled_this_month: integer /* computed: reports with handled_at in the current Europe/Belgrade month */ }`. `open_reports` order: `reports.created_at asc` (oldest first, FR-71); `restrictions` order: `restricted_at desc`. `moderate` → `ok` with the updated `ModerationItem` (dismiss / hide / suspend) or the lifted `Restriction` (restore); the other member is `null`.
+- **Errors:** `forbidden_role` (403); `not_found` (404) — unknown report, listing or user; `already_decided` (409) — the report is no longer `open`; `validation_failed` (422) — `hide_listing` on a user report (`fields.report_id = "invalid"`), restore of a listing that is not hidden or a user who is not suspended (`fields.listing_id` / `fields.user_id = "invalid_state"`), `reason_note` too long.
+- **States:** S26 Moderacija *loading* → *default*; `items: []` → *empty* (*"Nema otvorenih prijava"*); toast after each action (*"Oglas „…“ je sakriven. … je dobio/la mejl."*); `409` → toast and the card leaves the list; *error* on 5xx.
+- **Side effects:** every decision sets `reports.status`, `handled_by = auth.uid()`, `handled_at = now()`.
+  - `dismiss_report` → `status = dismissed`; nothing else changes.
+  - `hide_listing` → `listings.status = hidden` (only from `active`; a listing already resolved / expired / hidden stays as it is and only the reports change); this report and every other open report on the same `listing_id` → `actioned`; email `listing_hidden` to the author (Resend, author's locale; `{reason}` = `reason_note`, or the report reason label when empty).
+  - `suspend_user` → `profiles.marketplace_suspended_at = now()` (if not already set); this report and every other open report with the same `reported_user_id` → `actioned`; email `marketplace_suspended` (sent only when the suspension is new). The user's listings disappear from EP-73 / EP-74 / EP-79 through RLS; their rows keep their status.
+  - `restore_listing` → `status = active` when `expires_at > now()`, otherwise `expired` (TC §5.10); if the `listings_active_limit` trigger refuses `active` (`premium_required:listings` — the author published others meanwhile), the listing is restored as `expired` instead and the author can extend it later. No email.
+  - `restore_user` → `marketplace_suspended_at = null`; the user's listings reappear by their own status. No email.
+  - The Operator has no access to message bodies (TC §5.10); the reporter's `note` is the evidence. `reason_note` is not stored (OQ-17).
+- **Budget:** `read-list` (list), `action` (moderate)
+
+#### EP-87 — Listing expiry job
+- **Address:** job: pg_cron daily 09:00 Europe/Belgrade → `POST /api/internal/listings-daily` via `pg_net` (header `X-Dispatch-Secret`, same mechanism and Vault secrets as EP-33, TC §8)
+- **Callers:** job (System)
+- **FRs:** FR-65; BR-56
+- **Authorization:** System only. `X-Dispatch-Secret` compared in constant time with `DISPATCH_SECRET`; uses the service role.
+- **Request:** header `X-Dispatch-Secret` — string — required.
+- **Response:** `200` `{ notices_sent: integer, expired: integer, emails_failed: integer, duration_ms: integer }`.
+- **Errors:** `invalid_signature` (401) — missing or wrong secret; `internal_error` (500) — each step is idempotent and the next run continues.
+- **States:** none directly; S35 shows *Ističe za N dana* / *Istekao* from the data.
+- **Side effects (in order, batches of ≤ 200 with `FOR UPDATE SKIP LOCKED`):**
+  1. **3-day notice** — listings with `status = active`, `expiry_notice_sent_at is null`, `now() < expires_at <= now() + 3 days`: email `listing_expiring` to the author (Resend, author's locale; `{listing}`, `{date}` = `expires_at` as a Belgrade date; *Produži* → `/sapa-pomoci/moje?produzi=<listing_id>`, which signs in if needed and calls EP-77 `extend` — no signed action token, §9.3; *Označi kao rešeno* → S35); then `expiry_notice_sent_at = now()` (set only after Resend accepted, so a failed send is retried next day; EP-77 `extend` clears it, so a listing gets one notice per period).
+  2. **Expire (E-31)** — listings with `status = active` and `expires_at <= now()` → `status = expired`; email `listing_expired` (*Objavi ponovo* → S35). The listing leaves EP-73 on the next request.
+  - Authors who are suspended from Šapa pomoći or whose `deletion_requested_at` is set get no emails; their listings still expire.
+- **Budget:** `job`
+
+#### EP-88 — Update shelter donation info
+- **Address:** `action:updateDonationInfo(input) → DonationInfo` (wraps `organisations` update of the four donation columns `eq(id, caller's organisation)`)
+- **Callers:** S29 `/organizacija/profil` (*Donacije* card: *Broj računa*, *Link za uplatu*, *Adresa za donošenje*, *Radno vreme za donošenje*); current values come from EP-53 (`Organisation.donation`)
+- **FRs:** FR-72
+- **Authorization:** OrgAdmin of a `shelter` organisation; Volunteer → `403 forbidden_role` (view-only from EP-53); breeder organisations → `403 forbidden_role` (the card is hidden); users without an organisation → `404 not_found`.
+- **Request:** every field optional, `null` clears it; only fields sent change:
+  - `bank_account` — string | null — format `NNN-N…N-NN` (`^\d{3}-\d{1,13}-\d{2}$`, e.g. `160-0000012345678-90`) (`fields.bank_account = "invalid"`)
+  - `payment_url` — string | null — valid `https://` URL, ≤ 500 chars (TC check `^https://`) (`fields.payment_url = "invalid"`)
+  - `dropoff_address` — string | null — ≤ 200 chars
+  - `dropoff_hours` — string | null — ≤ 200 chars, free text
+- **Response:** `ok` `DonationInfo` (`payment_purpose = null`).
+- **Errors:** `validation_failed` (422); `forbidden_role` (403); `not_found` (404); `organisation_pending_approval` (403).
+- **States:** S29 *default* → toast; inline field errors on `422`; *read_only* for Volunteers (`access.can_edit = false` from EP-53).
+- **Side effects:** updates `organisations.donation_bank_account`, `donation_url`, `dropoff_address`, `dropoff_hours`. EP-74 `has_donation_info` and EP-78 show the new values on the next request (not cached).
+- **Budget:** `write`
+
 ---
 
 ## 6. Payload Schemas
 
-Shared object shapes referenced by §5. Each field is typed, nullability stated, and mapped to a TC v1.3 column or marked computed.
+Shared object shapes referenced by §5. Each field is typed, nullability stated, and mapped to a TC column (v1.3; Šapa pomoći fields to TC v1.7 §5.10) or marked computed.
 
 
 Notation: **Null** = whether the value may be `null` (every field is always present, §3.5). Money = `{ amount_minor: integer, currency: "RSD" }`. Schemas owned by other parts are referenced by name: `ReminderOccurrence`, `Entitlements` (Part B); none from Part C.
@@ -1505,9 +1776,9 @@ Notation: **Null** = whether the value may be `null` (every field is always pres
 #### FileUrl
 | Field | Type | Null | Source |
 |---|---|---|---|
-| kind | enum `attachment`/`pet_photo`/`moment_photo`/`organisation_logo`/`partner_logo` | no | computed: echo of the request |
+| kind | enum `attachment`/`pet_photo`/`moment_photo`/`organisation_logo`/`partner_logo`/`listing_photo` | no | computed: echo of the request |
 | id | uuid | no | computed: echo of the request |
-| url | string | yes | computed: presigned R2 `GET` for `attachments.r2_key` / `pets.photo_r2_key` / `moment_photos.r2_key` / `organisations.logo_r2_key` / `partners.logo_r2_key`, `Content-Disposition: inline; filename=<file_name>`; null when not visible or no file |
+| url | string | yes | computed: presigned R2 `GET` for `attachments.r2_key` / `pets.photo_r2_key` / `moment_photos.r2_key` / `organisations.logo_r2_key` / `partners.logo_r2_key` / `listing_photos.r2_key`, `Content-Disposition: inline; filename=<file_name>`; null when not visible or no file |
 | expires_at | timestamp | yes | computed: issue time + 10 min; null when `url` is null |
 | mime_type | string | yes | `attachments.mime_type` for attachments; null for other kinds |
 
@@ -1651,11 +1922,11 @@ One reminder **instance** (see §5.3 note) as seen by the caller.
 #### ReminderPreference
 | Field | Type | Null | Source |
 |---|---|---|---|
-| type | enum (as ReminderOccurrence.type) | no | `reminder_preferences.type` |
-| lead_minutes | integer[] | no | `reminder_preferences.lead_minutes`; default when no row: `vaccination` {10080, 0}, `vet_follow_up` {1440, 0}, `birthday` {0}, `manual` {0}, `treatment_dose` {0}, `meal` {0} |
-| delivery_time | string `HH:MM` | yes | `reminder_preferences.delivery_time`; default `09:00`; null for `treatment_dose` / `meal` |
-| channels | enum[] `email` / `push` / `whatsapp` / `viber` | no | `reminder_preferences.channels`; default {email, push} |
-| fixed_time | boolean | no | computed: `type` in (`treatment_dose`, `meal`) — UI shows "Stižu tačno u zadato vreme" (BR-13) |
+| type | enum (as ReminderOccurrence.type) plus `message` (v1.3) | no | `reminder_preferences.type` (`preference_type`) |
+| lead_minutes | integer[] | no | `reminder_preferences.lead_minutes`; default when no row: `vaccination` {10080, 0}, `vet_follow_up` {1440, 0}, `birthday` {0}, `manual` {0}, `treatment_dose` {0}, `meal` {0}, `message` {0} (ignored) |
+| delivery_time | string `HH:MM` | yes | `reminder_preferences.delivery_time`; default `09:00`; null for `treatment_dose` / `meal` / `message` |
+| channels | enum[] `email` / `push` / `whatsapp` / `viber` | no | `reminder_preferences.channels`; default {email, push}; for `message` a subset of {email, push}, possibly empty (= off, FR-69) |
+| fixed_time | boolean | no | computed: `type` in (`treatment_dose`, `meal`) — UI shows "Stižu tačno u zadato vreme" (BR-13); false for `message` (sent immediately by EP-82) |
 | is_default | boolean | no | computed: no `reminder_preferences` row stored for this type |
 | updated_at | timestamp | yes | `reminder_preferences.updated_at` (null when default) |
 
@@ -1766,6 +2037,7 @@ Fields marked **(session)** are `null` for a Visitor.
 | id | uuid | no | `profiles.id` |
 | email | string | no | `profiles.email` |
 | full_name | string | yes | `profiles.full_name` |
+| display_name | string | yes | `profiles.display_name` (v1.3; Šapa pomoći nickname, FR-67) |
 | account_type | enum `owner` / `shelter` / `breeder` | no | `profiles.account_type` |
 | locale | enum `sr-Latn` / `en` | no | `profiles.locale` |
 | city | City | yes | `cities` via `profiles.city_id` (schema City, part C) |
@@ -1796,6 +2068,7 @@ Fields marked **(session)** are `null` for a Visitor.
 | usage.moments_by_pet[].count | integer | no | computed: count `moments.pet_id` |
 | usage.free_slot_pet | object | yes | computed: when `entitlements.premium = false` and `usage.active_pets ≥ 1`, the earliest-created active own pet (`pets.id`, `pets.name`) — "slot taken by …" copy on S01/S06/S14 |
 | usage.whatsapp_connected | boolean | no | computed: `user_channels` whatsapp row with `opted_in_at` not null (S18 over-limit summary "WhatsApp off") |
+| marketplace | MarketplaceStatus | no | computed (v1.3, §6 Šapa pomoći schemas): suspension, Free listing counter, need permission, unread conversations badge |
 
 #### Entitlements
 | Field | Type | Null | Source |
@@ -1894,6 +2167,7 @@ Fields marked **(session)** are `null` for a Visitor.
 | email | string | yes | `organisations.email` |
 | website | string | yes | `organisations.website` |
 | logo_url | FileUrl | yes | computed: presigned GET of `organisations.logo_r2_key` |
+| donation | DonationInfo | yes | `organisations.donation_bank_account`, `donation_url`, `dropoff_address`, `dropoff_hours` (v1.3, FR-72; `payment_purpose = null`); null for breeders — only returned to the organisation's own members (EP-53, EP-72) |
 | member_count | integer | no | computed: count of `organisation_memberships` |
 | member_limit | integer | no | computed: constant 20 (BR-34) |
 | created_at | timestamp | no | `organisations.created_at` |
@@ -2173,6 +2447,238 @@ Fields marked **(session)** are `null` for a Visitor.
 
 ---
 
+**Šapa pomoći schemas (v1.3, EPIC-08).** Display names follow the §5.9 rule; `FileUrl` values are signed only by the public routes EP-73 / EP-74 / EP-79 and by EP-75 (elsewhere ids are returned and signed with EP-15 `listing_photo`).
+
+#### ListingSummary
+One card in S32 and S37 (`ListingCard`).
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `listings.id` |
+| type | enum `need` / `giving` / `selling` / `seeking` | no | `listings.type` |
+| title | string | no | `listings.title` |
+| category | enum `food` / `equipment_toys` / `furniture` / `carriers` / `medicine_care` / `other` | no | `listings.category` |
+| species | enum `dog` / `cat` / `other` | no | `listings.species` |
+| city | City | no | `cities` via `listings.city_id` |
+| price | Money | yes | computed: `{ amount_minor: listings.price_minor, currency: "RSD" }`; null when `price_minor` is null (the client shows *Po dogovoru* when `price_negotiable`, *Besplatno* for `giving`) |
+| price_negotiable | boolean | no | `listings.price_negotiable` |
+| published_at | timestamp | no | `listings.published_at` |
+| photo_count | integer | no | computed: count `listing_photos` by `listing_id` (badge "N fotografije") |
+| cover_photo | FileUrl | yes | computed: signed GET of the `listing_photos.r2_key` with the lowest `position`; null when no photos |
+| author.kind | enum `user` / `shelter` | no | computed: `shelter` when `listings.organisation_id` is not null (need), else `user` |
+| author.display_name | string | yes | computed: §5.9 display-name rule (shelter → `organisations.name`) |
+
+#### Listing
+Full listing (S33, S34 edit, results of EP-75 / EP-77).
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `listings.id` |
+| type | enum (as ListingSummary) | no | `listings.type` |
+| title | string | no | `listings.title` |
+| description | string | no | `listings.description` |
+| category | enum (as ListingSummary) | no | `listings.category` |
+| species | enum (as ListingSummary) | no | `listings.species` |
+| city | City | no | `cities` via `listings.city_id` |
+| price | Money | yes | computed as in ListingSummary |
+| price_negotiable | boolean | no | `listings.price_negotiable` |
+| status | enum `active` / `resolved` / `expired` / `hidden` | no | `listings.status` (always `active` for callers other than the author and the Operator) |
+| resolved_outcome | enum `given` / `sold` / `donated` / `found` | yes | `listings.resolved_outcome` |
+| resolved_at | timestamp | yes | computed: `listings.updated_at` when `status = resolved` (a resolved listing accepts no further author writes); null otherwise — TC has no `resolved_at` column (OQ-17) |
+| published_at | timestamp | no | `listings.published_at` |
+| expires_at | timestamp | no | `listings.expires_at` ("Aktivan do …") |
+| days_left | integer | yes | computed: whole days from today to the `expires_at` date (Europe/Belgrade), min 0; null unless `status = active` |
+| photos | ListingPhoto[] | no | `listing_photos` by `listing_id`, order `position asc` (0–5) |
+| author | ListingAuthor | no | computed (below) |
+| has_donation_info | boolean | no | computed: `type = need` and at least one of `organisations.donation_bank_account`, `donation_url`, `dropoff_address`, `dropoff_hours` is not null — the *Doniraj* flag (values only through EP-78) |
+| viewer.signed_in | boolean | no | computed: request has a session |
+| viewer.is_author | boolean | no | computed: `listings.author_id = auth.uid()` |
+| viewer.my_conversation_id | uuid | yes | `conversations.id` where `listing_id = listings.id` and `starter_id = auth.uid()`; null when none or signed out (BR-61) |
+| viewer.can_message | boolean | no | computed: signed in, not the author, `status = active`, caller's `marketplace_suspended_at is null` (does not reveal whether the author blocked the caller, BR-59) |
+| viewer.conversation_count | integer | yes | computed: count `conversations` by `listing_id`; only for the author, null for everyone else ("N razgovora o oglasu") |
+| created_at | timestamp | no | `listings.created_at` |
+| updated_at | timestamp | no | `listings.updated_at` |
+
+#### ListingPhoto
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `listing_photos.id` (EP-15 `listing_photo`) |
+| listing_id | uuid | no | `listing_photos.listing_id` |
+| position | integer 1–5 | no | `listing_photos.position` (1 = *Naslovna*) |
+| file_name | string | no | computed: last path segment of `listing_photos.r2_key` without the `<uuid>-` prefix (S34 edit tiles) |
+| url | FileUrl | yes | computed: signed GET of `listing_photos.r2_key` in EP-74 / EP-75; null in other responses |
+
+#### ListingAuthor
+Author card in S33.
+| Field | Type | Null | Source |
+|---|---|---|---|
+| kind | enum `user` / `shelter` | no | computed: `shelter` when `listings.organisation_id` is not null |
+| user_id | uuid | no | `listings.author_id` (S37 link for `user`; the conversation counterpart in EP-82) |
+| display_name | string | yes | computed: §5.9 rule — shelter → `organisations.name`; user → `coalesce(profiles.display_name, profiles.full_name)` |
+| initials | string | yes | computed: initials of `display_name`; null when `display_name` is null |
+| city | City | yes | shelter → `cities` via `organisations.city_id`; user → `cities` via `profiles.city_id` |
+| member_since | timestamp | no | shelter → `organisations.created_at`; user → `profiles.created_at` ("član od septembra 2026.") |
+| active_listing_count | integer | no | computed: publicly visible listings — shelter: count `listings` with this `organisation_id`; user: count `listings` with this `author_id` and `organisation_id is null` ("Aktivnih oglasa: N") |
+| organisation_id | uuid | yes | `listings.organisation_id`; null for `user` |
+| organisation_slug | string | yes | `organisations.slug` (S23 link "Javna stranica azila"); null for `user` |
+
+#### MyListing
+One row in S35.
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `listings.id` |
+| type | enum (as ListingSummary) | no | `listings.type` |
+| title | string | no | `listings.title` |
+| price | Money | yes | computed as in ListingSummary |
+| price_negotiable | boolean | no | `listings.price_negotiable` |
+| status | enum `active` / `resolved` / `expired` / `hidden` | no | `listings.status` |
+| resolved_outcome | enum `given` / `sold` / `donated` / `found` | yes | `listings.resolved_outcome` ("Poklonjeno …") |
+| resolved_at | timestamp | yes | computed as in Listing (OQ-17) |
+| published_at | timestamp | no | `listings.published_at` |
+| expires_at | timestamp | no | `listings.expires_at` ("Aktivan do …" / "Istekao …") |
+| days_left | integer | yes | computed as in Listing ("Ističe za 3 dana" when ≤ 3) |
+| photo_count | integer | no | computed: count `listing_photos` |
+| cover_photo_id | uuid | yes | computed: `listing_photos.id` with the lowest `position` (thumbnail via EP-15); null when no photos |
+| conversation_count | integer | no | computed: count `conversations` by `listing_id` |
+| unread_count | integer | no | computed: count `messages` in those conversations with `sender_id <> auth.uid()` and `read_at is null` |
+| hidden_at | timestamp | yes | computed: `reports.handled_at` of the latest `actioned` report with this `listing_id` (security definer read); null unless `status = hidden` |
+| hidden_reason | enum `report_reason` | yes | computed: `reports.reason` of that report (the Operator's free-text note is not stored, OQ-17); null unless `status = hidden` |
+| can_extend | boolean | no | computed: `status` in (`active`, `expired`), caller not suspended, and — for `expired` non-need listings — `MarketplaceStatus.active_listing_limit` is null or not yet reached |
+
+#### MarketplaceStatus
+The caller's own Šapa pomoći state (`Me.marketplace`, `EP-76 usage`).
+| Field | Type | Null | Source |
+|---|---|---|---|
+| suspended_at | timestamp | yes | `profiles.marketplace_suspended_at` (S state on S32–S36) |
+| active_listings | integer | no | computed: count `listings` with `author_id = caller`, `status = active`, `type <> need` (the counted ones, BR-55) |
+| active_listing_limit | integer | yes | computed: 3 when the caller has no active Premium and `profiles.account_type <> shelter`; null = unlimited (BR-55; an active breeder plan does not lift it — PRD OQ-16 default) |
+| can_post_need | boolean | no | computed: the caller has an `organisation_memberships` row (admin or volunteer) in an organisation with `type = shelter` and `approval_status = approved` (BR-54) |
+| need_organisation | object `{ id: uuid, name: string }` | yes | `organisations.id`, `organisations.name` of that shelter; null when `can_post_need = false` |
+| unread_conversations | integer | no | computed: conversations where the caller is a party with ≥ 1 message from the other party with `read_at is null` (*Poruke* badge) |
+
+#### DonationInfo
+| Field | Type | Null | Source |
+|---|---|---|---|
+| organisation_id | uuid | no | `organisations.id` |
+| organisation_name | string | no | `organisations.name` (Dialog title "Doniraj: …" and the *Primalac* line) |
+| city | City | yes | `cities` via `organisations.city_id` |
+| bank_account | string | yes | `organisations.donation_bank_account` |
+| payment_url | string | yes | `organisations.donation_url` |
+| dropoff_address | string | yes | `organisations.dropoff_address` |
+| dropoff_hours | string | yes | `organisations.dropoff_hours` |
+| payment_purpose | string | yes | computed (EP-78 only): `"Donacija — " + listings.title` (*Svrha*); null from EP-53 / EP-88 |
+| has_any | boolean | no | computed: at least one of the four donation fields is not null |
+
+#### PublicProfile
+| Field | Type | Null | Source |
+|---|---|---|---|
+| user_id | uuid | no | `profiles.id` |
+| display_name | string | yes | computed: `coalesce(profiles.display_name, profiles.full_name)` |
+| initials | string | yes | computed: initials of `display_name` |
+| city | City | yes | `cities` via `profiles.city_id` |
+| member_since | timestamp | no | `profiles.created_at` ("Član od septembra 2026.") |
+| active_listing_count | integer | no | computed: count publicly visible `listings` with `author_id = profiles.id` and `organisation_id is null` |
+| listings | ListingSummary[] | no | those listings, order `published_at desc`, paged (`limit` / `offset`); `[]` when `viewer.i_blocked = true` |
+| listings_total | integer | no | computed: = `active_listing_count` (0 when `viewer.i_blocked`) |
+| viewer.signed_in | boolean | no | computed: request has a session |
+| viewer.is_me | boolean | no | computed: `profiles.id = auth.uid()` |
+| viewer.i_blocked | boolean | no | computed: a `user_blocks` row with `blocker_id = auth.uid()` and `blocked_id = profiles.id`; false signed out |
+
+Never contains `email` or any phone number (FR-67, BR-61).
+
+#### ConversationSummary
+One inbox row in S36 (also returned by EP-82).
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `conversations.id` |
+| listing.id | uuid | yes | `conversations.listing_id`; null after the listing was deleted |
+| listing.title | string | yes | `listings.title`; null when deleted (client shows *"oglas obrisan"*) |
+| listing.type | enum (as ListingSummary) | yes | `listings.type` (`ListingTypeTag`) |
+| listing.active | boolean | no | computed: listing exists, `status = active` and its author is not suspended; false when deleted (*"· oglas više nije aktivan"*) — the exact non-active status is not exposed |
+| listing.deleted | boolean | no | computed: `conversations.listing_id is null` |
+| i_am_author | boolean | no | computed: `conversations.owner_id = auth.uid()` (*"Tvoj oglas: …"*) |
+| other.user_id | uuid | no | `conversations.starter_id` or `owner_id` — whichever is not the caller |
+| other.kind | enum `user` / `shelter` | no | computed: `shelter` when the other party is the owner and the listing is a need (`listings.organisation_id` not null); `user` otherwise, including after deletion |
+| other.display_name | string | yes | computed: §5.9 rule (shelter → `organisations.name`) |
+| other.initials | string | yes | computed: initials of `other.display_name` |
+| other.organisation_slug | string | yes | `organisations.slug` when `other.kind = shelter` (header link to S23); null otherwise |
+| last_message.preview | string | no | computed: first 120 characters of the newest `messages.body` |
+| last_message.from_me | boolean | no | computed: newest `messages.sender_id = auth.uid()` (*"Ti: …"*) |
+| last_message_at | timestamp | no | `conversations.last_message_at` (*14:32* / *Juče* / *16. 10.* computed by the client) |
+| unread_count | integer | no | computed: `messages` with `sender_id <> auth.uid()` and `read_at is null` |
+| i_blocked_other | boolean | no | computed: a `user_blocks` row with `blocker_id = auth.uid()` and `blocked_id = other.user_id` (*Blokiran korisnik*) |
+
+#### Conversation
+Thread header in S36 — every ConversationSummary field, plus:
+| Field | Type | Null | Source |
+|---|---|---|---|
+| can_send | boolean | no | computed: caller's `marketplace_suspended_at is null` and `i_blocked_other = false` (composer shown); does not reveal whether the other party blocked the caller (BR-59) |
+| message_total | integer | no | computed: count `messages` by `conversation_id` |
+
+#### Message
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `messages.id` |
+| conversation_id | uuid | no | `messages.conversation_id` |
+| sender_id | uuid | no | `messages.sender_id` |
+| from_me | boolean | no | computed: `sender_id = auth.uid()` (bubble side, *"Ti:"* screen-reader prefix) |
+| body | string | no | `messages.body` |
+| created_at | timestamp | no | `messages.created_at` |
+| read_at | timestamp | yes | `messages.read_at` (*"· Pročitano"* on own messages) |
+
+#### UserBlock
+| Field | Type | Null | Source |
+|---|---|---|---|
+| blocker_id | uuid | no | `user_blocks.blocker_id` |
+| blocked_id | uuid | no | `user_blocks.blocked_id` |
+| created_at | timestamp | no | `user_blocks.created_at` |
+
+#### Report
+The reporter's view of their own report (EP-84).
+| Field | Type | Null | Source |
+|---|---|---|---|
+| id | uuid | no | `reports.id` |
+| target | enum `listing` / `user` | no | computed: `listing` when `reports.listing_id` is not null |
+| listing_id | uuid | yes | `reports.listing_id` |
+| reported_user_id | uuid | yes | `reports.reported_user_id` |
+| reason | enum `spam` / `scam` / `inappropriate` / `animal_welfare` / `other` | no | `reports.reason` |
+| note | string | yes | `reports.note` |
+| status | enum `open` / `actioned` / `dismissed` | no | `reports.status` |
+| created_at | timestamp | no | `reports.created_at` |
+
+#### ModerationItem
+One report card in S26 *Moderacija* (Operator only).
+| Field | Type | Null | Source |
+|---|---|---|---|
+| report_id | uuid | no | `reports.id` |
+| target | enum `listing` / `user` | no | computed: `listing` when `reports.listing_id` is not null (*Oglas* / *Korisnik*) |
+| reason | enum (as Report) | no | `reports.reason` |
+| note | string | yes | `reports.note` |
+| status | enum `open` / `actioned` / `dismissed` | no | `reports.status` |
+| created_at | timestamp | no | `reports.created_at` |
+| handled_at | timestamp | yes | `reports.handled_at` |
+| reporter.user_id | uuid | yes | `reports.reporter_id`; null after the reporter's account was deleted |
+| reporter.display_name | string | yes | computed: display-name rule for `reporter_id` |
+| listing.id | uuid | yes | `reports.listing_id` |
+| listing.title | string | yes | `listings.title` |
+| listing.status | enum `active` / `resolved` / `expired` / `hidden` | yes | `listings.status` |
+| reported_user.user_id | uuid | yes | `reports.reported_user_id` |
+| reported_user.display_name | string | yes | computed: display-name rule for `reported_user_id` (author of a reported listing) |
+| reported_user.suspended_at | timestamp | yes | `profiles.marketplace_suspended_at` |
+| same_target_open_count | integer | no | computed: open `reports` with the same `listing_id` (listing reports) or the same `reported_user_id` and `listing_id is null` (user reports) — "Prijava za isti oglas: N" |
+
+#### Restriction
+One row of *Sakriveni oglasi i isključeni korisnici* in S26.
+| Field | Type | Null | Source |
+|---|---|---|---|
+| kind | enum `listing` / `user` | no | computed: `listing` for `listings.status = hidden`, `user` for `profiles.marketplace_suspended_at is not null` |
+| listing_id | uuid | yes | `listings.id`; null for `user` |
+| listing_title | string | yes | `listings.title`; null for `user` |
+| user_id | uuid | no | `listings.author_id` / `profiles.id` |
+| user_display_name | string | yes | computed: display-name rule |
+| restricted_at | timestamp | no | `user` → `profiles.marketplace_suspended_at`; `listing` → computed: `reports.handled_at` of the latest `actioned` report on the listing, else `listings.updated_at` |
+| reason | enum `report_reason` | yes | computed: `reports.reason` of the latest `actioned` report on the listing (listing) or with that `reported_user_id` (user); null if none |
+
+---
+
 ## 7. Error Model & Response→State Mapping
 
 ### 7.1 Envelope
@@ -2191,9 +2697,11 @@ Database errors raised by triggers and RPC functions use `RAISE EXCEPTION USING 
 | `'<code>'` (e.g. `household_full`) | `{ code: "household_full" }` |
 | `'premium_required:<limit>'` (e.g. `premium_required:pets`) | `{ code: "premium_required", details: { limit: "pets" } }` |
 | `'whatsapp_not_connected:<channel>'` | `{ code: "whatsapp_not_connected", details: { channel: "<channel>" } }` |
+| `'premium_required:listings'` (trigger `listings_active_limit`, v1.3) | `{ code: "premium_required", details: { limit: "listings" } }` |
+| check-constraint violation (SQLSTATE `23514`) on the `listings.category` check (`medicine_care` only for `need`, v1.3) | `{ code: "category_not_allowed" }` |
 | any message whose `<code>` is not in §7.2 | `{ code: "internal_error" }` (original message logged) |
 
-The text before the first `:` is always a §7.2 catalog code; the detail after it goes under the `details` key the code defines (`limit` for `premium_required`, `channel` for `whatsapp_not_connected`). User-facing copy for each code is owned by the Design System (§8, §9).
+The text before the first `:` is always a §7.2 catalog code; the detail after it goes under the `details` key the code defines (`limit` for `premium_required`, `channel` for `whatsapp_not_connected`). Šapa pomoći triggers (TC §5.10) raise `listing_type_not_allowed`, `listing_not_active`, `cannot_message_self`, `user_blocked`, `marketplace_suspended` and `validation_failed` (photo cap) in the plain `'<code>'` form. TC §5.10 lists the category check under `listing_type_not_allowed`; the contract gives it its own code so S34 can show the error under *Kategorija* (v1.3). User-facing copy for each code is owned by the Design System (§8, §9).
 
 **Field error codes** (values inside `fields`, not catalog codes): `required`, `invalid`, `too_long`, `out_of_range`, `before_start` (date before its paired start date), `invalid_state` (not valid for the record's current state), `not_uploaded` (confirm called but the file is missing), `plan_not_allowed`, `last_admin`.
 
@@ -2201,19 +2709,19 @@ The text before the first `:` is always a §7.2 catalog code; the detail after i
 
 | Code | HTTP / surface | Meaning | PRD edge case |
 |---|---|---|---|
-| `unauthenticated` | 401 | No valid session | — |
+| `unauthenticated` | 401 | No valid session (also: Visitor tapping *Pošalji poruku* / *Doniraj*, EP-78, EP-82) | E-32 |
 | `email_not_verified` | 403 | Email not yet verified (BR-29) | — |
 | `account_pending_deletion` | 403 | Account in its 30-day deletion window (BR-31) | E-16 |
 | `organisation_pending_approval` | 403 | Shelter not yet approved (BR-32) | — |
 | `not_found` | 404 | Resource missing or not related to the caller | — |
 | `forbidden_role` | 403 | Caller's role may not do this (BR-22, BR-25, BR-34) | E-12 |
 | `household_read_only` | 403 | Household owner has no Premium (BR-28) | E-13, E-14 |
-| `premium_required` | 403 | Free limit reached; `details.limit` ∈ `pets`, `memorials`, `attachments`, `moments`, `pdf_export`, `household`, `whatsapp`, `logo_removal`, `transfer_slot` | E-02, E-03, E-04, E-08, E-09, E-10, E-20, E-25, E-26 |
+| `premium_required` | 403 | Free limit reached; `details.limit` ∈ `pets`, `memorials`, `attachments`, `moments`, `pdf_export`, `household`, `whatsapp`, `logo_removal`, `transfer_slot`, `listings` (3 active listings, BR-55 — v1.3) | E-02, E-03, E-04, E-08, E-09, E-10, E-20, E-25, E-26, E-28 |
 | `breeder_plan_required` | 403 | Breeder features without an active breeder plan (BR-11) | E-21 |
 | `validation_failed` | 422 | One or more fields invalid; see `fields` | E-04, E-08 |
 | `file_too_large` | 422 | Attachment/photo > 10 MB (BR-05) | E-04 |
 | `file_type_not_allowed` | 422 | Not an image or PDF (BR-05) | E-04 |
-| `too_many_photos` | 422 | Moment with more than 5 photos (BR-06) | E-08 |
+| `too_many_photos` | 422 | Moment with more than 5 photos (BR-06), or a 6th listing photo (BR-55, v1.3) | E-08, E-30 |
 | `household_full` | 409 | Household already has 6 members (BR-20) | E-11 |
 | `team_full` | 409 | Organisation already has 20 users (BR-34) | — |
 | `featured_limit_reached` | 409 | Already 3 featured partners of this type in this city (BR-41) | — |
@@ -2228,7 +2736,13 @@ The text before the first `:` is always a §7.2 catalog code; the detail after i
 | `subscription_not_active` | 409 | Cancel or change on a subscription that is not active | — |
 | `payment_provider_unavailable` | 503 | Payment provider not configured (OQ-11) | — |
 | `subscription_already_active` | 409 | Checkout for a plan family the user already has running (use EP-48 to resume renewal) | — |
-| `already_decided` | 409 | Request, inquiry or organisation approval is no longer pending | — |
+| `already_decided` | 409 | Request, inquiry or organisation approval is no longer pending; Šapa pomoći report no longer `open` (EP-86) | — |
+| `listing_type_not_allowed` | 403 | Listing type `need` without membership in an approved shelter (BR-54) (v1.3) | E-29 |
+| `category_not_allowed` | 422 | Category `medicine_care` on a listing that is not a need (BR-54) (v1.3) | E-29 |
+| `listing_not_active` | 409 | The listing's status does not allow this: starting a conversation, resolving, editing, or adding photos on a listing that is not active; extending a resolved or hidden listing (BR-56, BR-61) (v1.3) | E-33 |
+| `cannot_message_self` | 409 | Starting a conversation on one's own listing (BR-61) (v1.3) | E-33 |
+| `user_blocked` | 403 | The recipient has blocked the sender; nothing is sent and no notification goes out (BR-59) (v1.3) | E-34 |
+| `marketplace_suspended` | 403 | The caller is suspended from Šapa pomoći and may not publish, edit, extend, add photos or send messages (BR-60) (v1.3) | E-35 |
 | `export_in_progress` | 409 | A data export is already being prepared | — |
 | `rate_limited` | 429 | Too many requests; `details.retry_after_s` | — |
 | `invalid_action_token` | 400 | Signed action link invalid, expired, or used | — |
@@ -2242,10 +2756,15 @@ The text before the first `:` is always a §7.2 catalog code; the detail after i
 |---|---|---|
 | **loading** | Request in flight (no response yet) | all with L |
 | **default** | `200` / `ok: true` with data | all |
-| **empty** | `200` / `ok: true` with an empty array (`[]`, `total: 0`) | S01, S03 tabs, S06, S07, S08, S10, S13, S20, S21, S22, S23, S24 |
-| **error** | `5xx`, network failure, or `404 not_found` on a screen's primary resource | all with X |
-| **premium_locked** | `403 premium_required` (any `details.limit`), or a read whose `entitlements.premium = false` for a gated feature | S01, S03, S05, S06, S08, S12, S13, S14, S17 |
-| **read_only** | `200` with `access.can_edit = false` on the primary resource (member view, household read-only, organisation copy after transfer, volunteer on requests); a write returns `403 forbidden_role` / `403 household_read_only` | S03, S13, S21 |
+| **empty** | `200` / `ok: true` with an empty array (`[]`, `total: 0`) | S01, S03 tabs, S06, S07, S08, S10, S13, S20, S21, S22, S23, S24, S26 Moderacija (EP-86), S32 (EP-73), S35 tabs (EP-76), S36 (EP-80), S37 (`listings_total = 0`, EP-79) |
+| **error** | `5xx`, network failure, or `404 not_found` on a screen's primary resource (except S33 / S37, see *unavailable*) | all with X |
+| **premium_locked** | `403 premium_required` (any `details.limit`), or a read whose `entitlements.premium = false` for a gated feature; Šapa pomoći: `details.limit = "listings"` from EP-75 / EP-77, or `Me.marketplace.active_listings ≥ active_listing_limit` | S01, S03, S05, S06, S08, S12, S13, S14, S17, S34, S35 |
+| **read_only** | `200` with `access.can_edit = false` on the primary resource (member view, household read-only, organisation copy after transfer, volunteer on requests or on the organisation profile / *Donacije*); a write returns `403 forbidden_role` / `403 household_read_only` | S03, S13, S21, S29 |
+| **signed_out** (O) | No session: EP-73 / EP-74 / EP-79 answer `200` with `viewer.signed_in = false`; account-only actions are replaced by a sign-in prompt; EP-78 / EP-82 / EP-84 / EP-85 would return `401 unauthenticated` (E-32) | S32, S33, S37 |
+| **suspended** (S) | `Me.marketplace.suspended_at` not null (EP-43, EP-76 `usage`), or `403 marketplace_suspended` from a write | S32, S33, S34, S35, S36 |
+| **blocked** (B) | `ConversationSummary.i_blocked_other = true` (EP-80 / EP-81) or `PublicProfile.viewer.i_blocked = true` (EP-79) | S36, S37 |
+| **unavailable** | `404 not_found` from EP-74 (listing not active, hidden, by a suspended or blocked author, or deleted — indistinguishable on purpose) or EP-79 (suspended, pending deletion or unknown user) | S33, S37 |
+| **own / resolved** (S33 variants) | EP-74 `viewer.is_author = true` → own-listing card; author with `status = resolved` → *Rešeno — <outcome>* | S33 |
 | **pending_approval** | `200` on EP-53 with `organisation.approval_status = "pending"` | S20 |
 | **link_disabled** | `404 not_found` on EP-24 (disabled, deleted, or unknown slug — indistinguishable on purpose) | S09 |
 | **invitation_expired** | `410 invitation_expired` | S14 |
@@ -2257,14 +2776,14 @@ The text before the first `:` is always a §7.2 catalog code; the detail after i
 | **expired / cancelled** | EP-47 with `status = "expired"` / `auto_renew = false` | S18 |
 | **inline field errors** | `422 validation_failed` with `fields` | all forms |
 
-No two states share a response: *empty* is always `200` + `[]`; *error* is never `200`; *premium_locked* is only `premium_required`; *read_only* is a successful read with `access.can_edit = false`.
+No two states share a response: *empty* is always `200` + `[]`; *error* is never `200`; *premium_locked* is only `premium_required`; *read_only* is a successful read with `access.can_edit = false`; *unavailable* is only `404` on S33 / S37; *signed_out*, *suspended* and *blocked* are successful reads distinguished by the session and the named flags.
 
 
 ---
 
 ## 8. Realtime & Event Channels
 
-_Not applicable — Technical Constraints §9 rules out real-time updates; members see changes on the next page load._
+_Not applicable — Technical Constraints §9 rules out real-time updates; members see changes on the next page load._ This includes Šapa pomoći messaging (NFR-11, v1.3): new messages, unread counts and the *Poruke* badge are read on each page load (EP-43, EP-80, EP-81); no WebSockets, Supabase Realtime or polling loops. New-message email and push (EP-82) are the only way a user learns of a message outside a page load.
 
 ---
 
@@ -2292,8 +2811,8 @@ Contracted provider-neutrally in EP-46: signature verification, idempotency by p
 ### 9.4 Outbound
 | Target | Purpose | Payload | Retry | On permanent failure |
 |---|---|---|---|---|
-| Resend | email reminders, invitations, transfers, request outcomes, expiry notices, auth email (SMTP) | template id + locale + variables | 3 tries, exponential (1 min, 5 min, 15 min) inside the dispatch job | delivery row `failed`; Operator alert per RISK-14 |
-| Web Push (VAPID) | push reminders | `{ title, body, url, done_url }`, ≤ 4 KB | 1 retry | `410 Gone` from the push service deletes the `push_subscriptions` row |
+| Resend | email reminders, invitations, transfers, request outcomes, expiry notices, auth email (SMTP); Šapa pomoći emails (v1.3, table below) | template id + locale + variables | 3 tries, exponential (1 min, 5 min, 15 min) inside the dispatch job; Šapa pomoći: 1 retry inside the request (EP-82, EP-86), next daily run (EP-87) | delivery row `failed`; Operator alert per RISK-14. Šapa pomoći: logged only (no delivery rows) |
+| Web Push (VAPID) | push reminders; new-message notifications (EP-82, v1.3) | `{ title, body, url, done_url }` (reminders) / `{ title, body, url }` (messages), ≤ 4 KB | 1 retry | `410 Gone` from the push service deletes the `push_subscriptions` row |
 | WhatsApp Cloud API | reminders (utility template + "Urađeno" quick reply), verification code (authentication template) — templates below | template name + language + variables | 2 tries | delivery row `failed`; falls back to email + push for that occurrence |
 | Viber chatbot | reminders when switched on (BR-14b) | — | — | built, inactive in v1 |
 | Payment provider | checkout session, recurring charge | [DEFERRED: OQ-11] | — | — |
@@ -2308,25 +2827,36 @@ Contracted provider-neutrally in EP-46: signature verification, idempotency by p
 
 The template language follows the recipient's `profiles.locale` (`sr-Latn` → `sr`). Both templates must be approved in Meta Business Manager before Step 29 (WhatsApp channel) runs in production; until then EP-30 and WhatsApp delivery work only against the Meta test number.
 
+**Šapa pomoći notifications (v1.3)** — copy and variables are owned by Design §9.1; language follows the recipient's `profiles.locale`; never WhatsApp or Viber; no signed action tokens (buttons open in-app pages that require a session).
+
+| Template id | Channels | Sent by | Recipient | Condition | Link |
+|---|---|---|---|---|---|
+| `new_message` | email, push | EP-82 (after commit) | the other party | channels of the recipient's `reminder_preferences` row `message` (default `{email, push}`; empty = none); not when the sender is blocked (`user_blocked`) or the recipient's deletion is pending | `/poruke/<conversation_id>` (S36) |
+| `listing_expiring` | email | EP-87 step 1 | author | active listing with ≤ 3 days left, `expiry_notice_sent_at is null`; author not suspended, not pending deletion | `/sapa-pomoci/moje?produzi=<listing_id>` (S35 → EP-77 `extend`) |
+| `listing_expired` | email | EP-87 step 2 | author | listing just set to `expired`; same author conditions | `/sapa-pomoci/moje` (S35, *Objavi ponovo*) |
+| `listing_hidden` | email | EP-86 `hide_listing` | author | listing changed from `active` to `hidden` | `/sapa-pomoci/moje` (S35) |
+| `marketplace_suspended` | email | EP-86 `suspend_user` | suspended user | new suspension only | — (reply to the email) |
+
 ---
 
 ## 10. File & Media Transfer
 
 Implements ADR-07 (Cloudflare R2).
-1. Client calls an upload action (EP-13 attachments and pet photos, EP-21 moment photos, EP-69 partner logo) with `file_name`, `mime_type`, `size_bytes`.
-2. Server checks permission, Free limits (BR-01), type (images or PDF) and size (≤ 10 MB) — failing with `premium_required`, `file_type_not_allowed`, `file_too_large`, `too_many_photos`.
+1. Client calls an upload action (EP-13 attachments, pet photos and listing photos, EP-21 moment photos, EP-69 partner logo) with `file_name`, `mime_type`, `size_bytes`.
+2. Server checks permission, Free limits (BR-01), type (images or PDF) and size (≤ 10 MB) — failing with `premium_required`, `file_type_not_allowed`, `file_too_large`, `too_many_photos` (moments: 5; listings: 5, BR-55).
 3. Server returns an **upload ticket**: presigned R2 `PUT` URL (expires 10 min) + `r2_key` + signed ticket.
 4. Client uploads the bytes directly to R2, then calls the confirm action with the ticket; the server verifies the object exists (`HEAD`), then inserts the row.
-5. Viewing: EP-15 returns presigned `GET` URLs (expire 10 min). Public moment photos are served only through EP-24, which signs them for the page.
+5. Viewing: EP-15 returns presigned `GET` URLs (expire 10 min). Public moment photos are served only through EP-24, which signs them for the page. Listing photos on public pages are signed by EP-73 / EP-74 / EP-79 when the response is built (v1.3).
 6. **Keys (the only R2 key layout; v1.2, CR-10):**
    - personally owned pets: `u/<owner_id>/pets/<pet_id>/<kind>/<uuid>-<safe_file_name>`
    - organisation animals: `o/<org_id>/pets/<pet_id>/<kind>/<uuid>-<safe_file_name>`
    - organisation logo: `o/<org_id>/logo-<uuid>.<ext>`
    - partner logo: `p/<partner_id>/logo-<uuid>.<ext>`
    - data export archives: `exports/<user_id>/<data_export_id>.zip` (TC ADR-13)
+   - listing photos (v1.3): `u/<author_id>/listings/<listing_id>/<uuid>-<safe_file_name>` — always under the author's `u/` prefix, also for shelter needs, so account deletion finds them
    - `<kind>` ∈ `photo` (pet photo), `visits/<vet_visit_id>` (attachment), `moments/<moment_id>` (moment photo; `<uuid>` is prefixed with `<position>-`).
    - `safe_file_name` is the original name, lowercased, with characters other than `[a-z0-9._-]` replaced by `-`, at most 100 chars. A record transfer (EP-60) copies objects to new keys under the new owner's `u/` prefix.
-7. **Deletion:** deleting a row queues its key; the nightly job (EP-52) deletes queued keys and orphaned objects older than 24 h with no row.
+7. **Deletion:** deleting a row queues its key; the nightly job (EP-52) deletes queued keys and orphaned objects older than 24 h with no row. Listing photos are queued when removed in EP-75, when the listing is deleted (EP-77) and on account deletion (EP-52).
 
 ---
 
@@ -2338,7 +2868,10 @@ Implements ADR-07 (Cloudflare R2).
 | EP-35 household invitation, EP-56 team invitation | 20 per day | user | `429 rate_limited` |
 | EP-30 send WhatsApp code | 5 per hour | user | `429 rate_limited` |
 | EP-42 sign-in, sign-up, password reset | Supabase Auth built-in limits | IP / email | Supabase error mapped to `429 rate_limited` |
-| EP-24, EP-62 public pages | none; not cached (TC ADR-18) | — | — |
+| EP-82 send message (v1.3) | 30 messages per hour | user (all conversations together) | `429 rate_limited`, `details.retry_after_s`; inline error under the S36 composer / S33 Dialog |
+| EP-24, EP-62, EP-73, EP-74, EP-79 public pages | none; not cached (TC ADR-18) | — | — |
+
+No limit is set on listing creation (EP-75): neither PRD v1.7 nor TC v1.7 states one; the Free limit of 3 active listings (BR-55), the 30-day expiry and Operator moderation bound it.
 
 Counters live in the database (`rate_limit_counters`, one row per user + operation + window — TC §5.7), so they hold across server instances.
 
@@ -2350,14 +2883,15 @@ Classes used in §5. Budgets are server-side p95 under v1 volumes; they are targ
 
 | Class | Budget | Applies to | Derives from |
 |---|---|---|---|
-| `read-small` | ≤ 300 ms, ≤ 50 KB | single-resource reads (EP-02, EP-34, EP-43, EP-47, EP-53, EP-65) | NFR-03 usable on phones |
-| `read-list` | ≤ 400 ms, ≤ 50 items, ≤ 100 KB | lists (EP-01, EP-17, EP-20, EP-25, EP-54, EP-57, EP-64) | NFR-03 |
-| `write` | ≤ 400 ms | single-row writes and RPCs | NFR-03 |
-| `action` | ≤ 1.5 s (≤ 5 s when calling a third party) | server actions | NFR-03 |
-| `public` | ≤ 800 ms (not cached, rendered on every request) | EP-24, EP-62 | NFR-03 |
-| `job` | dispatch run ≤ 50 s (fits the 60 s cadence); nightly ≤ 10 min | EP-33, EP-49, EP-52 | NFR-01 (≥ 95 % within 5 min), ADR-04 |
+| `read-small` | ≤ 300 ms, ≤ 50 KB | single-resource reads (EP-02, EP-34, EP-43, EP-47, EP-53, EP-65, EP-78) | NFR-03 usable on phones |
+| `read-list` | ≤ 400 ms, ≤ 50 items, ≤ 100 KB | lists (EP-01, EP-17, EP-20, EP-25, EP-54, EP-57, EP-64, EP-76, EP-80, EP-81, EP-86) | NFR-03 |
+| `write` | ≤ 400 ms | single-row writes and RPCs (incl. EP-83, EP-85, EP-88) | NFR-03 |
+| `action` | ≤ 1.5 s (≤ 5 s when calling a third party) | server actions (EP-82 ≤ 5 s including Resend and push) | NFR-03 |
+| `public` | ≤ 800 ms (not cached, rendered on every request) | EP-24, EP-62, EP-73, EP-74, EP-79 (including signing up to 50 photo URLs) | NFR-03 |
+| `job` | dispatch run ≤ 50 s (fits the 60 s cadence); nightly / daily ≤ 10 min | EP-33, EP-49, EP-52, EP-87 | NFR-01 (≥ 95 % within 5 min), ADR-04 |
+| no real-time | inbox, thread and badge are plain reads per page load; no open connections | EP-43, EP-80, EP-81 | NFR-11 (v1.3) |
 | uploads | ≤ 10 MB per file, direct to R2 | §10 | NFR-09 |
-| cost | WhatsApp ≤ 30 messages / Premium user / month; Viber off | EP-33 | NFR-10 |
+| cost | WhatsApp ≤ 30 messages / Premium user / month; Viber off; Šapa pomoći notifications by email + push only, ≤ 30 sent messages / user / hour (bounds `new_message` email volume, TC RISK-31) | EP-33, EP-82, EP-87 | NFR-10 |
 
 ---
 
@@ -2425,8 +2959,20 @@ Classes used in §5. Budgets are server-side p95 under v1 volumes; they are targ
 | FR-58 Click statistics | S26 | EP-66, EP-70 |
 | FR-59 Search pets | S01, S20 | EP-01 (client-side filter of a bounded list), EP-54 (`p_q`) |
 | FR-60 Organisation profile | S29 | EP-53, EP-72, EP-13 |
+| FR-61 Browse listings | S32 | EP-73, EP-43 (`marketplace`) |
+| FR-62 Listing detail | S33 | EP-74 |
+| FR-63 Create listing | S34 | EP-75, EP-13 (`listing_photo`), EP-43 (`marketplace`), EP-67 |
+| FR-64 Manage my listings | S35, S33, S34 | EP-76, EP-77, EP-75, EP-15 (`listing_photo`) |
+| FR-65 Listing expiry | S35 (+ emails) | EP-87, EP-77 |
+| FR-66 Donate to a shelter need | S33 | EP-74 (`has_donation_info`), EP-78 |
+| FR-67 Public user profile | S37, S33 | EP-79, EP-74 (`author`), EP-43 (`display_name`) |
+| FR-68 Messaging | S33, S36, shells (badge) | EP-82, EP-80, EP-81, EP-83, EP-43 (`marketplace.unread_conversations`) |
+| FR-69 New-message notifications | S12 (+ email, push) | EP-82, EP-28 (`message`), EP-29 |
+| FR-70 Report and block | S33, S36, S37 | EP-84, EP-85 |
+| FR-71 Operator moderation | S26 | EP-86 |
+| FR-72 Shelter donation info | S29 | EP-88, EP-53 (`Organisation.donation`) |
 
-**Reverse checks.** Every EP-01 … EP-72 appears above with a caller (a screen, an external sender in §9, or a job). Every screen S01 … S29 is supplied by at least one EP; S09 and S23 are public (EP-24, EP-62); S16 is served by Supabase Auth (EP-42).
+**Reverse checks.** Every EP-01 … EP-88 appears above with a caller (a screen, an external sender in §9, or a job — EP-33, EP-49, EP-52, EP-87). Every screen S01 … S37 is supplied by at least one EP, except the static legal pages S30 and S31 (Release Criterion 4; no data — S31's terms version is the `TERMS_VERSION` constant); S09, S23, S32, S33 and S37 are public (EP-24, EP-62, EP-73, EP-74, EP-79); S16 and S28 are served by Supabase Auth (EP-42). New S32 … S37: S32 ← EP-73, EP-43; S33 ← EP-74, EP-78, EP-82, EP-84, EP-85, EP-77; S34 ← EP-75, EP-13, EP-74, EP-77, EP-67, EP-43; S35 ← EP-76, EP-77, EP-15; S36 ← EP-80, EP-81, EP-82, EP-83, EP-84, EP-85; S37 ← EP-79, EP-84, EP-85. Existing screens extended: S12 ← EP-28 (`message`); S26 ← EP-86; S29 ← EP-53, EP-88.
 
 ---
 
@@ -2441,6 +2987,11 @@ Classes used in §5. Budgets are server-side p95 under v1 volumes; they are targ
 | Bulk import/export beyond the personal archive | Not in the PRD. |
 | Client SDK or OpenAPI file | This document is the contract; the build uses typed Supabase clients and server-action types. |
 | Payment-provider specifics | Deferred (OQ-11). |
+| Real-time chat, typing indicators, presence | NFR-11, TC §9 — messages appear on the next page load (v1.3). |
+| Images, files or links as message attachments; editing or deleting sent messages | FR-68: text only; TC `messages` has no `updated_at` (v1.3). |
+| Payments for donations or sales | BR-58, TC §9 — EP-78 only shows donation info (v1.3). |
+| Operator reading message bodies | TC §5.10 RLS; moderation relies on the report note (v1.3). |
+| Listing search by free text, saved searches, listing alerts | Not in PRD v1.7; S32 filters only (v1.3). |
 
 ---
 
@@ -2453,6 +3004,10 @@ Classes used in §5. Budgets are server-side p95 under v1 volumes; they are targ
 | RISK-20 | EP-02 (full pet record) grows heavy for old pets with many entries and attachments. | Low | Limit embedded lists to the latest 50 per type with per-tab paging if needed. |
 | RISK-21 | Payment-provider contract (EP-45, EP-46, EP-49) may need reshaping once the provider is chosen. | Medium | Provider-neutral event names; provider specifics isolated in one adapter. |
 | RISK-22 | The single dispatch route is reachable from the internet. | Medium | Secret header + constant-time compare; rejects without it; rate-limited at the edge. |
+| RISK-33 | The public, uncached listing routes (EP-73, EP-74, EP-79) are scraped or hammered, and each request signs up to 50 R2 URLs and queries the database (ADR-18 forbids edge caching). | Medium | Page size ≤ 50; one signing call per photo with no R2 round-trip (presigning is local); monitor Worker requests and Supabase load; add an edge rate limit per IP if abuse appears. |
+| RISK-34 | One user sends many messages and the `new_message` email per message multiplies Resend volume (compounds TC RISK-31). | Medium | 30 messages / hour / user (§11); recipients can switch email off in S12; if volume grows, coalesce to one email per conversation while messages stay unread (contract change). |
+| RISK-35 | Unread counts are computed on every shell load (`Me.marketplace.unread_conversations`) and slow EP-43 as conversations grow. | Low | Partial index on unread messages (TC §5.10); count conversations, not messages; move to a counter column if EP-43 exceeds its `read-small` budget. |
+| RISK-36 | Moderation evidence is thin: the Operator cannot read messages, and the Operator's hide/suspend note and the hide time are not stored (OQ-17), so later disputes rely on report reasons and dates. | Medium | Reporter notes are required for "other"; restrictions list derives reason and time from the actioned report; add TC columns when OQ-17 is answered. |
 
 ---
 
@@ -2474,6 +3029,8 @@ _No assumptions were recorded at the owner's request. Defaults proposed while wr
 | OQ-12 | API | ✅ Resolved (v1.1): defaults confirmed, recorded as PRD BR-47 … BR-52. | — |
 | OQ-13 | API | ✅ Resolved (v1.1): added in TC v1.4. | — |
 | OQ-14 | API | ✅ Resolved (v1.1): S28, S11 edit variant, S29 + EP-72. | — |
+| OQ-16 | PRD v1.7 | `[NEEDS CLARIFICATION]` Does an active breeder plan lift the Free limit of 3 active listings (BR-55)? Contract follows the PRD default (no) in `MarketplaceStatus.active_listing_limit` and the TC trigger. | No |
+| OQ-17 | API (v1.3) | `[NEEDS CLARIFICATION]` Fields the Šapa pomoći screens render that TC v1.7 cannot supply exactly: (a) resolved date (S33, S35 "Poklonjeno 28. 09. 2026.") — no `listings.resolved_at`, contract derives it from `updated_at`; (b) hidden time and the Operator's "Razlog za korisnika" (S35 hidden card, S26 restrictions) — no columns, contract derives time/reason from the actioned report and puts the note only into the email; (c) donation *Primalac* legal name (e.g. "Udruženje „Druga šansa“, Novi Sad") and *Svrha* (S33 Doniraj) — contract uses `organisations.name` and "Donacija — <listing title>"; (d) Design limits differ from PRD/TC: description ≤ 1000 (S34) vs 2000, title ≥ 5 (S34) vs 1; (e) bank-account format has no TC check (EP-88 validates in the action); (f) no screen edits `display_name` (S18 lacks a *Nadimak* field; EP-43 accepts it); (g) S33's *resolved* state shows a resolved listing's content to a non-author, while FR-62 and TC RLS show "no longer available" — the contract follows FR-62 (`404` → *unavailable*; the content variant only for the author). Proposed: add `listings.resolved_at`, `listings.hidden_at`, `listings.moderation_note`, `profiles.marketplace_suspension_note`, `organisations.donation_recipient`; align S34 to 2000. | No — interim mappings are defined |
 
 ---
 
@@ -2489,6 +3046,15 @@ _No assumptions were recorded at the owner's request. Defaults proposed while wr
 | Action token | Signed single-use token in a link (`dn_`, `hh_`, `og_`, `tr_`). |
 | Dispatch run | One execution of EP-33. |
 | Budget class | `read-small`, `read-list`, `write`, `action`, `public`, `job` (§12). |
+| Publicly visible listing | A listing with `status = active` whose author is not suspended from Šapa pomoći, minus authors the signed-in caller blocked (§5.9). |
+| Listing summary | The card shape of a listing (`ListingSummary`) returned by the public list and profile routes. |
+| Display-name rule | `coalesce(profiles.display_name, profiles.full_name)`, or the shelter's name for need listings; never email or phone. |
+| Marketplace status | The caller's own Šapa pomoći state in `Me.marketplace`: suspension, Free listing counter, need permission, unread conversations. |
+| Unread conversation | A conversation with at least one message from the other party whose `read_at` is null; their count is the *Poruke* badge. |
+| Donation info | A shelter's bank account, payment link, drop-off address and hours (`DonationInfo`), shown to signed-in users by *Doniraj* (EP-78). |
+| Moderation item | One report as the Operator sees it in S26 (`ModerationItem`). |
+| Restriction | A hidden listing or a suspended user, listed for restore in S26 (`Restriction`). |
+| Suspension gate | The `403 marketplace_suspended` check on listing writes and message sends (BR-60). |
 
 ---
 

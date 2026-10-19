@@ -6,10 +6,10 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 06 — Build Plan |
-| Version | 1.1 |
+| Version | 1.2 |
 | Date | 2026-10-19 |
 | Author | Keti Vrtunić (planned with "Nindza Tigar", Build Lead persona) |
-| Traces to | Brief v1.6 · PRD v1.6 · Technical Constraints v1.6 · Design System v1.5 (31 screens) · API Contract v1.2 |
+| Traces to | Brief v1.7 · PRD v1.7 · Technical Constraints v1.7 · Design System v1.6 (37 screens) · API Contract v1.3 |
 | Status | Draft — no step executed yet |
 
 **Change log**
@@ -18,21 +18,22 @@
 |---|---|---|
 | 1.0 | 2026-10-19 | Initial plan: 32 steps, 1 blocked (Step 31 — payments). |
 | 1.1 | 2026-10-19 | Change requests CR-01 … CR-23 resolved upstream (PRD v1.6, TC v1.6, Design v1.5, API v1.2). Every pre-flight/blocker check that waited on a CR is replaced by a concrete instruction citing the fixed section (stop clauses kept). Preview deployments removed (TC ADR-10); Step 03 CI runs `supabase db push` on `main` before deploy. Step 04 adds `idempotency_keys`, `rate_limit_counters` and the cities seed (`scripts/fetch-cities.*` → `supabase/seed/cities.sql`, TC ADR-11). Step 08 schedules nightly occurrence generation. Step 11 creates the `lib/server/` foundation (TC ADR-16). Step 12 adds S30 `/privatnost`, S31 `/uslovi`, `lib/legal.ts` (`TERMS_VERSION`) and links registration to the terms. Step 17 adds the S10 → S11 edit link and the count badge; Step 18 the S12 "Uskoro dostupno" WhatsApp state; Step 23 S17 in the payments-coming-soon state with EP-44 and the provider-neutral EP-45 stub; Step 24 the S14 team-invitation variant; Step 27 the S03 vet suggestion block. Step 30 split into Step 30 (nightly jobs) and Step 30a (backups and data export archives). Dependencies fixed for Steps 12, 23, 24, 27, 28, 31, 32. New OQ-15 locks only Step 32 checklist item 4. New CR-24 (copy for emails that have no Design §9.1 template). Coverage matrix regenerated: 60 FRs, 72 EPs, 31 screens, 46 tables. |
+| 1.2 | 2026-10-19 | CAP-08 "Šapa pomoći" (Brief v1.7, PRD v1.7 FR-61 … FR-72, TC v1.7 §5.10, Design v1.6 S32 … S37, API v1.3 EP-73 … EP-88). Three steps appended between Step 28 and Step 29: Step 28a (schema: six tables, CAP-08 columns, `message` preference, triggers, RLS), Step 28b (listings, public pages S32/S33/S37, S34, S35, S29 *Donacije*, EP-73 … EP-79, EP-87 daily job, EP-88, EP-13/EP-15 `listing_photo`), Step 28c (messaging S36, S12 *Poruke* card, report/block, S26 *Moderacija*, EP-80 … EP-86, new-message email + push, 30 messages/hour). Steps 01 … 28 unchanged; new ordering invariant 11 says where CAP-08 parts of shared contracts are built. Step 32 depends on Step 28c, quotes Release Criteria 1 and 6 as revised in PRD v1.7 and adds the e2e flow "give away an item and message the author" (`e2e/sapa-pomoci.spec.ts`). Carried-forward OQ-16 and OQ-17 (non-blocking; interim mappings of API v1.3). New CR-27 (route group for pages shown in both a signed-in and the public shell) and CR-28 (TC §5.10 error-code wording for `medicine_care`), both non-blocking. RISK-37 … RISK-39. Coverage matrix regenerated: 72 FRs, 88 EPs, 37 screens, 52 tables. |
 
 ---
 
 ## 1. Executive Summary
 
-The build runs in 33 steps (Step 01 … Step 32 plus Step 30a), each one coding session: foundation (repository, Supabase, CI with production migrations on `main`), the database in six domain slices with every table's access rules and Free limits landing together with its tests, the design foundation, authentication and the shared server utilities, then features in dependency order — registration with the legal pages, pets and the health record, reminders and their delivery (the north-star path, deliberately early), care log and moments, household, subscription status and account data control (including the Premium page before payments), organisations, partners and admin — followed by WhatsApp, the nightly jobs, backups and data export archives, payments, and release verification. One step is blocked: Step 31 (payments and pricing) waits for OQ-11 (payment provider) and OQ-03 (prices). Step 32 runs, but its Release Criterion 4 item stays open until OQ-15 (legal texts) is answered. Every change request raised by v1.0 (CR-01 … CR-23) is resolved upstream; traces to Brief v1.6, PRD v1.6, Technical Constraints v1.6, Design System v1.5, API Contract v1.2.
+The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a), each one coding session: foundation (repository, Supabase, CI with production migrations on `main`), the database in six domain slices with every table's access rules and Free limits landing together with its tests, the design foundation, authentication and the shared server utilities, then features in dependency order — registration with the legal pages, pets and the health record, reminders and their delivery (the north-star path, deliberately early), care log and moments, household, subscription status and account data control (including the Premium page before payments), organisations, partners and admin — then the Šapa pomoći community board in three steps (its schema, the listings with public pages and donation info, then messaging, report/block and moderation), followed by WhatsApp, the nightly jobs, backups and data export archives, payments, and release verification. One step is blocked: Step 31 (payments and pricing) waits for OQ-11 (payment provider) and OQ-03 (prices). Step 32 runs, but its Release Criterion 4 item stays open until OQ-15 (legal texts) is answered. OQ-16 and OQ-17 (Šapa pomoći) are open but non-blocking: Steps 28a–28c apply the PRD default and the interim mappings defined in API v1.3. Traces to Brief v1.7, PRD v1.7, Technical Constraints v1.7, Design System v1.6, API Contract v1.3.
 
 ---
 
 ## 2. Inherited Context
 
-- **Stack (TC v1.6):** Next.js 16.x App Router + TypeScript (ADR-01) on Cloudflare Workers via OpenNext (ADR-03), Supabase Postgres/Auth/pg_cron → `pg_net` with Vault secrets (ADR-02/04/06, TC §8), Cloudflare R2 with `aws4fetch` (ADR-07, ADR-17), Resend (ADR-08), Web Push with `@pushforge/builder` and `public/sw.js` (ADR-05, ADR-17), WhatsApp Cloud API (templates in API §9.4), Nominatim (ADR-11), browser-side PDF with `@react-pdf/renderer` (ADR-12), GitHub Actions backups and in-app data export archives with `fflate` (ADR-13), shadcn/ui + Tailwind v4 + lucide (ADR-14), Vitest + pgTAP + Playwright with `@axe-core/playwright` (ADR-15), layout per ADR-16 (incl. `lib/server/`, `scripts/`, `lib/legal.ts`), approved libraries only (ADR-17), no edge caching of public pages (ADR-18), no preview deployments (ADR-10).
+- **Stack (TC v1.7):** Next.js 16.x App Router + TypeScript (ADR-01) on Cloudflare Workers via OpenNext (ADR-03), Supabase Postgres/Auth/pg_cron → `pg_net` with Vault secrets (ADR-02/04/06, TC §8), Cloudflare R2 with `aws4fetch` (ADR-07, ADR-17), Resend (ADR-08), Web Push with `@pushforge/builder` and `public/sw.js` (ADR-05, ADR-17), WhatsApp Cloud API (templates in API §9.4), Nominatim (ADR-11), browser-side PDF with `@react-pdf/renderer` (ADR-12), GitHub Actions backups and in-app data export archives with `fflate` (ADR-13), shadcn/ui + Tailwind v4 + lucide (ADR-14), Vitest + pgTAP + Playwright with `@axe-core/playwright` (ADR-15), layout per ADR-16 (incl. `lib/server/`, `scripts/`, `lib/legal.ts`), approved libraries only (ADR-17), no edge caching of public pages (ADR-18), no preview deployments (ADR-10).
 - **Environment variables and secrets:** exactly the names in TC §8.1 (application and GitHub Actions secrets).
 - **Repository at plan time:** `pussycat993-gif/moj-ljubimac` contains one commit with `docs/`, `CLAUDE.md` and `README.md` only; Step 01 creates the application.
-- **Scale:** 60 FRs (FR-01 … FR-60), 72 operations (EP-01 … EP-72), 31 screens (S01 … S31), 46 tables (TC §5: 28 PRD entities + 18 technical tables, per TC §5.8).
+- **Scale:** 72 FRs (FR-01 … FR-72), 88 operations (EP-01 … EP-88), 37 screens (S01 … S37), 52 tables (TC §5: 34 PRD entities + 18 technical tables, per TC §5.8; v1.7 adds the six Šapa pomoći tables of TC §5.10).
 - **Team and deadline:** one builder, no deadline → a single serial track.
 - **Non-goals steps must respect (TC §9, API §14):** no microservices or separate API server, no message queue, no real-time, no offline mode, no staging and no preview deployments, no edge caching of public pages, no external analytics, no Apple sign-in, no card data stored, no public API, no API versioning.
 - **Mockups:** `docs/product/04-design/screens/*.tsx` and `04-design/components/*.tsx` are the starting material for every screen step; they use inline mock data and must be wired to real data, not redesigned. Each route is a server `page.tsx` plus a colocated `*-client.tsx` (or the screen file name a step names) ported from its mockup (TC ADR-16).
@@ -48,12 +49,14 @@ The build runs in 33 steps (Step 01 … Step 32 plus Step 30a), each one coding 
 | OQ-10 | Design | None — proposed composites stay out until approved; steps use only approved composites |
 | OQ-11 | API | 🔒 Step 31 (provider checkout, webhook, renewal charge) |
 | OQ-15 | Design | Step 32 checklist item 4 (Release Criterion 4) stays open; nothing else is locked |
+| OQ-16 | PRD (v1.7) | None locked — Steps 28a and 28b apply the PRD default (a breeder plan does not lift the 3-active-listing limit) |
+| OQ-17 | API (v1.3) | None locked — Steps 28a–28c add no proposed column and use the API v1.3 interim mappings |
 
 ---
 
 ## 3. Step Sequence & Status
 
-**This table is the authoritative status record.** Update it after every step. Step 30a sits between Step 30 and Step 31 in execution order.
+**This table is the authoritative status record.** Update it after every step. Steps 28a, 28b and 28c sit between Step 28 and Step 29, and Step 30a between Step 30 and Step 31, in execution order.
 
 | Step | Name | Status | Depends on | Blocked by | Done |
 |---|---|---|---|---|---|
@@ -85,11 +88,14 @@ The build runs in 33 steps (Step 01 … Step 32 plus Step 30a), each one coding 
 | 26 | Litters & public organisation pages | ⬜ | 25 | — | |
 | 27 | Partners directory & vet suggestion | ⬜ | 09, 12, 14 | — | |
 | 28 | Operator admin | ⬜ | 27, 24, 19 | — | |
+| 28a | Schema: Šapa pomoći | ⬜ | 28 | — | |
+| 28b | Listings, public pages, profiles & donation info | ⬜ | 28a, 21, 19 | — | |
+| 28c | Messaging, notifications, report/block & moderation | ⬜ | 28b, 19 | — | |
 | 29 | WhatsApp channel | ⬜ | 19 | — | |
 | 30 | Nightly jobs | ⬜ | 23, 25, 29 | — | |
 | 30a | Backups & data export archives | ⬜ | 30, 23 | — | |
 | 31 | Payments & pricing | 🔒 | 30a | OQ-11, OQ-03 | |
-| 32 | Release verification | ⬜ | 30a (31 when unblocked) | — (checklist item 4 open until OQ-15) | |
+| 32 | Release verification | ⬜ | 30a, 28c (31 when unblocked) | — (checklist item 4 open until OQ-15) | |
 
 ---
 
@@ -104,7 +110,8 @@ The build runs in 33 steps (Step 01 … Step 32 plus Step 30a), each one coding 
 7. Integrations come after the surfaces they feed (19 email/push, 29 WhatsApp, 30 nightly jobs, 30a backups and data export archives).
 8. Steps blocked by an open question get no prompt until it is answered (31). An open question that affects only one checklist item of a step keeps that item open, not the step (32 item 4, OQ-15).
 9. Release verification is last (32).
-10. A step inserted later gets a suffix (`14a`, `30a`), never a renumbering; a suffixed step runs after its base number and before the next number.
+10. A step inserted later gets a suffix (`14a`, `28a`, `30a`), never a renumbering; a suffixed step runs after its base number and before the next number.
+11. (v1.2) The Šapa pomoći additions that upstream v1.3/v1.7 made to contracts earlier steps already own are built by Steps 28a–28c, not by those earlier steps: the CAP-08 columns, the `preference_type` value `message` and its default row (28a — added there only if Step 04, 05 or 08 did not already create them from TC v1.7), `Me.display_name` and `Me.marketplace` in `rpc:get_me` and `Organisation.donation` in `rpc:get_my_organisation` (28b), EP-13 / EP-15 `listing_photo` (28b), the composites `ListingTypeTag` and `ListingCard` (28b) and `ReportDialog` / `BlockDialog` (28c), the *Šapa pomoći* nav item (from the v1.6 `shells.tsx`, checked in 28b), the *Donacije* card of S29 (28b), the seventh `get_reminder_settings` row and the S12 *Poruke* card (28c), the S26 *Moderacija* tab and the *Poruke* / *Moderacija* badges (28c). An earlier step that meets one of these in a v1.3/v1.6/v1.7 section builds only its own part, leaves the Šapa pomoći part out, and records that in its Session log — it does not stop for it.
 
 PRD priorities are all P0, so dependency order alone decides the sequence.
 
@@ -146,7 +153,7 @@ npm run build
 ```
 plus `npm run e2e` in the steps that add Playwright specs. Scripts are created in Step 01.
 
-The cost of this policy is real (test volume grows with 60 requirements) and is recorded as RISK-23.
+The cost of this policy is real (test volume grows with 72 requirements) and is recorded as RISK-23.
 
 ---
 
@@ -3931,6 +3938,677 @@ _(empty — append after the step runs)_
 
 ---
 
+### Step 28a — Schema: Šapa pomoći
+
+| | |
+|---|---|
+| **Status** | ⬜ not started |
+| **Outcome** | Migrations create `listings`, `listing_photos`, `conversations`, `messages`, `user_blocks`, `reports` with their enums, checks, indexes, the TC §5.10 triggers and RLS; the CAP-08 columns on `profiles` and `organisations`, the `reminder_preferences` type `message` and its default `{email, push}` row exist (added here only where Steps 04, 05 and 08 did not already create them); the local seed gains Šapa pomoći data; pgTAP proves it. |
+| **Implements** | Tables `listings`, `listing_photos`, `conversations`, `messages`, `user_blocks`, `reports` (TC §5.10); columns `profiles.display_name`, `profiles.marketplace_suspended_at` (TC §5.1), `organisations.donation_bank_account`, `donation_url`, `dropoff_address`, `dropoff_hours` (TC §5.2); `reminder_preferences` type `message` + default row (TC §5.5); BR-54 … BR-61 (data side); FR-63, FR-64, FR-68, FR-70 (data side); EP-43 (`display_name` column grant); EP-52 (Šapa pomoći cascade, data side); TC §5.9 (listing photo keys queued); ADR-02; tables `profiles`, `organisations`, `reminder_preferences`, `r2_deletion_queue` (columns, grants, triggers only) |
+| **Depends on** | Step 28 |
+| **Blocked by** | — (OQ-16 and OQ-17 are non-blocking: this step applies the PRD default of OQ-16 and adds none of the columns OQ-17 proposes — API v1.3 defines interim mappings) |
+| **Track** | single |
+
+**Read before starting:**
+- `docs/product/03-technical-constraints.md` §5 (conventions), §5.1 (`profiles`), §5.2 (`organisations`), §5.5 (`reminder_preferences`), §5.7 (`r2_deletion_queue`), §5.7.1, §5.8, §5.9, §5.10 (all).
+- `docs/product/02-prd.md` §4 (Šapa pomoći relationships), §6 FR-61 … FR-72, §8 BR-54 … BR-61, §9 E-28 … E-35, §15 OQ-16.
+- `docs/product/05-api-integration-contract.md` §3.1, §4.4 (rows EP-13 `listing_photo`, EP-73 … EP-88), §5.9 (conventions block, EP-75, EP-77, EP-82, EP-84, EP-85, EP-86), EP-28 (type `message`), EP-43 (`display_name`), EP-52 (Šapa pomoći cascade note), §6 Šapa pomoći schemas (`ListingSummary` … `Restriction`, `MarketplaceStatus`), §7.1, §7.2, §17 OQ-16, OQ-17.
+- `docs/product/04-design-system.md` §9 (mock-data names), §12 S32 (mock data).
+- `docs/product/06-build-plan.md` §4 (invariant 11), §6, and the Session logs of Steps 04, 05 and 08 (which CAP-08 columns, enum values, grants and default-preference trigger already exist; the seed users).
+
+**Files this step may touch:**
+- `supabase/migrations/*_sapa_columns.sql` (new: only the CAP-08 columns, checks and grants on `profiles`, `organisations`, `reminder_preferences` that Steps 04, 05 and 08 did not create, and the default `message` preference row for new and existing profiles)
+- `supabase/migrations/*_preference_type_message.sql` (new, only if `preference_type` lacks `message`: the enum value alone in its own migration, because Postgres cannot use an enum value in the transaction that adds it)
+- `supabase/migrations/*_sapa_listings.sql` (new: enums, `listings`, `listing_photos`, their triggers and RLS)
+- `supabase/migrations/*_sapa_messaging.sql` (new: `conversations`, `messages`, their triggers and RLS)
+- `supabase/migrations/*_sapa_safety.sql` (new: `user_blocks`, `reports`, their triggers and RLS)
+- `supabase/seed.sql` (append only)
+- `supabase/tests/sapa_columns.test.sql`, `supabase/tests/sapa_listings.test.sql`, `supabase/tests/sapa_listing_rls.test.sql`, `supabase/tests/sapa_messaging.test.sql`, `supabase/tests/sapa_safety.test.sql`
+- the generated types file under `lib/supabase/` (via `npm run db:types` only)
+- `docs/product/06-build-plan.md` (Step 28a row in §3 and the Step 28a Session log only)
+
+**Out of bounds:** every RPC, view, route handler, server action and screen (Steps 28b, 28c); the EP-87 schedule and functions (Step 28b); moderation functions (Step 28c); the columns OQ-17 proposes (`listings.resolved_at`, `listings.hidden_at`, `listings.moderation_note`, `profiles.marketplace_suspension_note`, `organisations.donation_recipient`); any table or column not in TC §5.10 / the CAP-08 rows of TC §5.1, §5.2, §5.5; application code; `components/`.
+
+**Acceptance criteria:** (PRD v1.7, verbatim — data side)
+- BR-54: "Listing types are need, giving, selling, and seeking. Only members (Admin or Volunteer) of an approved shelter organisation may post needs, and a need is posted for that shelter; any signed-in user may post giving, selling, and seeking listings. The category "medicine and care" is allowed only for needs."
+- BR-55: "A Free user may have at most 3 active listings at a time; Premium users and users with a Shelter account have no limit, and need listings never count toward or are stopped by the limit. Resolved, expired, and hidden listings do not count. A listing holds at most 5 photos."
+- BR-56: "A listing expires 30 days after it is published. One reminder email is sent 3 days before expiry. The author may extend at any time ("Produži"), which sets the expiry to 30 days from that moment; extending an expired listing counts toward BR-55. Editing does not change the expiry date. Resolved outcomes: given, sold, donated, found." *(data side: `expires_at` = `published_at` + 30 days on insert; outcome enum)*
+- BR-57: "Only selling listings carry a price: an amount in whole RSD greater than 0, or "po dogovoru" (negotiable). Other types have no price."
+- BR-58: "Money never passes through the product. "Doniraj" only shows the shelter's donation info (bank account, payment link, drop-off address, drop-off hours); sales are settled directly between the users." *(data side: no payment table or column exists for listings or donations)*
+- BR-59: "When user A blocks user B, B cannot send messages to A (in any conversation) and B's listings are hidden from A; A can unblock at any time. Blocking is not shown to B beyond the refusal to send." *(data side: the `messages_not_blocked` trigger; listing hiding is the EP-73 query, Step 28b)*
+- BR-60: "A user suspended from Šapa pomoći by the Operator cannot publish, extend, or edit listings or send messages; their listings are hidden from everyone; they can still read their existing conversations. The rest of the product is unaffected. Only the Operator can lift the suspension." *(data side: the `marketplace_not_suspended` trigger and the RLS visibility rule)*
+- BR-61: "There is at most one conversation per listing and interested user; new conversations can be started only on active listings, while existing conversations continue after the listing is resolved, expired, or deleted. A user cannot message their own listing. Public profiles never show email or phone."
+
+FR-63 — Create a listing *(criteria #3, #5, #6, #7)*
+- Given a listing whose type is not "need", When the category "medicine and care" is chosen, Then saving is blocked with a message.
+- Given a listing with 6 photos, When saving, Then saving is blocked with a message.
+- Given a Free user with 3 active listings, When they try to publish a 4th, Then it is blocked and a Premium offer is shown.
+- Given a Premium user, a user with a Shelter account, or any need listing, When publishing, Then there is no limit on active listings.
+
+FR-64 — Manage my listings *(criteria #6; data side: cascade and set-null)*
+- Given any of their listings, When the author confirms a single "Yes, delete" prompt, Then the listing and its photos are permanently removed; existing conversations remain readable and show "listing deleted".
+
+FR-68 — Messaging *(criteria #2, #7; data side: unique pair; body check)*
+- Given a user who already has a conversation about that listing, When they tap "Pošalji poruku" again, Then the existing conversation opens (BR-61).
+- Given a message, Then it is text only, at most 2,000 characters; an empty message cannot be sent.
+
+FR-70 — Report and block *(criteria #2; data side: one open report per reporter and target)*
+- Given a signed-in user, When they report the same listing or user again while their earlier report is open, Then the earlier report is shown as already submitted.
+
+Derived checks:
+- (Derived from TC §5.1, §5.2, §5.5, §5.10) Every listed column, enum, check, unique, partial index and default exists exactly once — none is duplicated where Steps 04, 05 or 08 already created it.
+- (Derived from TC §5.5, FR-69) Every profile — existing and new — has a `reminder_preferences` row of type `message` with `channels = {email, push}`; its channels can only be a subset of `{email, push}` and may be empty.
+- (Derived from TC §5.10 RLS, API §5.9 "Public visibility") Anonymous and signed-in users read listings and photos only when `status = 'active'` and the author is not suspended; authors read all their own rows; the Operator reads all; only the Operator sets `hidden` or restores; conversations and messages are visible only to their two parties and never to the Operator; `user_blocks` is visible only to the blocker; reports are readable by their reporter and the Operator.
+- (Derived from API EP-43, TC §5.1) `profiles.display_name` is client-writable by its owner (column grant, check 2–40 chars); `marketplace_suspended_at` and the donation columns of other organisations are not.
+- (Derived from TC §5.9, §5.10, API EP-52) Deleting a listing or a profile removes its listings, photos, conversations (where a party) and messages, sets `conversations.listing_id` and `reports.listing_id` / user columns to null as TC §5.10 states, and queues every removed `listing_photos.r2_key` in `r2_deletion_queue`.
+- (Derived from PRD OQ-16 default, API §17 OQ-16) An active breeder plan does not lift the 3-active-listing limit.
+
+**Tests to ship:**
+| Criterion | Test | File |
+|---|---|---|
+| BR-54, FR-63 #3 | `need` by a member of an approved shelter → `organisation_id` set; by a non-member, a pending shelter's member or a breeder → `listing_type_not_allowed`; `medicine_care` on a non-need → check violation (SQLSTATE `23514`, mapped to `category_not_allowed` per API §7.1) | `supabase/tests/sapa_listings.test.sql` |
+| BR-55, FR-63 #6, FR-63 #7, OQ-16 | Free owner's 4th active non-need listing → `premium_required:listings`; seeded Premium owner, shelter account and need listings unlimited; resolved / expired / hidden rows not counted; breeder with an active breeder plan still limited; extend from `expired` and restore re-check the limit | `supabase/tests/sapa_listings.test.sql` |
+| BR-55, FR-63 #5 | 6th `listing_photos` row → refused (position check and `listing_photos_max`) | `supabase/tests/sapa_listings.test.sql` |
+| BR-56 | insert sets `expires_at = published_at + 30 days`; `(status = 'resolved') = (resolved_outcome is not null)` | `supabase/tests/sapa_listings.test.sql` |
+| BR-57 | selling needs exactly one of `price_minor > 0` / `price_negotiable`; other types reject both | `supabase/tests/sapa_listings.test.sql` |
+| BR-58 | no listing or organisation column stores a payment; donation columns are plain text/URL (`donation_url` must start with `https://`) | `supabase/tests/sapa_columns.test.sql` |
+| BR-59 | message from a blocked user to the blocker → `user_blocked`; the other direction succeeds | `supabase/tests/sapa_messaging.test.sql` |
+| BR-60 | suspended author: listing insert / author update and message insert → `marketplace_suspended`; their active listings invisible to anon and other users, visible to themselves and the Operator; their conversations stay readable | `supabase/tests/sapa_listing_rls.test.sql`, `supabase/tests/sapa_messaging.test.sql` |
+| BR-61, FR-68 #2 | second conversation for the same (`listing_id`, `starter_id`) → unique violation; conversation on a non-active listing → `listing_not_active`; on one's own listing → `cannot_message_self`; `owner_id` set from the listing author | `supabase/tests/sapa_messaging.test.sql` |
+| FR-68 #7 | empty / whitespace-only body and 2,001 characters refused; 2,000 accepted; `last_message_at` follows the newest message | `supabase/tests/sapa_messaging.test.sql` |
+| FR-64 #6 | deleting a listing cascades photos, queues their keys, sets `conversations.listing_id` and `reports.listing_id` null; messages remain | `supabase/tests/sapa_listings.test.sql`, `supabase/tests/sapa_messaging.test.sql` |
+| FR-70 #2 | second open report by the same reporter on the same listing or user → unique violation; allowed again after the first is `dismissed`; note required for `other`, ≤ 500 | `supabase/tests/sapa_safety.test.sql` |
+| columns, `message` preference | CAP-08 columns, checks and grants; every seeded profile has the `message` row `{email, push}`; a new profile gets it; `whatsapp` in a `message` row refused; empty array accepted | `supabase/tests/sapa_columns.test.sql` |
+| RLS matrix | anon / owner / other user / Operator per the derived check above, for all six tables; `user_blocks` invisible to the blocked user | `supabase/tests/sapa_listing_rls.test.sql`, `supabase/tests/sapa_messaging.test.sql`, `supabase/tests/sapa_safety.test.sql` |
+| account deletion | deleting a seeded profile removes their listings, photos (keys queued), conversations and messages, and nulls their `reports` references | `supabase/tests/sapa_safety.test.sql` |
+
+**Verification:**
+```
+npx supabase db reset  # expected: all migrations + seed apply without error
+npm run db:types       # expected: exit 0
+npm run typecheck      # expected: exit 0
+npm run lint           # expected: exit 0
+npm test               # expected: all test files pass
+npx supabase test db   # expected: all pgTAP files pass, incl. the five sapa_* files
+npm run build          # expected: exit 0
+```
+
+#### Prompt
+```
+You are executing Step 28a — Schema: Šapa pomoći — of docs/product/06-build-plan.md for the Moj Ljubimac web app. One outcome: the six Šapa pomoći tables of TC §5.10 with their triggers and RLS, plus the CAP-08 columns and the `message` preference — nothing else.
+
+READ FIRST, in this order:
+1. docs/product/03-technical-constraints.md §5 (conventions), §5.1 (profiles), §5.2 (organisations), §5.5 (reminder_preferences), §5.7 (r2_deletion_queue), §5.7.1, §5.8, §5.9, §5.10.
+2. docs/product/02-prd.md §4, §6 FR-61 … FR-72, §8 BR-54 … BR-61, §9 E-28 … E-35, §15 OQ-16.
+3. docs/product/05-api-integration-contract.md §3.1, §4.4 (rows EP-13 listing_photo and EP-73 … EP-88), §5.9 (conventions block, EP-75, EP-77, EP-82, EP-84, EP-85, EP-86), EP-28, EP-43, EP-52, §6 Šapa pomoći schemas and MarketplaceStatus, §7.1, §7.2, §17 (OQ-16, OQ-17).
+4. docs/product/04-design-system.md §9 (mock-data names) and §12 S32 (mock data).
+5. docs/product/06-build-plan.md §4 (invariant 11), §6, and the Session logs of Steps 04, 05 and 08.
+
+SETTLED UPSTREAM — apply exactly:
+- OQ-16 is open and non-blocking: apply the PRD default — only active owner Premium (is_premium) and account_type = shelter lift the 3-active-listing limit; an active breeder plan does not (TC §5.10 trigger listings_active_limit, API MarketplaceStatus).
+- OQ-17 is open and non-blocking: do NOT add listings.resolved_at, listings.hidden_at, listings.moderation_note, profiles.marketplace_suspension_note or organisations.donation_recipient. Steps 28b and 28c use the interim mappings of API §17 OQ-17.
+- Error format: TC §5.7.1 (ERRCODE P0001, MESSAGE '<code>' or '<code>:<detail>'); the medicine_care rule is the listings.category check constraint, which API §7.1 maps (SQLSTATE 23514) to category_not_allowed — do not raise listing_type_not_allowed for it (CR-28 records the TC wording).
+- Earlier steps may already have created some CAP-08 items because they read TC v1.7: profiles.display_name and marketplace_suspended_at (Step 04), the four organisations donation columns (Step 05), preference_type value 'message' and its default row (Step 08). Inspect the existing migrations and the Step 04/05/08 Session logs first; add only what is missing and record in the Session log what already existed. Never redefine an existing column, enum value, grant or trigger.
+
+BUILD:
+1. Migrations, each created with npx supabase migration new <name>:
+   - preference_type_message — only if preference_type lacks 'message': the enum value alone.
+   - sapa_columns — the missing CAP-08 columns with their TC checks (display_name 2–40 chars; donation_url '^https://'); the column grant that lets a user update their own profiles.display_name (EP-43); the TC §5.5 check that a 'message' row's channels are a subset of {email, push} (empty allowed); a 'message' row with channels {email, push} for every existing profile and, for new profiles, through the same mechanism Step 08 uses for the six default rows (extend it; do not create a second mechanism).
+   - sapa_listings — the seven enums of TC §5.10; listings and listing_photos exactly per TC §5.10 (columns, checks incl. the price check and the type/organisation_id check, indexes); triggers listings_active_limit (reuse is_premium from Step 04), listings_need_shelter_only, listing_photos_max, marketplace_not_suspended (listings part), expires_at = published_at + 30 days on insert, and the r2_deletion_queue enqueue on listing_photos delete (which also covers listing and account deletion through the cascade); RLS per TC §5.10.
+   - sapa_messaging — conversations and messages exactly per TC §5.10; triggers conversations_listing_active (sets owner_id from the listing author; listing_not_active; cannot_message_self), messages_not_blocked, marketplace_not_suspended (messages part), messages_touch_conversation, and "sender must be a party"; RLS: select for the two parties only, messages insert only with sender_id = auth.uid(), read_at updatable only by the recipient (column grant), no Operator access.
+   - sapa_safety — user_blocks and reports exactly per TC §5.10 (checks, unique partial indexes, the reporter_id not-null-at-creation trigger, the "listing_id or reported_user_id" check); RLS per TC §5.10.
+   Where a TC §5.10 FK says on delete cascade / set null, use exactly that. Every new table gets the shared updated_at trigger from Step 04 where TC gives it updated_at (messages and user_blocks have none).
+2. supabase/seed.sql — append, named per docs/product/04-design-system.md §9 and the S32 mock data: one more shelter test user (account_type shelter, same local-only password as the Step 04 seed header) with an approved shelter organisation (Azil „Druga šansa“, Novi Sad) and donation info, because the Step 05 seeded shelter is pending; a need listing by that shelter; a giving listing by the Free owner (Bečej); a selling listing with a price and one "po dogovoru"; a seeking listing; one expired and one resolved listing; one conversation with two messages (one unread); one block; one open report. Cities from the cities seed.
+3. Run npm run db:types.
+4. Write the pgTAP tests listed in the Step 28a "Tests to ship" table of docs/product/06-build-plan.md, in exactly those files.
+
+FILES YOU MAY CREATE OR MODIFY (allowlist — nothing else):
+- supabase/migrations/<timestamp>_preference_type_message.sql (only if needed), <timestamp>_sapa_columns.sql, <timestamp>_sapa_listings.sql, <timestamp>_sapa_messaging.sql, <timestamp>_sapa_safety.sql
+- supabase/seed.sql (append only)
+- supabase/tests/sapa_columns.test.sql, sapa_listings.test.sql, sapa_listing_rls.test.sql, sapa_messaging.test.sql, sapa_safety.test.sql
+- the generated types file under lib/supabase/ (via npm run db:types only)
+- docs/product/06-build-plan.md (Step 28a row in §3 and the Step 28a Session log only)
+Touching any other file requires stopping and asking.
+
+ACCEPTANCE CRITERIA (PRD v1.7, verbatim, data side — each needs a passing test):
+- BR-54: "Listing types are need, giving, selling, and seeking. Only members (Admin or Volunteer) of an approved shelter organisation may post needs, and a need is posted for that shelter; any signed-in user may post giving, selling, and seeking listings. The category "medicine and care" is allowed only for needs."
+- BR-55: "A Free user may have at most 3 active listings at a time; Premium users and users with a Shelter account have no limit, and need listings never count toward or are stopped by the limit. Resolved, expired, and hidden listings do not count. A listing holds at most 5 photos."
+- BR-56: "A listing expires 30 days after it is published. One reminder email is sent 3 days before expiry. The author may extend at any time ("Produži"), which sets the expiry to 30 days from that moment; extending an expired listing counts toward BR-55. Editing does not change the expiry date. Resolved outcomes: given, sold, donated, found."
+- BR-57: "Only selling listings carry a price: an amount in whole RSD greater than 0, or "po dogovoru" (negotiable). Other types have no price."
+- BR-58: "Money never passes through the product. "Doniraj" only shows the shelter's donation info (bank account, payment link, drop-off address, drop-off hours); sales are settled directly between the users."
+- BR-59: "When user A blocks user B, B cannot send messages to A (in any conversation) and B's listings are hidden from A; A can unblock at any time. Blocking is not shown to B beyond the refusal to send."
+- BR-60: "A user suspended from Šapa pomoći by the Operator cannot publish, extend, or edit listings or send messages; their listings are hidden from everyone; they can still read their existing conversations. The rest of the product is unaffected. Only the Operator can lift the suspension."
+- BR-61: "There is at most one conversation per listing and interested user; new conversations can be started only on active listings, while existing conversations continue after the listing is resolved, expired, or deleted. A user cannot message their own listing. Public profiles never show email or phone."
+- FR-63 #3: Given a listing whose type is not "need", When the category "medicine and care" is chosen, Then saving is blocked with a message.
+- FR-63 #5: Given a listing with 6 photos, When saving, Then saving is blocked with a message.
+- FR-63 #6: Given a Free user with 3 active listings, When they try to publish a 4th, Then it is blocked and a Premium offer is shown.
+- FR-63 #7: Given a Premium user, a user with a Shelter account, or any need listing, When publishing, Then there is no limit on active listings.
+- FR-64 #6: Given any of their listings, When the author confirms a single "Yes, delete" prompt, Then the listing and its photos are permanently removed; existing conversations remain readable and show "listing deleted".
+- FR-68 #2: Given a user who already has a conversation about that listing, When they tap "Pošalji poruku" again, Then the existing conversation opens (BR-61).
+- FR-68 #7: Given a message, Then it is text only, at most 2,000 characters; an empty message cannot be sent.
+- FR-70 #2: Given a signed-in user, When they report the same listing or user again while their earlier report is open, Then the earlier report is shown as already submitted.
+- Derived checks: every column/enum/check/index once; the message preference row; the RLS matrix; display_name grant; deletion cascade and key queueing; OQ-16 default — exactly as listed under "Acceptance criteria" in Step 28a of docs/product/06-build-plan.md.
+
+FORBIDDEN:
+- No table, column, enum value, index, check or trigger outside docs/product/03-technical-constraints.md §5.10 and the CAP-08 rows of §5.1, §5.2, §5.5; none of the OQ-17 proposed columns.
+- No RPC, view, route, action or screen (Steps 28b, 28c); no pg_cron schedule.
+- No error code outside docs/product/05-api-integration-contract.md §7.2; no library; no application code.
+
+DONE MEANS:
+- Every test in the Step 28a "Tests to ship" table exists and passes.
+- These commands all exit 0, in this order: npx supabase db reset; npm run db:types; npm run typecheck; npm run lint; npm test; npx supabase test db; npm run build.
+- In docs/product/06-build-plan.md: set the Step 28a row in §3 to ✅ with today's date and append a Step 28a Session log entry (date, what was built, which CAP-08 items already existed from Steps 04/05/08, pass/fail per command, deviations, follow-ups).
+- Commit with the message "Step 28a: Schema: Šapa pomoći".
+
+If anything above is ambiguous, if a referenced section doesn't contain what this prompt says it does, or if completing this step would require touching a file outside the list or making a decision the referenced documents don't settle — STOP and ask. Do not choose a reasonable default. Do not proceed with a partial implementation.
+```
+
+#### Session log
+_(empty — append after the step runs)_
+
+---
+
+### Step 28b — Listings, public pages, profiles & donation info
+
+| | |
+|---|---|
+| **Status** | ⬜ not started |
+| **Outcome** | Anyone browses Šapa pomoći (S32) and opens a listing (S33) and a public profile (S37) without signing in; signed-in users create and edit listings with up to 5 photos (S34), manage, extend, resolve and delete them (S35) and see a shelter's donation info behind "Doniraj"; shelter Admins edit donation info in S29 *Donacije*; a daily job sends the 3-day expiry notice and expires listings; the *Šapa pomoći* item is live in the owner and organisation shells. |
+| **Implements** | FR-61, FR-62, FR-63, FR-64, FR-65, FR-66, FR-67, FR-72 · EP-73, EP-74, EP-75, EP-76, EP-77, EP-78, EP-79, EP-87, EP-88; EP-13 (`listing_photo`), EP-15 (`listing_photo`), EP-43 (`display_name`, `marketplace`), EP-53 (`Organisation.donation`) · S32 `/sapa-pomoci`, S33 `/sapa-pomoci/[id]`, S34 `/sapa-pomoci/nova` and `/sapa-pomoci/[id]/izmeni`, S35 `/sapa-pomoci/moje`, S37 `/korisnik/[id]`, S29 `/organizacija/profil` (*Donacije* card) · route handlers `GET /api/public/listings`, `GET /api/public/listings/[id]`, `GET /api/public/users/[id]`, `POST /api/internal/listings-daily` · composites `ListingTypeTag`, `ListingCard`; `AppShell` *Šapa pomoći* item; token `--info-soft` (Design §4.1) · Design §9.1 (`listing_expiring`, `listing_expired`) · tables `listings`, `listing_photos`, `organisations` (donation columns), `profiles`, `cities`, `r2_deletion_queue` · TC §8 (daily job via pg_cron → `pg_net`), ADR-07, ADR-18, ADR-16 (CR-27 route group) |
+| **Depends on** | Step 28a, Step 21 (R2 photo patterns), Step 19 (Resend adapter and pg_cron → `pg_net` schedule mechanism) |
+| **Blocked by** | — (OQ-16, OQ-17 non-blocking: interim mappings of API v1.3 §17; CR-27 non-blocking: route group as stated in the prompt) |
+| **Track** | single |
+
+**Read before starting:**
+- `docs/product/02-prd.md` §6 FR-61 … FR-67, FR-72; §7 UC-11, UC-12; §8 BR-54 … BR-58, BR-61; §9 E-28 … E-33; §15 OQ-16.
+- `docs/product/03-technical-constraints.md` ADR-07, ADR-16, ADR-17, ADR-18; §5.9; §5.10; §8 (daily listing expiry job, pg_cron → app calls); §8.1.
+- `docs/product/04-design-system.md` §4.1 (`--info-soft`), §5.1, §5.2, §5.3 (`PublicShell wide`), §5.6, §6 (`AppShell`, `ListingTypeTag`, `ListingCard`, `PremiumLock`, `EmptyState`, `ErrorState`), §7, §8, §9, §9.1 (`listing_expiring`, `listing_expired`, `email_footer`), §10, §11 (S29, S32 … S35, S37), §12 S29, S32, S33, S34, S35, S37.
+- `docs/product/04-design/screens/sapa-pomoci.tsx`, `listing-detail.tsx`, `listing-form.tsx`, `my-listings.tsx`, `user-profile.tsx`, `org-profile.tsx`; `docs/product/04-design/components/listing-type-tag.tsx`, `listing-card.tsx`, `shells.tsx`.
+- `docs/product/05-api-integration-contract.md` §3.1, §3.3, §4.1, §4.4 (rows EP-13 `listing_photo`, EP-73 … EP-79, EP-87, EP-88), §5.1 EP-13, EP-15, §5.5 EP-43, §5.7 EP-53, §5.9 (conventions block, EP-73 … EP-79, EP-87, EP-88), §6 (`ListingSummary`, `Listing`, `ListingPhoto`, `ListingAuthor`, `MyListing`, `MarketplaceStatus`, `DonationInfo`, `PublicProfile`, `Me`, `Organisation`, `UploadTicket`, `FileUrl`), §7.1, §7.2, §7.3 (premium_locked, signed_out, suspended, unavailable, own / resolved), §9.4 (Šapa pomoći notifications), §10, §11, §12, §17 OQ-16, OQ-17.
+- `docs/product/06-build-plan.md` §4 (invariant 11), §5, §6, §12 (CR-27, OQ-16, OQ-17) and the Session logs of Steps 10, 11, 12, 13, 15, 17, 19, 21, 24 and 28a (composites, request-interception file name, `get_me`, `lib/actions/uploads.ts` / `files.ts`, `counts.podsetnici`, Resend and the pg_cron → `pg_net` schedule, R2 photo flow, `get_my_organisation` and the S29 files, the Šapa pomoći schema).
+
+**Files this step may touch:**
+- `supabase/migrations/*_sapa_listings_api.sql` (new: `rpc:list_listings`, `rpc:get_listing`, `rpc:list_my_listings`, `rpc:get_public_profile`, `rpc:get_donation_info`; `rpc:get_me` replaced to add `display_name` and `marketplace`; `rpc:get_my_organisation` replaced to add `donation`; the `organisations` donation-column grant for Admins of shelters if Step 28a did not ship it; functions `saveListing` / `changeListing` need for atomicity)
+- `supabase/migrations/*_listings_daily.sql` (new: the EP-87 database functions and the daily pg_cron schedule)
+- the generated types file under `lib/supabase/` (via `npm run db:types` only)
+- `lib/actions/listings.ts` (new: `saveListing` EP-75, `changeListing` EP-77)
+- `lib/actions/uploads.ts` (modify: EP-13 purpose `listing_photo`), `lib/actions/files.ts` (modify: EP-15 kind `listing_photo`)
+- `lib/actions/organisation.ts` (modify: add `updateDonationInfo` EP-88)
+- `lib/integrations/resend.ts` (the Design §9.1 templates `listing_expiring`, `listing_expired` only)
+- `lib/server/result.ts` (only if the API v1.3 §7.1 rows `premium_required:listings` and SQLSTATE `23514` → `category_not_allowed` are missing)
+- `app/api/public/listings/route.ts`, `app/api/public/listings/[id]/route.ts`, `app/api/public/users/[id]/route.ts` (new: EP-73, EP-74, EP-79)
+- `app/api/internal/listings-daily/route.ts` (new: EP-87)
+- `app/(sapa)/layout.tsx` (new: shell by session — CR-27)
+- `app/(sapa)/sapa-pomoci/page.tsx`, `app/(sapa)/sapa-pomoci/sapa-pomoci-client.tsx` (new, S32)
+- `app/(sapa)/sapa-pomoci/[id]/page.tsx`, `app/(sapa)/sapa-pomoci/[id]/listing-detail-client.tsx` (new, S33)
+- `app/(sapa)/sapa-pomoci/nova/page.tsx`, `app/(sapa)/sapa-pomoci/nova/listing-form-client.tsx`, `app/(sapa)/sapa-pomoci/[id]/izmeni/page.tsx` (new, S34 create and edit — the edit page renders the same client component)
+- `app/(sapa)/sapa-pomoci/moje/page.tsx`, `app/(sapa)/sapa-pomoci/moje/my-listings-client.tsx` (new, S35)
+- `app/(sapa)/korisnik/[id]/page.tsx`, `app/(sapa)/korisnik/[id]/user-profile-client.tsx` (new, S37)
+- `app/(org)/organizacija/profil/page.tsx`, `app/(org)/organizacija/profil/org-profile-screen.tsx` (modify: *Donacije* card only)
+- `components/app/listing-type-tag.tsx`, `components/app/listing-card.tsx` (new: ported from `04-design/components/`)
+- `components/app/shells.tsx` (modify only if it differs from `04-design/components/shells.tsx` v1.6: bring it to that file)
+- the request-interception file named in the Step 11 Session log (`proxy.ts` or `middleware.ts`) — add the signed-in prefixes `/sapa-pomoci/nova`, `/sapa-pomoci/moje`, `/sapa-pomoci/*/izmeni` only
+- `lib/i18n/sr.ts`, `lib/i18n/en.ts` (add keys only)
+- `README.md` (Scheduled jobs section only: the listings-daily job)
+- `supabase/tests/sapa_listings_api.test.sql`, `supabase/tests/sapa_profile_donation.test.sql`, `supabase/tests/sapa_expiry_job.test.sql`, `supabase/tests/get_me_marketplace.test.sql`
+- `tests/sapa/save-listing.test.ts`, `tests/sapa/change-listing.test.ts`, `tests/sapa/listing-photos.test.ts`, `tests/sapa/public-routes.test.ts`, `tests/sapa/listings-daily-route.test.ts`, `tests/sapa/update-donation-info.test.ts`, `tests/sapa/sapa-layout.test.tsx`, `tests/sapa/sapa-list-screen.test.tsx`, `tests/sapa/listing-detail-screen.test.tsx`, `tests/sapa/listing-form-screen.test.tsx`, `tests/sapa/my-listings-screen.test.tsx`, `tests/sapa/user-profile-screen.test.tsx`, `tests/organisation/org-donation-card.test.tsx`, `tests/components/listing-card.test.tsx`
+- `docs/product/06-build-plan.md` (Step 28b row in §3 and the Step 28b Session log only)
+
+**Out of bounds:** messaging — EP-80 … EP-83, the S33 *Pošalji poruku* Dialog, `/poruke`, the *Poruke* badge (Step 28c); report and block — EP-84, EP-85, the S33 / S37 `⋯` menus and `ReportDialog` / `BlockDialog` (Step 28c); moderation — EP-86, S26 (Step 28c); the S12 *Poruke* card (Step 28c); the OQ-17 proposed columns and any table or column change; edge caching or purge (ADR-18); `components/ui/*`; `components/app/*` other than the files listed.
+
+**Acceptance criteria:** (PRD v1.7, verbatim)
+
+FR-61 — Browse listings
+- Given a Visitor who is not signed in, When they open Šapa pomoći, Then active listings are shown, newest first, in pages.
+- Given one or more filters, When applied, Then only active listings matching every selected filter are shown.
+- Given a listing that is resolved, expired, or hidden, or whose author is suspended from Šapa pomoći, Then it is not shown in the list.
+- Given a signed-in user who blocked another user, Then listings by the blocked user are not shown to them (BR-59).
+- Given no match, Then an empty result with a "clear filters" action is shown.
+*(FR-61 #4: this step filters with existing `user_blocks` rows; the block action is Step 28c)*
+
+FR-62 — Listing detail
+- Given an active listing, When anyone opens it (signed in or not), Then they see its photos, title, type, category, species, city, description, price in RSD or "po dogovoru" (selling only), posted date, expiry date, and an author card linking to the author's public profile (FR-67).
+- Given a need listing, Then a "Doniraj" button is shown (FR-66).
+- Given a listing that is not active, When opened by anyone other than its author or the Operator, Then a "listing is no longer available" message is shown instead of its content.
+- Given the listing's author, When they open it, Then edit, extend, mark resolved, and delete actions are shown instead of "Pošalji poruku".
+*(FR-62 #4: this step shows the author's actions and no message button; the "Pošalji poruku" Dialog for non-authors is Step 28c)*
+
+FR-63 — Create a listing
+- Given a signed-in user, When they save a giving, selling, or seeking listing with all required fields, Then it is published as active with an expiry date 30 days later.
+- Given a member of an approved shelter organisation, When they choose type "need", Then the listing is published for that shelter; Given any other user, Then "need" is not offered.
+- Given a listing whose type is not "need", When the category "medicine and care" is chosen, Then saving is blocked with a message.
+- Given a selling listing, When neither an amount nor "po dogovoru" is set, Then saving is blocked with a message.
+- Given a listing with 6 photos, When saving, Then saving is blocked with a message.
+- Given a Free user with 3 active listings, When they try to publish a 4th, Then it is blocked and a Premium offer is shown.
+- Given a Premium user, a user with a Shelter account, or any need listing, When publishing, Then there is no limit on active listings.
+
+FR-64 — Manage my listings
+- Given "Moje objave", Then the author sees all their listings grouped as active, resolved, and expired, each with its expiry date.
+- Given an active listing, When the author edits and saves it, Then the new values are shown and the expiry date does not change.
+- Given an active or expired listing, When the author taps "Produži", Then it is active with an expiry date 30 days from now.
+- Given an expired listing of a Free user who already has 3 active listings, When they extend it, Then it is blocked and a Premium offer is shown.
+- Given an active listing, When the author marks it resolved with an outcome (given / sold / donated / found), Then it leaves the public list and is shown as resolved with that outcome.
+- Given any of their listings, When the author confirms a single "Yes, delete" prompt, Then the listing and its photos are permanently removed; existing conversations remain readable and show "listing deleted".
+
+FR-65 — Listing expiry
+- Given an active listing, When 3 days remain before its expiry date, Then the author receives one email with a "Produži" button.
+- Given the email's "Produži" button, When the author uses it, Then the listing is extended as in FR-64.
+- Given an active listing whose expiry date has passed, Then it becomes expired, leaves the public list, and the author receives one email that it expired.
+
+FR-66 — Donate to a shelter need
+- Given a signed-in user on a need listing, When they tap "Doniraj", Then the shelter's donation info is shown: bank account and/or payment link, drop-off address, and drop-off hours, as far as the shelter provided them (FR-72).
+- Given a Visitor who is not signed in, When they tap "Doniraj", Then they are asked to sign in or register and return to the listing afterwards.
+- Given a shelter with no donation info at all, Then "Doniraj" shows a message that the shelter has not added donation info yet, with "Pošalji poruku".
+- Given any donation, Then no money is collected or processed by the product (BR-58).
+*(FR-66 #3: this step shows the no-donation-info message and the "Pošalji poruku azilu" button; the button opens the Step 28c message Dialog)*
+
+FR-67 — Public user profile
+- Given any user's profile opened from a listing (signed in or not), Then it shows display name (nickname or name), city, member-since month and year, and the user's active listings.
+- Given any public profile, Then email address and phone number are never shown.
+- Given a shelter member's need listing, Then the author card shows the shelter's name and links to the shelter's public page.
+
+FR-72 — Shelter donation info
+- Given a Shelter Admin on the organisation profile's "Donacije" section, When they save donation info, Then "Doniraj" on the shelter's need listings shows the new values.
+- Given a Volunteer, Then these fields are view-only.
+- Given a payment link that is not a valid https URL, When saving, Then saving is blocked with a message.
+
+Derived checks:
+- (Derived from API §5.9 "Public routes", TC ADR-18) EP-73, EP-74 and EP-79 answer with `Cache-Control: no-store`, read with the caller's own session, and return photo URLs signed for 10 minutes; no email or phone appears in any response.
+- (Derived from API EP-87, TC §8) The daily job runs at 09:00 Europe/Belgrade through pg_cron → `pg_net` with the Vault secrets `dispatch_url` / `dispatch_secret`; a missing or wrong `X-Dispatch-Secret` → `401 invalid_signature`; a re-run on the same day sends no second notice.
+- (Derived from API OQ-17 interim mappings) S33 / S35 resolved date from `listings.updated_at`; S35 hidden card and reason from the actioned report; *Doniraj* recipient = `organisations.name`, purpose = `Donacija — <listing title>`; S34 description limit 2,000 characters (PRD / TC), title ≥ 5 client-side; a resolved listing opened by a non-author → *unavailable*.
+- (Derived from Design §5.1, §5.2, §5.3, §11) Signed-out visitors see S32, S33 and S37 in `PublicShell wide`; signed-in owners in the owner `AppShell`, organisation members in the organisation `AppShell`; both shells show *Šapa pomoći* (`HandHeart`) in the sidebar and the bottom nav (*Šapa*).
+
+**Tests to ship:**
+| Criterion | Test | File |
+|---|---|---|
+| FR-61 #1, FR-61 #2 | `list_listings` returns active listings newest first with `total`, paging by `limit`/`offset`; every filter combination ANDs; unknown enum / city → `validation_failed` | `supabase/tests/sapa_listings_api.test.sql`, `tests/sapa/public-routes.test.ts` |
+| FR-61 #3 | resolved, expired, hidden and suspended-author listings absent | `supabase/tests/sapa_listings_api.test.sql` |
+| FR-61 #4 | a signed-in user with a seeded block does not see the blocked author's listings; anon still does | `supabase/tests/sapa_listings_api.test.sql` |
+| FR-61 #5 | S32 empty state with filters shows *Poništi filtere* which clears them; without filters *Još nema oglasa* | `tests/sapa/sapa-list-screen.test.tsx` |
+| FR-62 #1 | EP-74 returns every listed field for anon and signed-in callers; S33 renders gallery, tags, price or *Po dogovoru*, dates and the author card linking to S37 | `tests/sapa/public-routes.test.ts`, `tests/sapa/listing-detail-screen.test.tsx` |
+| FR-62 #2 | need listing with donation info shows *Doniraj* | `tests/sapa/listing-detail-screen.test.tsx` |
+| FR-62 #3 | non-active listing → `404` for others (S33 *unavailable*), full listing for the author and the Operator | `supabase/tests/sapa_listings_api.test.sql`, `tests/sapa/listing-detail-screen.test.tsx` |
+| FR-62 #4 | author sees the own-listing card (edit, extend, resolve, delete) and no message button | `tests/sapa/listing-detail-screen.test.tsx` |
+| FR-63 #1 | create returns `status = active`, `expires_at` 30 days later; appears in EP-73 on the next request | `tests/sapa/save-listing.test.ts` |
+| FR-63 #2 | *Potreba* offered only when `Me.marketplace.can_post_need`; need saved for that shelter; otherwise `listing_type_not_allowed` | `tests/sapa/save-listing.test.ts`, `tests/sapa/listing-form-screen.test.tsx`, `supabase/tests/get_me_marketplace.test.sql` |
+| FR-63 #3 | `medicine_care` on a non-need → `category_not_allowed` shown under *Kategorija*; *Lekovi i nega* offered only for *Potreba* | `tests/sapa/save-listing.test.ts`, `tests/sapa/listing-form-screen.test.tsx` |
+| FR-63 #4 | selling without amount and without *Po dogovoru* → inline error | `tests/sapa/save-listing.test.ts`, `tests/sapa/listing-form-screen.test.tsx` |
+| FR-63 #5 | 6th photo → `too_many_photos` at ticket time; S34 shows *5 / 5* and blocks adding | `tests/sapa/listing-photos.test.ts`, `tests/sapa/listing-form-screen.test.tsx` |
+| FR-63 #6 | Free owner's 4th → `premium_required` (`listings`) → S34 `PremiumLock`; `Me.marketplace.active_listing_limit = 3` | `tests/sapa/save-listing.test.ts`, `tests/sapa/listing-form-screen.test.tsx`, `supabase/tests/get_me_marketplace.test.sql` |
+| FR-63 #7 | Premium, shelter account and need listings: `active_listing_limit` null and no block | `supabase/tests/get_me_marketplace.test.sql`, `tests/sapa/save-listing.test.ts` |
+| FR-64 #1 | `list_my_listings` groups (active incl. hidden / expired / resolved) with counts, order and `expires_at`; S35 tabs | `supabase/tests/sapa_listings_api.test.sql`, `tests/sapa/my-listings-screen.test.tsx` |
+| FR-64 #2 | update keeps `published_at` and `expires_at`; `photo_ids` reorders and deletes omitted photos (keys queued) | `tests/sapa/save-listing.test.ts` |
+| FR-64 #3 | extend of active or expired → active, `expires_at = now() + 30 days`, `expiry_notice_sent_at` null; resolved / hidden → `listing_not_active` | `tests/sapa/change-listing.test.ts` |
+| FR-64 #4 | extend of an expired listing by a Free user with 3 active → `premium_required` → S35 `PremiumLock`, *Objavi ponovo* disabled | `tests/sapa/change-listing.test.ts`, `tests/sapa/my-listings-screen.test.tsx` |
+| FR-64 #5 | resolve with an outcome (default by type) → leaves EP-73; S35 *Rešeni* shows the outcome | `tests/sapa/change-listing.test.ts`, `tests/sapa/my-listings-screen.test.tsx` |
+| FR-64 #6 | delete requires `confirm = true`, removes listing and photos (keys queued) | `tests/sapa/change-listing.test.ts` |
+| FR-65 #1 | job sends one `listing_expiring` email for a listing with ≤ 3 days left, sets `expiry_notice_sent_at` only after Resend accepted, and sends none on a re-run; suspended / pending-deletion authors get none | `supabase/tests/sapa_expiry_job.test.sql`, `tests/sapa/listings-daily-route.test.ts` |
+| FR-65 #2 | `/sapa-pomoci/moje?produzi=<id>` extends after sign-in (EP-77 `extend`) | `tests/sapa/my-listings-screen.test.tsx` |
+| FR-65 #3 | listing past `expires_at` → `expired`, one `listing_expired` email; it leaves EP-73 | `supabase/tests/sapa_expiry_job.test.sql`, `tests/sapa/listings-daily-route.test.ts` |
+| FR-66 #1 | `get_donation_info` returns the shelter's four fields and `payment_purpose`; Doniraj Dialog omits each empty block; *Kopiraj* copies the account | `supabase/tests/sapa_profile_donation.test.sql`, `tests/sapa/listing-detail-screen.test.tsx` |
+| FR-66 #2 | signed-out *Doniraj* → sign-in with `next` back to the listing; EP-78 for anon → `401` | `tests/sapa/listing-detail-screen.test.tsx`, `supabase/tests/sapa_profile_donation.test.sql` |
+| FR-66 #3 | `has_any = false` → *"Azil još nije dodao podatke za donacije"* + *Pošalji poruku azilu* | `tests/sapa/listing-detail-screen.test.tsx` |
+| FR-66 #4 | no payment call or field exists in the Doniraj flow; the only outbound link is the shelter's `payment_url` | `tests/sapa/listing-detail-screen.test.tsx` |
+| FR-67 #1 | EP-79 returns display name (or full name), city, member-since and active listings for anon and signed-in callers; S37 renders them | `supabase/tests/sapa_profile_donation.test.sql`, `tests/sapa/user-profile-screen.test.tsx` |
+| FR-67 #2 | no email or phone in EP-73, EP-74, EP-79 responses (response keys asserted) | `tests/sapa/public-routes.test.ts` |
+| FR-67 #3 | need listing author card shows the shelter name and links to `/o/<slug>` (S23) | `tests/sapa/listing-detail-screen.test.tsx` |
+| FR-72 #1 | Admin saves donation info (EP-88); EP-78 returns the new values | `tests/sapa/update-donation-info.test.ts`, `tests/organisation/org-donation-card.test.tsx`, `supabase/tests/sapa_profile_donation.test.sql` |
+| FR-72 #2 | Volunteer sees the four values read-only; EP-88 → `forbidden_role`; breeders do not see the card | `tests/organisation/org-donation-card.test.tsx`, `tests/sapa/update-donation-info.test.ts` |
+| FR-72 #3 | non-`https://` link → `fields.payment_url = "invalid"` inline; bank account outside `^\d{3}-\d{1,13}-\d{2}$` → inline error | `tests/sapa/update-donation-info.test.ts`, `tests/organisation/org-donation-card.test.tsx` |
+| public routes (derived) | `Cache-Control: no-store` on EP-73 / EP-74 / EP-79; signed URLs | `tests/sapa/public-routes.test.ts` |
+| daily job auth (derived) | missing / wrong secret → `401 invalid_signature` | `tests/sapa/listings-daily-route.test.ts` |
+| OQ-17 interim (derived) | resolved date from `updated_at`; Doniraj purpose line; description 2,000 limit | `tests/sapa/my-listings-screen.test.tsx`, `tests/sapa/listing-detail-screen.test.tsx`, `tests/sapa/listing-form-screen.test.tsx` |
+| shells (derived) | `(sapa)` layout picks `PublicShell wide` / owner / organisation `AppShell`; *Šapa pomoći* nav item present; signed-in prefixes redirect to `/prijava` | `tests/sapa/sapa-layout.test.tsx` |
+| composites | `ListingCard` shows *2.500 RSD* / *Po dogovoru* / *Besplatno* and links to S33; `ListingTypeTag` icon + label per type | `tests/components/listing-card.test.tsx` |
+
+**Verification:**
+```
+npx supabase db reset  # expected: all migrations + seed apply without error
+npm run db:types       # expected: exit 0
+npm run typecheck      # expected: exit 0
+npm run lint           # expected: exit 0
+npm test               # expected: all Vitest suites pass, incl. tests/sapa/*, tests/organisation/org-donation-card.test.tsx, tests/components/listing-card.test.tsx
+npx supabase test db   # expected: all pgTAP files pass, incl. the four files above
+npm run build          # expected: exit 0
+```
+
+#### Prompt
+```
+You are executing Step 28b — Listings, public pages, profiles & donation info — of docs/product/06-build-plan.md for the Moj Ljubimac web app. One outcome: the Šapa pomoći board works end to end without messaging — S32, S33, S34, S35, S37 and the S29 Donacije card on real data through EP-73 … EP-79, EP-87, EP-88 (with EP-13 / EP-15 listing_photo and the EP-43 / EP-53 additions).
+
+READ FIRST, in this order:
+1. docs/product/02-prd.md §6 FR-61 … FR-67 and FR-72; §7 UC-11, UC-12; §8 BR-54 … BR-58, BR-61; §9 E-28 … E-33; §15 OQ-16.
+2. docs/product/03-technical-constraints.md ADR-07, ADR-16, ADR-17, ADR-18; §5.9; §5.10; §8; §8.1.
+3. docs/product/05-api-integration-contract.md §3.1, §3.3, §4.1, §4.4, EP-13, EP-15, EP-43, EP-53, §5.9 (conventions block, EP-73 … EP-79, EP-87, EP-88), §6 ListingSummary, Listing, ListingPhoto, ListingAuthor, MyListing, MarketplaceStatus, DonationInfo, PublicProfile, Me, Organisation, UploadTicket, FileUrl, §7.1, §7.2, §7.3, §9.4, §10, §11, §12, §17 (OQ-16, OQ-17).
+4. docs/product/04-design-system.md §4.1, §5.1, §5.2, §5.3, §5.6, §6, §7, §8, §9, §9.1, §10, §11, §12 S29, S32, S33, S34, S35, S37.
+5. docs/product/04-design/screens/sapa-pomoci.tsx, listing-detail.tsx, listing-form.tsx, my-listings.tsx, user-profile.tsx, org-profile.tsx; docs/product/04-design/components/listing-type-tag.tsx, listing-card.tsx, shells.tsx.
+6. docs/product/06-build-plan.md §4 (invariant 11), §5, §6, §12 (CR-27, OQ-16, OQ-17) and the Session logs of Steps 10, 11, 12, 13, 15, 17, 19, 21, 24 and 28a.
+
+SETTLED UPSTREAM — apply exactly:
+- Route group (CR-27, non-blocking; TC ADR-16 names no group for pages shown in both a signed-in and the public shell): S32–S37 live under app/(sapa)/ with app/(sapa)/layout.tsx choosing the shell from the session — no session → PublicShell wide (Design §5.3); organisation member → AppShell variant "organisation" with its orgType; otherwise AppShell variant "owner" — using the same EP-43 fields and counts.podsetnici source app/(app)/layout.tsx and app/(org)/layout.tsx use (Steps 12, 17, 24 Session logs). Signed-in-only routes (/sapa-pomoci/nova, /sapa-pomoci/moje, /sapa-pomoci/<id>/izmeni) are added to the request-interception file's signed-in prefixes; /sapa-pomoci, /sapa-pomoci/<id> and /korisnik/<id> stay public. Sign-in prompts (E-32) link to /prijava?next=<current path>.
+- Public routes EP-73, EP-74, EP-79: route handlers that read with the caller's own Supabase session, sign photo URLs for 10 minutes with lib/integrations/r2.ts, and answer Cache-Control: no-store (TC ADR-18); no X-Robots-Tag; no purge anywhere.
+- OQ-16 (open, non-blocking): MarketplaceStatus.active_listing_limit = 3 unless active owner Premium or account_type = shelter; a breeder plan does not lift it.
+- OQ-17 (open, non-blocking) — the API §17 interim mappings: (a) resolved date shown from listings.updated_at; (b) S35 hidden card shows the reason and time of the actioned report on that listing; (c) Doniraj recipient = organisations.name, purpose = "Donacija — <listing title>" (DonationInfo.payment_purpose); (d) S34 description up to 2,000 characters (PRD/TC; replace the mock's 1000), title 5–80 client-side and 1–80 on the server; (e) bank account validated in updateDonationInfo with ^\d{3}-\d{1,13}-\d{2}$; (f) no screen edits display_name; (g) a resolved listing opened by a non-author is unavailable (404) — the resolved content variant is for the author only.
+- Composites: port docs/product/04-design/components/listing-type-tag.tsx and listing-card.tsx to components/app/ exactly as Step 10 ported the other composites (markup, classes, props unchanged; only import paths fixed). components/app/shells.tsx must equal the v1.6 mock (Šapa pomoći item with short label "Šapa", Poruke link, PublicShell wide); change it only if Step 10 ported an older version. The --info-soft token comes from app/globals.css (Step 10 copied 04-design/globals.css); if it is missing, STOP and ask.
+- Daily job EP-87: pg_cron at 09:00 Europe/Belgrade calls POST /api/internal/listings-daily through pg_net with the Vault secrets dispatch_url / dispatch_secret exactly as Step 19 schedules /api/internal/dispatch; handle Europe/Belgrade the way the Step 08 / Step 19 Session logs record. The route compares X-Dispatch-Secret with DISPATCH_SECRET in constant time.
+- Copy: Design §9.1 templates listing_expiring and listing_expired (with email_footer) in the recipient's profiles.locale, via lib/integrations/resend.ts; one retry is the next daily run (API §9.4). Every screen string goes into lib/i18n/sr.ts and lib/i18n/en.ts per Design §9 (Serbian = mockup copy, English = faithful translation; no new copy).
+- Database errors follow TC §5.7.1 and map per API §7.1 (incl. premium_required:listings and SQLSTATE 23514 on listings.category → category_not_allowed); add those rows to lib/server/result.ts only if Step 11 did not.
+
+BUILD:
+1. Migration sapa_listings_api: rpc:list_listings (EP-73), rpc:get_listing (EP-74, Listing incl. viewer fields and has_donation_info), rpc:list_my_listings (EP-76 with counts and usage), rpc:get_public_profile (EP-79, security definer, only the TC-listed fields), rpc:get_donation_info (EP-78, security definer, authenticated only); replace rpc:get_me (Step 12) with the same body plus Me.display_name and Me.marketplace (MarketplaceStatus — unread_conversations computed from the 28a tables); replace rpc:get_my_organisation (Step 24) with the same body plus Organisation.donation (members of shelters only); the shelter-Admin column grant on the four donation columns if Step 28a did not ship it; only the functions saveListing / changeListing need to stay atomic. Security invoker unless the EP says definer.
+2. Migration listings_daily: the EP-87 functions (step 1 notice candidates, step 2 expire — batches ≤ 200, FOR UPDATE SKIP LOCKED) and the daily pg_cron schedule (settled above). Run npm run db:types.
+3. lib/actions/listings.ts: saveListing (EP-75: create/update, need → caller's shelter from Me.marketplace.need_organisation, photo_ids reorder/delete with keys queued) and changeListing (EP-77: extend / resolve with default outcome by type / delete with confirm). lib/actions/uploads.ts: EP-13 purpose listing_photo (author only, active or expired listing, ≤ 5, images per BR-05, key u/<author_id>/listings/<listing_id>/<uuid>-<safe_file_name> per API §10 item 6). lib/actions/files.ts: EP-15 kind listing_photo. lib/actions/organisation.ts: updateDonationInfo (EP-88). Every action runs the API §4.1 gates (lib/server/gates.ts) and maps errors with lib/server/result.ts.
+4. Route handlers app/api/public/listings/route.ts (EP-73), app/api/public/listings/[id]/route.ts (EP-74), app/api/public/users/[id]/route.ts (EP-79), app/api/internal/listings-daily/route.ts (EP-87, response counts per EP-87).
+5. app/(sapa)/layout.tsx per the settled route group; the request-interception file gets the three signed-in prefixes.
+6. Screens — port each mockup to its client file with its page.tsx, remove the StateSwitcher, drive every state from real responses per API §7.3:
+   - S32 sapa-pomoci.tsx → app/(sapa)/sapa-pomoci/sapa-pomoci-client.tsx: type chips, Kategorija / Za koga / Grad Selects (cities from EP-67), result line, ListingCard grid, pagination (limit 18); states D, O, L, E, X, S.
+   - S33 listing-detail.tsx → app/(sapa)/sapa-pomoci/[id]/listing-detail-client.tsx: gallery, tags, price, author card (S37 or S23 for shelters), safety tip, own-listing card (edit → S34, extend, resolve AlertDialog), Doniraj Dialog from EP-78 (sign-in first when signed out), resolved (author only), unavailable on 404. Do NOT build the Pošalji poruku Dialog or the ⋯ menu (Step 28c): render the "Pošalji poruku" / "Pošalji poruku azilu" buttons as the mockup shows them for non-authors but leave them without an action, and record that in the Session log.
+   - S34 listing-form.tsx → app/(sapa)/sapa-pomoci/nova/listing-form-client.tsx, used by nova/page.tsx and [id]/izmeni/page.tsx (edit preloaded from EP-74): type tiles (Potreba only when can_post_need), fields with the OQ-17 (d) limits, Cena for selling, photos via EP-13 after EP-75 saved the listing (N / 5), delete AlertDialog on edit; states D, shelter, edit, invalid, X, G, S.
+   - S35 my-listings.tsx → app/(sapa)/sapa-pomoci/moje/my-listings-client.tsx: counter card, tabs, row cards, extend / republish / resolve / delete, ?produzi=<id> extends on load; states D L E X G S. The "Razgovora: N · nepročitano: N" footer comes from MyListing.
+   - S37 user-profile.tsx → app/(sapa)/korisnik/[id]/user-profile-client.tsx: header card, Aktivni oglasi grid; states D, O, L, E, X, unavailable. Do NOT build the ⋯ menu or the blocked state actions (Step 28c).
+   - S29: add the Donacije card of docs/product/04-design/screens/org-profile.tsx to app/(org)/organizacija/profil/org-profile-screen.tsx (shelters only; Volunteer read-only; values from EP-53 Organisation.donation; save via EP-88).
+7. lib/integrations/resend.ts: the two templates. README.md Scheduled jobs: the listings-daily schedule (names of the Vault secrets only) and how to call it manually locally.
+8. Strings into lib/i18n/sr.ts and lib/i18n/en.ts; regenerate types with npm run db:types.
+9. Tests: write every test in the Step 28b "Tests to ship" table of docs/product/06-build-plan.md in exactly those files; R2 and Resend are faked in Vitest.
+
+FILES YOU MAY CREATE OR MODIFY (allowlist — nothing else):
+- supabase/migrations/<timestamp>_sapa_listings_api.sql, <timestamp>_listings_daily.sql; the generated types file under lib/supabase/ (via npm run db:types only)
+- lib/actions/listings.ts, lib/actions/uploads.ts, lib/actions/files.ts, lib/actions/organisation.ts
+- lib/integrations/resend.ts (listing_expiring and listing_expired only); lib/server/result.ts (only the two API v1.3 rows, only if missing)
+- app/api/public/listings/route.ts, app/api/public/listings/[id]/route.ts, app/api/public/users/[id]/route.ts, app/api/internal/listings-daily/route.ts
+- app/(sapa)/layout.tsx; app/(sapa)/sapa-pomoci/page.tsx, sapa-pomoci-client.tsx; app/(sapa)/sapa-pomoci/[id]/page.tsx, listing-detail-client.tsx; app/(sapa)/sapa-pomoci/nova/page.tsx, listing-form-client.tsx; app/(sapa)/sapa-pomoci/[id]/izmeni/page.tsx; app/(sapa)/sapa-pomoci/moje/page.tsx, my-listings-client.tsx; app/(sapa)/korisnik/[id]/page.tsx, user-profile-client.tsx
+- app/(org)/organizacija/profil/page.tsx, app/(org)/organizacija/profil/org-profile-screen.tsx (Donacije card only)
+- components/app/listing-type-tag.tsx, components/app/listing-card.tsx; components/app/shells.tsx (only to match the v1.6 mock)
+- the request-interception file named in the Step 11 Session log (the three signed-in prefixes only)
+- lib/i18n/sr.ts, lib/i18n/en.ts (add keys only); README.md (Scheduled jobs section only)
+- supabase/tests/sapa_listings_api.test.sql, sapa_profile_donation.test.sql, sapa_expiry_job.test.sql, get_me_marketplace.test.sql
+- tests/sapa/save-listing.test.ts, change-listing.test.ts, listing-photos.test.ts, public-routes.test.ts, listings-daily-route.test.ts, update-donation-info.test.ts, sapa-layout.test.tsx, sapa-list-screen.test.tsx, listing-detail-screen.test.tsx, listing-form-screen.test.tsx, my-listings-screen.test.tsx, user-profile-screen.test.tsx; tests/organisation/org-donation-card.test.tsx; tests/components/listing-card.test.tsx
+- docs/product/06-build-plan.md (Step 28b row in §3 and the Step 28b Session log only)
+Touching any other file requires stopping and asking.
+
+ACCEPTANCE CRITERIA (PRD v1.7, verbatim — each needs a passing test):
+- FR-61 #1: Given a Visitor who is not signed in, When they open Šapa pomoći, Then active listings are shown, newest first, in pages.
+- FR-61 #2: Given one or more filters, When applied, Then only active listings matching every selected filter are shown.
+- FR-61 #3: Given a listing that is resolved, expired, or hidden, or whose author is suspended from Šapa pomoći, Then it is not shown in the list.
+- FR-61 #4: Given a signed-in user who blocked another user, Then listings by the blocked user are not shown to them (BR-59).
+- FR-61 #5: Given no match, Then an empty result with a "clear filters" action is shown.
+- FR-62 #1: Given an active listing, When anyone opens it (signed in or not), Then they see its photos, title, type, category, species, city, description, price in RSD or "po dogovoru" (selling only), posted date, expiry date, and an author card linking to the author's public profile (FR-67).
+- FR-62 #2: Given a need listing, Then a "Doniraj" button is shown (FR-66).
+- FR-62 #3: Given a listing that is not active, When opened by anyone other than its author or the Operator, Then a "listing is no longer available" message is shown instead of its content.
+- FR-62 #4: Given the listing's author, When they open it, Then edit, extend, mark resolved, and delete actions are shown instead of "Pošalji poruku".
+- FR-63 #1: Given a signed-in user, When they save a giving, selling, or seeking listing with all required fields, Then it is published as active with an expiry date 30 days later.
+- FR-63 #2: Given a member of an approved shelter organisation, When they choose type "need", Then the listing is published for that shelter; Given any other user, Then "need" is not offered.
+- FR-63 #3: Given a listing whose type is not "need", When the category "medicine and care" is chosen, Then saving is blocked with a message.
+- FR-63 #4: Given a selling listing, When neither an amount nor "po dogovoru" is set, Then saving is blocked with a message.
+- FR-63 #5: Given a listing with 6 photos, When saving, Then saving is blocked with a message.
+- FR-63 #6: Given a Free user with 3 active listings, When they try to publish a 4th, Then it is blocked and a Premium offer is shown.
+- FR-63 #7: Given a Premium user, a user with a Shelter account, or any need listing, When publishing, Then there is no limit on active listings.
+- FR-64 #1: Given "Moje objave", Then the author sees all their listings grouped as active, resolved, and expired, each with its expiry date.
+- FR-64 #2: Given an active listing, When the author edits and saves it, Then the new values are shown and the expiry date does not change.
+- FR-64 #3: Given an active or expired listing, When the author taps "Produži", Then it is active with an expiry date 30 days from now.
+- FR-64 #4: Given an expired listing of a Free user who already has 3 active listings, When they extend it, Then it is blocked and a Premium offer is shown.
+- FR-64 #5: Given an active listing, When the author marks it resolved with an outcome (given / sold / donated / found), Then it leaves the public list and is shown as resolved with that outcome.
+- FR-64 #6: Given any of their listings, When the author confirms a single "Yes, delete" prompt, Then the listing and its photos are permanently removed; existing conversations remain readable and show "listing deleted".
+- FR-65 #1: Given an active listing, When 3 days remain before its expiry date, Then the author receives one email with a "Produži" button.
+- FR-65 #2: Given the email's "Produži" button, When the author uses it, Then the listing is extended as in FR-64.
+- FR-65 #3: Given an active listing whose expiry date has passed, Then it becomes expired, leaves the public list, and the author receives one email that it expired.
+- FR-66 #1: Given a signed-in user on a need listing, When they tap "Doniraj", Then the shelter's donation info is shown: bank account and/or payment link, drop-off address, and drop-off hours, as far as the shelter provided them (FR-72).
+- FR-66 #2: Given a Visitor who is not signed in, When they tap "Doniraj", Then they are asked to sign in or register and return to the listing afterwards.
+- FR-66 #3: Given a shelter with no donation info at all, Then "Doniraj" shows a message that the shelter has not added donation info yet, with "Pošalji poruku".
+- FR-66 #4: Given any donation, Then no money is collected or processed by the product (BR-58).
+- FR-67 #1: Given any user's profile opened from a listing (signed in or not), Then it shows display name (nickname or name), city, member-since month and year, and the user's active listings.
+- FR-67 #2: Given any public profile, Then email address and phone number are never shown.
+- FR-67 #3: Given a shelter member's need listing, Then the author card shows the shelter's name and links to the shelter's public page.
+- FR-72 #1: Given a Shelter Admin on the organisation profile's "Donacije" section, When they save donation info, Then "Doniraj" on the shelter's need listings shows the new values.
+- FR-72 #2: Given a Volunteer, Then these fields are view-only.
+- FR-72 #3: Given a payment link that is not a valid https URL, When saving, Then saving is blocked with a message.
+(FR-61 #4: filter only — blocking is Step 28c. FR-62 #4 and FR-66 #3: the message Dialog is Step 28c.)
+- Derived checks (public routes not cached, daily job schedule and auth, OQ-17 interim mappings, shells) exactly as listed under "Acceptance criteria" in Step 28b of docs/product/06-build-plan.md.
+
+FORBIDDEN:
+- No colours, spacing, radii, shadows, fonts or components outside docs/product/04-design-system.md §4–§6 and the composites in components/app; OQ-10 proposed composites are not approved; no lucide brand icons.
+- No library outside docs/product/03-technical-constraints.md ADR-17; add no npm dependency.
+- No endpoint, field, error code or state outside docs/product/05-api-integration-contract.md; no messaging, report, block or moderation code (Step 28c).
+- No table, column, enum or constraint change; none of the OQ-17 proposed columns.
+- No edge cache, cache header other than no-store on the three public routes, or purge (TC ADR-18). No payment code of any kind (BR-58). The service-role key never reaches the browser.
+- No user-facing copy that is not in 04-design-system.md or docs/product/04-design.
+
+DONE MEANS:
+- Every test in the Step 28b "Tests to ship" table exists and passes.
+- These commands all exit 0, in this order: npx supabase db reset; npm run db:types; npm run typecheck; npm run lint; npm test; npx supabase test db; npm run build.
+- In docs/product/06-build-plan.md: set the Step 28b row in §3 to ✅ with today's date and append a Step 28b Session log entry (date, what was built, pass/fail per command, the files Step 28c will extend — the S33 and S37 client files and app/(sapa)/layout.tsx —, deviations, follow-ups incl. the OQ-17 interim mappings applied).
+- Commit with the message "Step 28b: Listings, public pages, profiles & donation info".
+
+If anything above is ambiguous, if a referenced section doesn't contain what this prompt says it does, or if completing this step would require touching a file outside the list or making a decision the referenced documents don't settle — STOP and ask. Do not choose a reasonable default. Do not proceed with a partial implementation.
+```
+
+#### Session log
+_(empty — append after the step runs)_
+
+---
+
+### Step 28c — Messaging, notifications, report/block & moderation
+
+| | |
+|---|---|
+| **Status** | ⬜ not started |
+| **Outcome** | Signed-in users message a listing's author from S33 and continue in S36 *Poruke* (inbox + thread, unread counts, *Poruke* badge in the shells), the recipient gets an email and a push unless switched off in the S12 *Poruke* card; users report listings and users and block or unblock users from S33, S36 and S37; the Operator works the S26 *Moderacija* queue — dismiss, hide, suspend, restore — with the author emailed. |
+| **Implements** | FR-68, FR-69, FR-70, FR-71; FR-62 #4 and FR-66 #3 (message action), NFR-11 · EP-80, EP-81, EP-82, EP-83, EP-84, EP-85, EP-86; EP-28 (type `message`), EP-43 (`marketplace.unread_conversations` badge) · S36 `/poruke`, `/poruke/[id]`; S33 `/sapa-pomoci/[id]` (*Pošalji poruku* Dialog, `⋯` menu); S37 `/korisnik/[id]` (`⋯` menu, blocked state); S12 `/podesavanja/podsetnici` (*Poruke* card); S26 `/admin` (*Moderacija* tab) · composites `ReportDialog`, `BlockDialog`; `AppShell` *Poruke* badge (`counts.poruke`) and admin *Moderacija* badge (`counts.moderacija`) · API §11 (30 messages / hour), §3.3 (idempotency) · Design §9.1 (`new_message`, `listing_hidden`, `marketplace_suspended`) · tables `conversations`, `messages`, `user_blocks`, `reports`, `listings` (hide/restore), `profiles` (suspension), `reminder_preferences` (`message`), `push_subscriptions`, `rate_limit_counters`, `idempotency_keys` |
+| **Depends on** | Step 28b, Step 19 (Resend and Web Push adapters) |
+| **Blocked by** | — (OQ-17 non-blocking: moderation note only in the email, restrictions derived from the actioned report) |
+| **Track** | single |
+
+**Read before starting:**
+- `docs/product/02-prd.md` §6 FR-62, FR-66, FR-68, FR-69, FR-70, FR-71; §7 UC-11, UC-13; §8 BR-59, BR-60, BR-61; §9 E-32 … E-35; §10 NFR-11.
+- `docs/product/03-technical-constraints.md` §5.5 (`reminder_preferences` type `message`, `push_subscriptions`), §5.7 (`idempotency_keys`, `rate_limit_counters`), §5.10, §7 (NFR-11 row), §9, ADR-05, ADR-08, ADR-16, §10 RISK-31.
+- `docs/product/04-design-system.md` §5.1, §5.2, §5.5 (*Moderacija*), §6 (`AppShell` counts, `ReportDialog`, `BlockDialog`, `ReadOnlyBanner`), §8, §9, §9.1 (`new_message`, `listing_hidden`, `marketplace_suspended`, `email_footer`), §10, §11 (S12, S26, S33, S36, S37), §12 S12, S26, S33, S36, S37.
+- `docs/product/04-design/screens/messages.tsx`, `listing-detail.tsx`, `user-profile.tsx`, `reminder-settings.tsx`, `admin.tsx`; `docs/product/04-design/components/safety-dialogs.tsx`, `shells.tsx`.
+- `docs/product/05-api-integration-contract.md` §3.3, §4.1, §4.4 (rows EP-28, EP-80 … EP-86), §5.3 EP-28, §5.5 EP-43, §5.9 (conventions block, EP-74 viewer fields, EP-80 … EP-86), §6 (`ConversationSummary`, `Conversation`, `Message`, `UserBlock`, `Report`, `ModerationItem`, `Restriction`, `ReminderPreference`, `MarketplaceStatus`), §7.1, §7.2, §7.3 (blocked, suspended), §8, §9.4 (Web Push row, Šapa pomoći notifications), §11, §12, §17 OQ-17.
+- `docs/product/06-build-plan.md` §4 (invariant 11), §5, §6 and the Session logs of Steps 11, 12, 17, 18, 19, 24, 28, 28a and 28b (request-interception file, layouts and counts, S12 files and `rpc:get_reminder_settings`, Resend / Web Push adapters, S26 files and `lib/actions/admin.ts`, the Šapa pomoći schema and the S33 / S37 / `(sapa)` files).
+
+**Files this step may touch:**
+- `supabase/migrations/*_sapa_messaging_api.sql` (new: `rpc:list_my_conversations`, `rpc:get_conversation`, `rpc:mark_conversation_read`, `rpc:block_user`, `rpc:unblock_user`, `rpc:admin_list_moderation`, and the functions `moderate` needs for atomicity; `rpc:get_reminder_settings` replaced to return the seven preference rows incl. `message`, and the database validation EP-28 states for the `message` row if Step 28a's check does not already enforce it)
+- the generated types file under `lib/supabase/` (via `npm run db:types` only)
+- `lib/actions/messages.ts` (new: `sendMessage` EP-82 incl. the new-message notification)
+- `lib/actions/reports.ts` (new: `submitReport` EP-84)
+- `lib/actions/admin.ts` (modify: add `moderate` EP-86)
+- `lib/integrations/resend.ts` (the Design §9.1 templates `new_message`, `listing_hidden`, `marketplace_suspended` only)
+- `lib/integrations/webpush.ts` (modify only if it cannot send the `{ title, body, url }` payload of API §9.4)
+- `public/sw.js` (modify only if a notification without `done_url` does not open `url`)
+- `app/(sapa)/poruke/page.tsx`, `app/(sapa)/poruke/[id]/page.tsx`, `app/(sapa)/poruke/messages-client.tsx` (new, S36 — both pages render the same client component)
+- `app/(sapa)/sapa-pomoci/[id]/listing-detail-client.tsx` (modify: *Pošalji poruku* Dialog and `⋯` menu)
+- `app/(sapa)/korisnik/[id]/user-profile-client.tsx` (modify: `⋯` menu and blocked state)
+- `components/app/safety-dialogs.tsx` (new: ported from `04-design/components/`)
+- `app/(app)/podesavanja/podsetnici/reminder-settings-client.tsx` (modify: *Poruke* card only)
+- `app/admin/admin-screen.tsx` (modify: *Moderacija* tab only), `app/admin/layout.tsx` (modify: `counts.moderacija`)
+- `app/(app)/layout.tsx`, `app/(org)/layout.tsx`, `app/(sapa)/layout.tsx` (modify: `counts.poruke` from `Me.marketplace.unread_conversations`)
+- the request-interception file named in the Step 11 Session log — add the signed-in prefix `/poruke` only
+- `lib/i18n/sr.ts`, `lib/i18n/en.ts` (add keys only)
+- `supabase/tests/sapa_conversations_api.test.sql`, `supabase/tests/sapa_moderation_api.test.sql`, `supabase/tests/message_preferences.test.sql`
+- `tests/sapa/send-message.test.ts`, `tests/sapa/new-message-notification.test.ts`, `tests/sapa/submit-report.test.ts`, `tests/sapa/messages-screen.test.tsx`, `tests/sapa/listing-detail-messaging.test.tsx`, `tests/sapa/user-profile-safety.test.tsx`, `tests/sapa/unread-badge.test.tsx`, `tests/admin/moderate.test.ts`, `tests/admin/moderation-tab.test.tsx`, `tests/reminder-settings/message-notifications-card.test.tsx`, `tests/components/safety-dialogs.test.tsx`
+- `docs/product/06-build-plan.md` (Step 28c row in §3 and the Step 28c Session log only)
+
+**Out of bounds:** listings, public pages, donation info and the expiry job (Step 28b — unchanged); WhatsApp and Viber for messages (never, API §9.4); any real-time mechanism, polling loop or Supabase Realtime (NFR-11, TC §9); message editing, deleting or attachments (API §14); Operator access to message bodies (TC §5.10); storing the Operator's note (OQ-17); any table or column change; the S12 reminder-type cards and channel behaviour (Steps 18, 29); `components/ui/*`.
+
+**Acceptance criteria:** (PRD v1.7, verbatim)
+
+FR-68 — Messaging
+- Given a signed-in user on an active listing they did not post, When they tap "Pošalji poruku" and send text, Then a conversation tied to that listing is created and the message is delivered to the author.
+- Given a user who already has a conversation about that listing, When they tap "Pošalji poruku" again, Then the existing conversation opens (BR-61).
+- Given the author of a listing, Then "Pošalji poruku" is not available on their own listing.
+- Given a Visitor who is not signed in, When they tap "Pošalji poruku", Then they are asked to sign in or register and return to the listing afterwards.
+- Given "Poruke", Then the inbox lists the user's conversations by latest message first, each with the listing title, the other user's display name, the last message, and an unread count; a total unread count is shown on the messages icon.
+- Given a conversation, When the user opens it, Then all messages are shown oldest to newest and the conversation's unread count becomes 0.
+- Given a message, Then it is text only, at most 2,000 characters; an empty message cannot be sent.
+
+FR-69 — New-message notifications
+- Given a new message, When it is sent, Then the recipient receives an email and a push notification (if they enabled push on a device) with the sender's display name, the listing title, and a link to the conversation.
+- Given the "Poruke" card in reminder settings, When the user switches email or push off, Then new-message notifications are no longer sent on that channel.
+- Given a new user, Then new-message notifications are on for email and push by default.
+
+FR-70 — Report and block
+- Given a signed-in user on a listing or a public profile, When they submit "Prijavi" with a reason, Then a report is recorded for the Operator and the user sees a confirmation.
+- Given a signed-in user, When they report the same listing or user again while their earlier report is open, Then the earlier report is shown as already submitted.
+- Given a signed-in user in a conversation or on a public profile, When they tap "Blokiraj" and confirm, Then the blocked user can no longer send them messages and the blocked user's listings are hidden from them.
+- Given a blocked user, When they try to send a message to the blocker, Then sending is refused with a message that the user cannot be contacted.
+- Given the blocker, When they unblock the user, Then messaging and listing visibility return to normal.
+
+FR-71 — Operator moderation
+- Given the admin area's "Moderacija" tab, Then open reports are listed oldest first with reason, note, reporter, and the reported listing and/or user.
+- Given a reported listing, When the Operator hides it, Then it disappears from the public list and its detail, the report is marked actioned, and the author is emailed.
+- Given a reported user, When the Operator suspends them from Šapa pomoći, Then they cannot publish, edit, or extend listings or send messages, their listings are hidden, the report is marked actioned, and they are emailed.
+- Given a hidden listing or a suspended user, When the Operator restores it, Then the listing or the user's access and listings return to their previous state.
+- Given a report, When the Operator dismisses it, Then it is marked dismissed and nothing else changes.
+
+FR-62 — Listing detail *(criteria #4; this step: no message action for the author; the Dialog for everyone else)*
+- Given the listing's author, When they open it, Then edit, extend, mark resolved, and delete actions are shown instead of "Pošalji poruku".
+
+FR-66 — Donate to a shelter need *(criteria #3; this step: "Pošalji poruku azilu" opens the message Dialog)*
+- Given a shelter with no donation info at all, Then "Doniraj" shows a message that the shelter has not added donation info yet, with "Pošalji poruku".
+
+NFR-11 — *no Given/When/Then in the PRD; derived from TC §7 target:*
+- A message sent by one user appears for the other after a page load or refresh; no live connection is opened by any page.
+
+Derived checks:
+- (Derived from API §11, §3.3, EP-82) The 31st message within an hour → `429 rate_limited` with `details.retry_after_s`, shown under the composer / in the S33 Dialog; a repeat with the same `idempotency_key` within 24 h returns the original result and sends nothing.
+- (Derived from API EP-28, TC §5.5) `get_reminder_settings` returns seven rows incl. `message`; a `message` row accepts `{}`, `{email}`, `{push}`, `{email, push}` and refuses `whatsapp` / `viber` with `fields.channels = "invalid"`.
+- (Derived from API EP-86, OQ-17) The Operator never reads message bodies; the `reason_note` goes only into the email.
+
+**Tests to ship:**
+| Criterion | Test | File |
+|---|---|---|
+| FR-68 #1 | `sendMessage` with `listing_id` creates the conversation and the first message (`created_conversation = true`); S33 Dialog → *"Poruka je poslata…"* + *Otvori razgovor* | `tests/sapa/send-message.test.ts`, `tests/sapa/listing-detail-messaging.test.tsx` |
+| FR-68 #2 | second start on the same listing reuses the conversation (`created_conversation = false`); S33 button opens `/poruke/<id>` when `viewer.my_conversation_id` is set | `tests/sapa/send-message.test.ts`, `tests/sapa/listing-detail-messaging.test.tsx` |
+| FR-68 #3 | author's own listing has no message button; `cannot_message_self` from the action | `tests/sapa/listing-detail-messaging.test.tsx`, `tests/sapa/send-message.test.ts` |
+| FR-68 #4 | signed-out *Pošalji poruku* → `/prijava?next=/sapa-pomoci/<id>`; action → `401` | `tests/sapa/listing-detail-messaging.test.tsx`, `tests/sapa/send-message.test.ts` |
+| FR-68 #5 | `list_my_conversations` order, fields and per-row unread count; `unread_conversations` equals `Me.marketplace.unread_conversations`; badge on the *Poruke* icon in owner and organisation shells (none at zero) | `supabase/tests/sapa_conversations_api.test.sql`, `tests/sapa/messages-screen.test.tsx`, `tests/sapa/unread-badge.test.tsx` |
+| FR-68 #6 | `get_conversation` pages newest-last with `total`; `mark_conversation_read` sets `read_at` for the other party's messages and the count becomes 0 | `supabase/tests/sapa_conversations_api.test.sql`, `tests/sapa/messages-screen.test.tsx` |
+| FR-68 #7 | empty body → *"Napiši poruku pre slanja."*; 2,001 characters refused; counter *N / 2000* | `tests/sapa/send-message.test.ts`, `tests/sapa/messages-screen.test.tsx` |
+| FR-69 #1 | after commit: one `new_message` email (Resend fake, recipient locale, sender display name, listing title, link `/poruke/<id>`) and one push per endpoint (`{ title, body, url }`); 404/410 endpoints deleted; failures logged, send still `ok`; nothing written to `reminder_deliveries` | `tests/sapa/new-message-notification.test.ts` |
+| FR-69 #2 | channels from the `message` row: `{email}` → email only, `{}` → none; S12 *Poruke* card switches save via EP-28 and show the both-off line | `tests/sapa/new-message-notification.test.ts`, `tests/reminder-settings/message-notifications-card.test.tsx`, `supabase/tests/message_preferences.test.sql` |
+| FR-69 #3 | a new profile's `message` row is `{email, push}`; S12 shows both switches on | `supabase/tests/message_preferences.test.sql`, `tests/reminder-settings/message-notifications-card.test.tsx` |
+| FR-70 #1 | `submitReport` on a listing (`reported_user_id` = author) and on a user → open report; `ReportDialog` confirmation | `tests/sapa/submit-report.test.ts`, `tests/components/safety-dialogs.test.tsx` |
+| FR-70 #2 | repeat while open → `already_submitted = true`, nothing written; Dialog shows *"Već si prijavio/la…"* | `tests/sapa/submit-report.test.ts`, `tests/components/safety-dialogs.test.tsx` |
+| FR-70 #3 | `block_user` from S36 and S37 (`BlockDialog`, *Da, blokiraj*); the blocked user's listings vanish from the blocker's EP-73 / EP-74 / EP-79 results; S33 → *unavailable* after blocking from its menu | `supabase/tests/sapa_conversations_api.test.sql`, `tests/sapa/user-profile-safety.test.tsx`, `tests/sapa/listing-detail-messaging.test.tsx` |
+| FR-70 #4 | blocked sender → `user_blocked`, inline error under the composer, no notification sent | `tests/sapa/send-message.test.ts`, `tests/sapa/new-message-notification.test.ts`, `tests/sapa/messages-screen.test.tsx` |
+| FR-70 #5 | `unblock_user` → messaging and listings return; S36 / S37 *Odblokiraj* | `supabase/tests/sapa_conversations_api.test.sql`, `tests/sapa/user-profile-safety.test.tsx` |
+| FR-71 #1 | `admin_list_moderation(open_reports)` oldest first with reason, note, reporter, listing and/or user; non-Operator gets nothing; tab and nav badge show `open_count` | `supabase/tests/sapa_moderation_api.test.sql`, `tests/admin/moderation-tab.test.tsx` |
+| FR-71 #2 | `hide_listing` → `status = hidden`, gone from EP-73 / EP-74, all open reports on it `actioned`, one `listing_hidden` email with the note or the reason label | `tests/admin/moderate.test.ts`, `supabase/tests/sapa_moderation_api.test.sql` |
+| FR-71 #3 | `suspend_user` → `marketplace_suspended_at` set; publish / edit / extend / send → `marketplace_suspended`; listings hidden; reports `actioned`; `marketplace_suspended` email only for a new suspension | `tests/admin/moderate.test.ts`, `supabase/tests/sapa_moderation_api.test.sql` |
+| FR-71 #4 | `restore_listing` → `active` if `expires_at > now()`, else `expired` (and `expired` when the limit trigger refuses); `restore_user` clears the suspension; listings reappear by their own status | `tests/admin/moderate.test.ts`, `supabase/tests/sapa_moderation_api.test.sql` |
+| FR-71 #5 | `dismiss_report` → `dismissed`, nothing else changes; a decided report → `409 already_decided` | `tests/admin/moderate.test.ts` |
+| FR-62 #4, FR-66 #3 | author sees no message action; non-author *Pošalji poruku* / *Pošalji poruku azilu* opens the message Dialog | `tests/sapa/listing-detail-messaging.test.tsx` |
+| NFR-11 (derived) | no WebSocket, `EventSource`, Supabase Realtime channel or interval polling in `app/(sapa)/poruke/` and the shells (source scan); a message appears for the other party after a reload | `tests/sapa/messages-screen.test.tsx` |
+| rate limit, idempotency (derived) | 31st message in an hour → `rate_limited` with `retry_after_s`; same key replays without a second insert or notification | `tests/sapa/send-message.test.ts` |
+| EP-28 `message` (derived) | seven rows from `get_reminder_settings`; `whatsapp` in `message` → `fields.channels = "invalid"`; `{}` accepted | `supabase/tests/message_preferences.test.sql` |
+| composites | `ReportDialog` reasons, note required for *Drugo*, ≤ 500; `BlockDialog` destructive confirm | `tests/components/safety-dialogs.test.tsx` |
+
+**Verification:**
+```
+npx supabase db reset  # expected: all migrations + seed apply without error
+npm run db:types       # expected: exit 0
+npm run typecheck      # expected: exit 0
+npm run lint           # expected: exit 0
+npm test               # expected: all Vitest suites pass, incl. tests/sapa/*, tests/admin/moderate.test.ts, moderation-tab.test.tsx, tests/reminder-settings/message-notifications-card.test.tsx, tests/components/safety-dialogs.test.tsx
+npx supabase test db   # expected: all pgTAP files pass, incl. the three files above
+npm run build          # expected: exit 0
+```
+
+#### Prompt
+```
+You are executing Step 28c — Messaging, notifications, report/block & moderation — of docs/product/06-build-plan.md for the Moj Ljubimac web app. One outcome: the people side of Šapa pomoći works — S36 Poruke with the S33 message Dialog and the shell badge (EP-80 … EP-83), new-message email + push controlled by the S12 Poruke card (EP-28 type message), report and block from S33 / S36 / S37 (EP-84, EP-85), and the S26 Moderacija tab (EP-86).
+
+READ FIRST, in this order:
+1. docs/product/02-prd.md §6 FR-62, FR-66, FR-68, FR-69, FR-70, FR-71; §7 UC-11, UC-13; §8 BR-59, BR-60, BR-61; §9 E-32 … E-35; §10 NFR-11.
+2. docs/product/03-technical-constraints.md §5.5, §5.7, §5.10, §7, §9, ADR-05, ADR-08, ADR-16, §10 RISK-31.
+3. docs/product/05-api-integration-contract.md §3.3, §4.1, §4.4, EP-28, EP-43, §5.9 (conventions block, EP-74 viewer fields, EP-80 … EP-86), §6 ConversationSummary, Conversation, Message, UserBlock, Report, ModerationItem, Restriction, ReminderPreference, MarketplaceStatus, §7.1, §7.2, §7.3, §8, §9.4, §11, §12, §17 (OQ-17).
+4. docs/product/04-design-system.md §5.1, §5.2, §5.5, §6, §8, §9, §9.1, §10, §11, §12 S12, S26, S33, S36, S37.
+5. docs/product/04-design/screens/messages.tsx, listing-detail.tsx, user-profile.tsx, reminder-settings.tsx, admin.tsx; docs/product/04-design/components/safety-dialogs.tsx, shells.tsx.
+6. docs/product/06-build-plan.md §4 (invariant 11), §5, §6 and the Session logs of Steps 11, 12, 17, 18, 19, 24, 28, 28a and 28b.
+
+SETTLED UPSTREAM — apply exactly:
+- Not real-time (NFR-11, TC §9, API §8): inbox, thread and badge are plain reads per page load (EP-43, EP-80, EP-81); no WebSocket, EventSource, Supabase Realtime or polling interval anywhere.
+- New-message notification (API EP-82 side effects, §9.4): after the transaction commits, read the recipient's reminder_preferences row of type message; email → Resend template new_message (Design §9.1, recipient's profiles.locale, preview = first 120 characters, button to /poruke/<conversation_id>); push → every push_subscriptions endpoint of the recipient through the Step 19 lib/integrations/webpush.ts with { title, body, url }; one retry; failures logged and never fail the send; skipped when the recipient's deletion is pending or the send was refused (user_blocked); never WhatsApp or Viber; nothing in reminder_deliveries.
+- Rate limit and idempotency: EP-82 uses lib/server/rate-limit.ts with 30 messages per hour per user across all conversations (API §11) and lib/server/idempotency.ts (API §3.3) — both from Step 11.
+- S12 Poruke card: add the card of docs/product/04-design/screens/reminder-settings.tsx to the Step 18 S12 client file; it saves through the existing EP-28 upsert with type message; rpc:get_reminder_settings must now return seven rows (API EP-28) — replace it with the Step 18 body plus the message row. Leave the six reminder-type cards and channel behaviour unchanged.
+- Moderation (API EP-86): the list is rpc:admin_list_moderation under profiles.is_operator RLS; moderate is a server action that checks profiles.is_operator explicitly and uses the service role on the server only (API §3.1). Emails listing_hidden and marketplace_suspended per Design §9.1 with {reason} = reason_note or the report reason label. OQ-17 (open, non-blocking): reason_note is not stored; the restrictions view derives reason and time from the actioned report; the Operator has no access to message bodies.
+- Shell badges: AppShell counts.poruke = Me.marketplace.unread_conversations in app/(app)/layout.tsx, app/(org)/layout.tsx and app/(sapa)/layout.tsx; admin counts.moderacija = open_count in app/admin/layout.tsx. /poruke is added to the request-interception file's signed-in prefixes.
+- Composites: port docs/product/04-design/components/safety-dialogs.tsx (ReportDialog, BlockDialog) to components/app/ exactly as Step 10 ported the other composites.
+- Copy: every string into lib/i18n/sr.ts and lib/i18n/en.ts per Design §9; email/push copy only from Design §9.1.
+
+BUILD:
+1. Migration sapa_messaging_api: rpc:list_my_conversations (EP-80), rpc:get_conversation (EP-81), rpc:mark_conversation_read (EP-83), rpc:block_user / rpc:unblock_user (EP-85), rpc:admin_list_moderation (EP-86 list, both views with open_count and handled_this_month), the functions moderate needs to stay atomic, and the replaced rpc:get_reminder_settings (seven rows). Add the EP-28 message-row validation only if Step 28a's check does not already enforce it. Run npm run db:types.
+2. lib/actions/messages.ts: sendMessage exactly per EP-82 (start or reply, one transaction, triggers from Step 28a, then the notification as settled). lib/actions/reports.ts: submitReport per EP-84 (already_submitted). lib/actions/admin.ts: moderate per EP-86 (dismiss_report, hide_listing, suspend_user, restore_listing, restore_user). lib/integrations/resend.ts: the three templates.
+3. S36: port docs/product/04-design/screens/messages.tsx to app/(sapa)/poruke/messages-client.tsx rendered by app/(sapa)/poruke/page.tsx and app/(sapa)/poruke/[id]/page.tsx — two panes on lg, single pane with back button on phones; inbox from EP-80, thread from EP-81 then EP-83, "Učitaj starije", composer through EP-82 with the inline errors; states D, thread open, L, E, X, B, S. Remove the StateSwitcher.
+4. S33: in the Step 28b listing-detail client file add the Pošalji poruku / Pošalji poruku azilu Dialog (EP-82 with listing_id; existing conversation opens /poruke/<id>) and the ⋯ menu (Prijavi oglas → ReportDialog EP-84; Blokiraj korisnika → BlockDialog EP-85, not on shelter needs). S37: in the Step 28b user-profile client file add the ⋯ menu and the B state (ReadOnlyBanner + Odblokiraj). Change nothing else in those files.
+5. S12 Poruke card and S26 Moderacija tab (port the tab of docs/product/04-design/screens/admin.tsx into app/admin/admin-screen.tsx: Otvorene prijave cards, AlertDialog with "Razlog za korisnika", Obrađeno ovog meseca, Sakriveni oglasi i isključeni korisnici with restore). Shell badges and the /poruke prefix as settled.
+6. Strings into lib/i18n/sr.ts and lib/i18n/en.ts; regenerate types with npm run db:types.
+7. Tests: write every test in the Step 28c "Tests to ship" table of docs/product/06-build-plan.md in exactly those files; Resend and Web Push are faked in Vitest.
+
+FILES YOU MAY CREATE OR MODIFY (allowlist — nothing else):
+- supabase/migrations/<timestamp>_sapa_messaging_api.sql; the generated types file under lib/supabase/ (via npm run db:types only)
+- lib/actions/messages.ts, lib/actions/reports.ts, lib/actions/admin.ts (moderate only)
+- lib/integrations/resend.ts (new_message, listing_hidden, marketplace_suspended only); lib/integrations/webpush.ts and public/sw.js (only as stated in Step 28c "Files this step may touch")
+- app/(sapa)/poruke/page.tsx, app/(sapa)/poruke/[id]/page.tsx, app/(sapa)/poruke/messages-client.tsx
+- app/(sapa)/sapa-pomoci/[id]/listing-detail-client.tsx, app/(sapa)/korisnik/[id]/user-profile-client.tsx (additions above only)
+- components/app/safety-dialogs.tsx
+- app/(app)/podesavanja/podsetnici/reminder-settings-client.tsx (Poruke card only)
+- app/admin/admin-screen.tsx (Moderacija tab only), app/admin/layout.tsx (counts.moderacija only)
+- app/(app)/layout.tsx, app/(org)/layout.tsx, app/(sapa)/layout.tsx (counts.poruke only)
+- the request-interception file named in the Step 11 Session log (/poruke prefix only)
+- lib/i18n/sr.ts, lib/i18n/en.ts (add keys only)
+- supabase/tests/sapa_conversations_api.test.sql, sapa_moderation_api.test.sql, message_preferences.test.sql
+- tests/sapa/send-message.test.ts, new-message-notification.test.ts, submit-report.test.ts, messages-screen.test.tsx, listing-detail-messaging.test.tsx, user-profile-safety.test.tsx, unread-badge.test.tsx; tests/admin/moderate.test.ts, moderation-tab.test.tsx; tests/reminder-settings/message-notifications-card.test.tsx; tests/components/safety-dialogs.test.tsx
+- docs/product/06-build-plan.md (Step 28c row in §3 and the Step 28c Session log only)
+Touching any other file requires stopping and asking.
+
+ACCEPTANCE CRITERIA (PRD v1.7, verbatim — each needs a passing test):
+- FR-68 #1: Given a signed-in user on an active listing they did not post, When they tap "Pošalji poruku" and send text, Then a conversation tied to that listing is created and the message is delivered to the author.
+- FR-68 #2: Given a user who already has a conversation about that listing, When they tap "Pošalji poruku" again, Then the existing conversation opens (BR-61).
+- FR-68 #3: Given the author of a listing, Then "Pošalji poruku" is not available on their own listing.
+- FR-68 #4: Given a Visitor who is not signed in, When they tap "Pošalji poruku", Then they are asked to sign in or register and return to the listing afterwards.
+- FR-68 #5: Given "Poruke", Then the inbox lists the user's conversations by latest message first, each with the listing title, the other user's display name, the last message, and an unread count; a total unread count is shown on the messages icon.
+- FR-68 #6: Given a conversation, When the user opens it, Then all messages are shown oldest to newest and the conversation's unread count becomes 0.
+- FR-68 #7: Given a message, Then it is text only, at most 2,000 characters; an empty message cannot be sent.
+- FR-69 #1: Given a new message, When it is sent, Then the recipient receives an email and a push notification (if they enabled push on a device) with the sender's display name, the listing title, and a link to the conversation.
+- FR-69 #2: Given the "Poruke" card in reminder settings, When the user switches email or push off, Then new-message notifications are no longer sent on that channel.
+- FR-69 #3: Given a new user, Then new-message notifications are on for email and push by default.
+- FR-70 #1: Given a signed-in user on a listing or a public profile, When they submit "Prijavi" with a reason, Then a report is recorded for the Operator and the user sees a confirmation.
+- FR-70 #2: Given a signed-in user, When they report the same listing or user again while their earlier report is open, Then the earlier report is shown as already submitted.
+- FR-70 #3: Given a signed-in user in a conversation or on a public profile, When they tap "Blokiraj" and confirm, Then the blocked user can no longer send them messages and the blocked user's listings are hidden from them.
+- FR-70 #4: Given a blocked user, When they try to send a message to the blocker, Then sending is refused with a message that the user cannot be contacted.
+- FR-70 #5: Given the blocker, When they unblock the user, Then messaging and listing visibility return to normal.
+- FR-71 #1: Given the admin area's "Moderacija" tab, Then open reports are listed oldest first with reason, note, reporter, and the reported listing and/or user.
+- FR-71 #2: Given a reported listing, When the Operator hides it, Then it disappears from the public list and its detail, the report is marked actioned, and the author is emailed.
+- FR-71 #3: Given a reported user, When the Operator suspends them from Šapa pomoći, Then they cannot publish, edit, or extend listings or send messages, their listings are hidden, the report is marked actioned, and they are emailed.
+- FR-71 #4: Given a hidden listing or a suspended user, When the Operator restores it, Then the listing or the user's access and listings return to their previous state.
+- FR-71 #5: Given a report, When the Operator dismisses it, Then it is marked dismissed and nothing else changes.
+- FR-62 #4: Given the listing's author, When they open it, Then edit, extend, mark resolved, and delete actions are shown instead of "Pošalji poruku".
+- FR-66 #3: Given a shelter with no donation info at all, Then "Doniraj" shows a message that the shelter has not added donation info yet, with "Pošalji poruku".
+- Derived from TC §7 NFR-11: a message sent by one user appears for the other after a page load or refresh; no live connection is opened by any page.
+- Derived checks (rate limit and idempotency, the seven-row EP-28 response and message-row validation, no Operator access to bodies) exactly as listed under "Acceptance criteria" in Step 28c of docs/product/06-build-plan.md.
+
+FORBIDDEN:
+- No colours, spacing, radii, shadows, fonts or components outside docs/product/04-design-system.md §4–§6 and the composites in components/app; OQ-10 proposed composites are not approved; no lucide brand icons (MessageCircle for messages).
+- No library outside docs/product/03-technical-constraints.md ADR-17; add no npm dependency; no real-time library or Supabase Realtime.
+- No endpoint, field, error code or state outside docs/product/05-api-integration-contract.md; no WhatsApp or Viber for messages.
+- No table, column, enum or constraint change; no stored moderation note (OQ-17); no Operator read path to messages.
+- The service-role key never reaches the browser. No user-facing copy that is not in 04-design-system.md or docs/product/04-design.
+
+DONE MEANS:
+- Every test in the Step 28c "Tests to ship" table exists and passes.
+- These commands all exit 0, in this order: npx supabase db reset; npm run db:types; npm run typecheck; npm run lint; npm test; npx supabase test db; npm run build.
+- In docs/product/06-build-plan.md: set the Step 28c row in §3 to ✅ with today's date and append a Step 28c Session log entry (date, what was built, pass/fail per command, deviations, follow-ups incl. OQ-17 items still on interim mappings).
+- Commit with the message "Step 28c: Messaging, notifications, report/block & moderation".
+
+If anything above is ambiguous, if a referenced section doesn't contain what this prompt says it does, or if completing this step would require touching a file outside the list or making a decision the referenced documents don't settle — STOP and ask. Do not choose a reasonable default. Do not proceed with a partial implementation.
+```
+
+#### Session log
+_(empty — append after the step runs)_
+
+---
+
 ### Step 29 — WhatsApp channel
 
 | | |
@@ -4372,49 +5050,51 @@ _(empty — append after the step runs)_
 | | |
 |---|---|
 | **Status** | ⬜ not started |
-| **Outcome** | A recorded, item-by-item verdict on PRD §12 Release Criteria: all six ADR-15 end-to-end flows pass, the automated accessibility check and the cost checks are done, and every gap that stands between the build and launch — including Release Criterion 4 until OQ-15 is answered — is listed with an owner. |
-| **Implements** | PRD §12 Release Criteria 1–6; ADR-15 (full Playwright run), ADR-17 (`@axe-core/playwright`); NFR-03, NFR-04, NFR-10 (checks); Design §10; S30/S31 publication check (RC-4) |
-| **Depends on** | Step 30a (and Step 31 once unblocked, for Release Criterion 2) |
+| **Outcome** | A recorded, item-by-item verdict on PRD §12 Release Criteria: all six ADR-15 end-to-end flows and the Šapa pomoći flow (PRD UC-11) pass, the automated accessibility check and the cost checks are done, and every gap that stands between the build and launch — including Release Criterion 4 until OQ-15 is answered — is listed with an owner. |
+| **Implements** | PRD §12 Release Criteria 1–6; ADR-15 (full Playwright run), ADR-17 (`@axe-core/playwright`); PRD UC-11 (e2e flow "give away an item and message the author", `e2e/sapa-pomoci.spec.ts`); NFR-03, NFR-04, NFR-10 (checks); Design §10; S30/S31 publication check (RC-4) |
+| **Depends on** | Step 30a, Step 28c (and Step 31 once unblocked, for Release Criterion 2) |
 | **Blocked by** | — (the step runs now; checklist item 4 — Release Criterion 4 — stays open until OQ-15 is answered; Release Criterion 2 stays open until Step 31 runs) |
 | **Track** | single |
 
 **Read before starting:**
-- `docs/product/02-prd.md` §6 (every FR's acceptance criteria), §10 NFR-01 … NFR-10, §12.
+- `docs/product/02-prd.md` §6 (every FR's acceptance criteria), §7 UC-11, §10 NFR-01 … NFR-11, §12.
 - `docs/product/03-technical-constraints.md` ADR-15, ADR-17, §7 (verifiable targets), §8.
 - `docs/product/04-design-system.md` §5.3 (public shell footer), §10, §11 (S30, S31), §13 OQ-15.
 - `docs/product/05-api-integration-contract.md` §12, §13.
-- `docs/product/06-build-plan.md` §3, §12 and the session logs of Steps 01 … 31 (incl. 30a).
+- `docs/product/06-build-plan.md` §3, §12 and the session logs of Steps 01 … 31 (incl. 28a, 28b, 28c, 30a).
 
 **Files this step may touch:**
 - `e2e/accessibility.spec.ts` (new: automated accessibility check, NFR-04)
+- `e2e/sapa-pomoci.spec.ts` (new: e2e flow "give away an item and message the author", PRD UC-11)
 - `package.json`, `package-lock.json` (add `@axe-core/playwright` as a dev dependency only)
 - `docs/product/06-build-plan.md` (§3 row for Step 32 and the Step 32 session log only)
 
-**Out of bounds:** all application code, migrations, configuration, content, and every test other than `e2e/accessibility.spec.ts`. A defect found here becomes a new suffixed step (e.g. `28a`) added to §3 and §8 by the plan owner, never a fix inside this step.
+**Out of bounds:** all application code, migrations, configuration, content, and every test other than `e2e/accessibility.spec.ts` and `e2e/sapa-pomoci.spec.ts`. A defect found here becomes a new suffixed step (e.g. `24a`) added to §3 and §8 by the plan owner, never a fix inside this step.
 
 **Acceptance criteria:** (PRD §12 Release Criteria, verbatim)
-1. All 60 P0 requirements (FR-01 … FR-60) are implemented and every acceptance criterion in §6 is verified.
+1. All 72 P0 requirements (FR-01 … FR-72) are implemented and every acceptance criterion in §6 is verified.
 2. Payments are tested end to end: trial, renewal, cancellation, expiry, downgrade, and breeder plan.
 3. Account deletion (with grace period) and full data download work.
 4. Privacy policy and terms of use are published at public URLs, in Serbian and English.
 5. Delivered reminders are counted, so the north-star metric can be measured from day one.
-6. The operator admin area works: shelter approval, partner management, paid-until hiding, click statistics.
+6. The operator admin area works: shelter approval, partner management, paid-until hiding, click statistics, and Šapa pomoći moderation (hide, suspend, restore, dismiss).
 
 Derived from TC §7 (NFR targets) for this step:
 - NFR-03: no horizontal scroll and all core flows usable at 360 px.
 - NFR-04: automated accessibility check with zero critical issues on core flows, plus a manual keyboard-only pass.
 - NFR-10: monthly invoices total ≤ €20.
 
-**Tests to ship:** one — `e2e/accessibility.spec.ts` (NFR-04); everything else runs existing suites and records results.
+**Tests to ship:** two — `e2e/accessibility.spec.ts` (NFR-04) and `e2e/sapa-pomoci.spec.ts` (PRD UC-11); everything else runs existing suites and records results.
 | Criterion | Check | Evidence recorded in |
 |---|---|---|
 | RC-1 | full `npm test`, `npx supabase test db`, `npm run e2e`; every FR in PRD §6 mapped to a passing test from its step's "Tests to ship" table | Step 32 session log (per-FR table) |
 | RC-1 / ADR-15 | the six Playwright flows (registration, add pet, add vaccination and see the reminder, mark done, household invitation, shelter intake to adoption) pass | Step 32 session log |
+| RC-1 / UC-11 | `e2e/sapa-pomoci.spec.ts`: a signed-in owner publishes a giving listing with a photo (S34); a second signed-in user finds it with the S32 filters, opens S33 and sends a message; the author sees the unread conversation in S36 after a reload, replies, and marks the listing resolved as "given" (S35); the listing leaves S32 | Step 32 session log |
 | RC-2 | ❌ until Step 31 runs — recorded as open | Step 32 session log |
 | RC-3 | Step 23 and Step 30 tests pass; one manual export request and one deletion + cancel on a local account | Step 32 session log |
 | RC-4 | S30 `/privatnost` and S31 `/uslovi` (Step 12) reachable without signing in, in sr and en, from the PublicShell footer; ❌ open until OQ-15 — the owner's legal texts replace the placeholders | Step 32 session log |
 | RC-5 | query counting `reminder_deliveries` with `status = delivered` per pet over the trailing 30 days returns the expected count on seed data | Step 32 session log |
-| RC-6 | Step 28 tests pass; one manual pass through S26 tabs on a local Operator account | Step 32 session log |
+| RC-6 | Step 28 and Step 28c tests pass; one manual pass through S26 tabs on a local Operator account, including *Moderacija* (hide, suspend, restore, dismiss) | Step 32 session log |
 | NFR-03 | each core flow at 360 px and 1440 px in the browser: no horizontal scroll | Step 32 session log |
 | NFR-04 | `e2e/accessibility.spec.ts` runs `@axe-core/playwright` (ADR-17) on the core-flow screens: zero critical issues; manual keyboard-only and screen-reader pass on add pet, add vaccination, mark reminder done, invite member (Design §10) | Step 32 session log |
 | NFR-10 | current monthly costs from the Cloudflare, Supabase, Resend and Meta dashboards summed ≤ €20 | Step 32 session log |
@@ -4426,48 +5106,49 @@ npm run lint           # exit 0
 npm test               # all Vitest suites pass
 npx supabase test db   # all pgTAP tests pass
 npm run build          # exit 0
-npm run e2e            # all six ADR-15 flows and e2e/accessibility.spec.ts pass
+npm run e2e            # all six ADR-15 flows, e2e/sapa-pomoci.spec.ts and e2e/accessibility.spec.ts pass
 ```
 
 #### Prompt
 ```
-You are executing Step 32 — Release verification — of docs/product/06-build-plan.md for the Moj Ljubimac web app. One outcome: a recorded, item-by-item verdict on PRD §12 Release Criteria 1–6 and the NFR checks listed in Step 32, written into the Step 32 session log. You change no application code, test, migration or configuration in this step.
+You are executing Step 32 — Release verification — of docs/product/06-build-plan.md for the Moj Ljubimac web app. One outcome: a recorded, item-by-item verdict on PRD §12 Release Criteria 1–6 and the NFR checks listed in Step 32, written into the Step 32 session log. You change no application code, migration or configuration in this step, and add no test other than e2e/accessibility.spec.ts and e2e/sapa-pomoci.spec.ts.
 
 READ FIRST, in this order:
-1. docs/product/02-prd.md §6, §10, §12.
+1. docs/product/02-prd.md §6, §7 UC-11, §10, §12.
 2. docs/product/03-technical-constraints.md ADR-15, ADR-17, §7, §8.
 3. docs/product/04-design-system.md §5.3, §10, §11, §13 (OQ-15).
 4. docs/product/05-api-integration-contract.md §12, §13.
-5. docs/product/06-build-plan.md §3, §12 and the session logs of Steps 01 … 31 (incl. 30a).
+5. docs/product/06-build-plan.md §3, §12 and the session logs of Steps 01 … 31 (incl. 28a, 28b, 28c, 30a).
 
 CHECKS — record each result (pass / fail / open, with evidence) in the Step 32 session log:
 1. Run, in order: npm run typecheck; npm run lint; npm test; npx supabase test db; npm run build; npm run e2e. Record the output summary of each.
 2. Release Criterion 1: build a table of every FR in docs/product/02-prd.md §6 → the step(s) that implemented it (from §3 and the step sections) → the test file(s) that cover each acceptance criterion → pass/fail. Any FR or criterion without a passing test is a fail. Note any criterion a step marked "deferred" and whether a later step closed it.
-3. ADR-15: confirm the six Playwright flows exist and pass: registration, add pet, add vaccination and see the reminder, mark done, household invitation, shelter intake to adoption. A missing spec is a fail.
+3. ADR-15: confirm the six Playwright flows exist and pass: registration, add pet, add vaccination and see the reminder, mark done, household invitation, shelter intake to adoption. A missing spec is a fail. Then write e2e/sapa-pomoci.spec.ts for PRD UC-11 "give away an item and message the author" against the local seed: a signed-in owner publishes a giving listing with one photo on S34; a second signed-in user finds it through the S32 filters, opens S33 and sends a message; the author reloads S36, sees the unread conversation, opens it and replies; the author marks the listing resolved as "given" on S35 and it no longer appears on S32. External providers (R2, Resend, Web Push) stay faked as in the existing specs (Step 22 Session log). It must pass.
 4. Release Criterion 2: if Step 31 is not ✅ in §3, record "open — blocked by OQ-11 and OQ-03 (Step 31)". If it is ✅, verify trial, renewal, cancellation, expiry, downgrade and breeder plan from Step 31's tests.
 5. Release Criterion 3: confirm the Step 23, Step 30 and Step 30a tests pass; on a local account request a data export and request then cancel account deletion through S19; record what happened.
 6. Release Criterion 4: confirm S30 /privatnost and S31 /uslovi (Step 12) are reachable without signing in, in sr and en, from the PublicShell footer links. Their legal text is OQ-15 (owner, with a lawyer): while the "Tekst dostavlja vlasnik (OQ-15)." placeholders remain, record RC-4 as "open — OQ-15" and continue with the remaining checks. Do not write legal text.
 7. Release Criterion 5: run a read-only SQL query against the local database counting pets with ≥ 1 reminder_deliveries row with status delivered in the trailing 30 days (TC §6 north-star row); record the query and the result on seed data.
-8. Release Criterion 6: confirm Step 28 tests pass; walk S26 as the local Operator (approve a pending shelter, edit a partner, set paid-until to yesterday and confirm the partner disappears from /partneri, view click statistics).
+8. Release Criterion 6: confirm Step 28 and Step 28c tests pass; walk S26 as the local Operator (approve a pending shelter, edit a partner, set paid-until to yesterday and confirm the partner disappears from /partneri, view click statistics; in Moderacija hide a reported listing, suspend a reported user, restore both, and dismiss a report).
 9. NFR-03: open each core flow at 360 px and 1440 px widths; record any horizontal scroll.
 10. NFR-04: add @axe-core/playwright (TC ADR-17) as a dev dependency and write e2e/accessibility.spec.ts running an axe check on the core-flow screens (Design §10 list); zero critical issues passes (TC §7 NFR-04). Then a manual keyboard-only pass and a screen-reader pass on add pet, add vaccination, mark reminder done, invite member.
 11. NFR-10: sum the current monthly costs shown in the Cloudflare, Supabase, Resend and Meta dashboards; record the figures and whether the total is ≤ €20.
-12. Open change requests: record the status of every open item in §12 of docs/product/06-build-plan.md (CR-24, CR-25, CR-26) with its owner; CR-26 (cities in production) must be resolved before the first production release.
+12. Open change requests and questions: record the status of every open item in §12 of docs/product/06-build-plan.md (CR-24, CR-25, CR-26, CR-27, CR-28, OQ-16, OQ-17) with its owner; CR-26 (cities in production) must be resolved before the first production release.
 
 FILES YOU MAY CREATE OR MODIFY (allowlist — nothing else):
 - e2e/accessibility.spec.ts
+- e2e/sapa-pomoci.spec.ts
 - package.json, package-lock.json (@axe-core/playwright only)
 - docs/product/06-build-plan.md (Step 32 row in §3 and the Step 32 session log only)
-Touching any other file requires stopping and asking. A defect found here is recorded with the step it belongs to and proposed as a new suffixed step (e.g. 28a); you do not fix it.
+Touching any other file requires stopping and asking. A defect found here is recorded with the step it belongs to and proposed as a new suffixed step (e.g. 24a); you do not fix it.
 
 FORBIDDEN:
-- No application, migration, configuration or content change; the only new test is e2e/accessibility.spec.ts.
+- No application, migration, configuration or content change; the only new tests are e2e/accessibility.spec.ts and e2e/sapa-pomoci.spec.ts.
 - No library or tool installed other than @axe-core/playwright (TC ADR-17).
 - No new endpoint, field, screen or copy.
 
 DONE MEANS:
 - Every check above has a recorded result with evidence in the Step 32 session log, and every fail or open item names its owning step or change request.
-- The six commands in check 1 were run (e2e including e2e/accessibility.spec.ts) and their outcomes recorded.
+- The six commands in check 1 were run (e2e including e2e/sapa-pomoci.spec.ts and e2e/accessibility.spec.ts) and their outcomes recorded.
 - In docs/product/06-build-plan.md: set the Step 32 row in §3 to ✅ with today's date only if Release Criteria 1–6 all pass; otherwise set it to ▶️ and list the open items in the session log (RC-4 stays open until OQ-15 is answered — that keeps the row at ▶️ but does not stop the other checks).
 - Commit with the message "Step 32: Release verification".
 
@@ -4481,7 +5162,7 @@ _(empty — append after the step runs)_
 
 ## 9. Coverage Matrix
 
-Regenerated for v1.1 by comparing every id against each step's **Implements** row (FR, EP, screens by id or route) and, for tables, the **Implements** and **Outcome** rows (every step that names the table). Forward check: every one of the 60 FRs, 72 EPs, 31 screens and 46 tables (TC §5) is built by at least one step. Reverse check: every step implements at least one FR, EP, screen, table, ADR, or a confirmed operational necessity (Steps 01–03, 10). Dependency check: every dependency is an earlier step in execution order (Step 30a runs between Step 30 and Step 31).
+Regenerated for v1.2 by comparing every id against each step's **Implements** row (FR, EP, screens by id or route) and, for tables, the **Implements** and **Outcome** rows (every step that names the table); v1.1 rows are kept and Steps 28a, 28b, 28c and the revised Step 32 are added. Forward check: every one of the 72 FRs, 88 EPs, 37 screens and 52 tables (TC §5) is built by at least one step. Reverse check: every step implements at least one FR, EP, screen, table, ADR, or a confirmed operational necessity (Steps 01–03, 10). Dependency check: every dependency is an earlier step in execution order (Steps 28a–28c run between Step 28 and Step 29; Step 30a between Step 30 and Step 31).
 
 ### 9.1 Requirements
 | FR | Steps |
@@ -4546,6 +5227,18 @@ Regenerated for v1.1 by comparing every id against each step's **Implements** ro
 | FR-58 | 09, 28 |
 | FR-59 | 13, 24 |
 | FR-60 | 24 |
+| FR-61 | 28b, 32 |
+| FR-62 | 28b, 28c |
+| FR-63 | 28a, 28b, 32 |
+| FR-64 | 28a, 28b, 32 |
+| FR-65 | 28b |
+| FR-66 | 28b, 28c |
+| FR-67 | 28b |
+| FR-68 | 28a, 28c, 32 |
+| FR-69 | 28c |
+| FR-70 | 28a, 28c |
+| FR-71 | 28c, 32 |
+| FR-72 | 28b |
 
 ### 9.2 Operations
 | EP | Steps |
@@ -4562,9 +5255,9 @@ Regenerated for v1.1 by comparing every id against each step's **Implements** ro
 | EP-10 | 15 |
 | EP-11 | 15 |
 | EP-12 | 15 |
-| EP-13 | 13, 15, 24 |
+| EP-13 | 13, 15, 24, 28b |
 | EP-14 | 15 |
-| EP-15 | 13, 15, 21 |
+| EP-15 | 13, 15, 21, 28b |
 | EP-16 | 16 |
 | EP-17 | 20 |
 | EP-18 | 20 |
@@ -4577,7 +5270,7 @@ Regenerated for v1.1 by comparing every id against each step's **Implements** ro
 | EP-25 | 17 |
 | EP-26 | 17 |
 | EP-27 | 17 |
-| EP-28 | 18, 29 |
+| EP-28 | 18, 28c, 29 |
 | EP-29 | 18 |
 | EP-30 | 29 |
 | EP-31 | 18, 29 |
@@ -4592,7 +5285,7 @@ Regenerated for v1.1 by comparing every id against each step's **Implements** ro
 | EP-40 | 22, 24 |
 | EP-41 | 12 |
 | EP-42 | 11 |
-| EP-43 | 12 |
+| EP-43 | 12, 28a, 28b, 28c |
 | EP-44 | 23, 31 |
 | EP-45 | 23, 31 |
 | EP-46 | 31 |
@@ -4601,8 +5294,8 @@ Regenerated for v1.1 by comparing every id against each step's **Implements** ro
 | EP-49 | 30, 31 |
 | EP-50 | 23, 30a |
 | EP-51 | 23 |
-| EP-52 | 30 |
-| EP-53 | 24 |
+| EP-52 | 28a, 30 |
+| EP-53 | 24, 28b |
 | EP-54 | 24 |
 | EP-55 | 24 |
 | EP-56 | 24 |
@@ -4622,6 +5315,22 @@ Regenerated for v1.1 by comparing every id against each step's **Implements** ro
 | EP-70 | 28 |
 | EP-71 | 28 |
 | EP-72 | 24 |
+| EP-73 | 28b |
+| EP-74 | 28b |
+| EP-75 | 28b |
+| EP-76 | 28b |
+| EP-77 | 28b |
+| EP-78 | 28b |
+| EP-79 | 28b |
+| EP-80 | 28c |
+| EP-81 | 28c |
+| EP-82 | 28c |
+| EP-83 | 28c |
+| EP-84 | 28c |
+| EP-85 | 28c |
+| EP-86 | 28c |
+| EP-87 | 28b |
+| EP-88 | 28b |
 
 ### 9.3 Screens
 | Screen | Route | Steps |
@@ -4637,7 +5346,7 @@ Regenerated for v1.1 by comparing every id against each step's **Implements** ro
 | S09 | `/t/[slug]` | 21 |
 | S10 | `/podsetnici` | 17 |
 | S11 | `/podsetnici/novi` | 17 |
-| S12 | `/podesavanja/podsetnici` | 18, 29 |
+| S12 | `/podesavanja/podsetnici` | 18, 28c, 29 |
 | S13 | `/domacinstvo` | 22 |
 | S14 | `/poziv/[token]` | 22, 24, 25 |
 | S15 | `/registracija` | 12 |
@@ -4651,12 +5360,18 @@ Regenerated for v1.1 by comparing every id against each step's **Implements** ro
 | S23 | `/o/[slug]` | 26 |
 | S24 | `/partneri` | 27 |
 | S25 | `/partneri/[id]` | 27 |
-| S26 | `/admin` | 28 |
+| S26 | `/admin` | 28, 28c |
 | S27 | `/ljubimci/[id]/terapije/nova` | 15 |
 | S28 | `/prijava/nova-lozinka` | 11 |
-| S29 | `/organizacija/profil` | 24 |
+| S29 | `/organizacija/profil` | 24, 28b |
 | S30 | `/privatnost` | 12, 32 |
 | S31 | `/uslovi` | 12, 32 |
+| S32 | `/sapa-pomoci` | 28b, 32 |
+| S33 | `/sapa-pomoci/[id]` | 28b, 28c, 32 |
+| S34 | `/sapa-pomoci/nova`, `/sapa-pomoci/[id]/izmeni` | 28b, 32 |
+| S35 | `/sapa-pomoci/moje` | 28b, 32 |
+| S36 | `/poruke`, `/poruke/[id]` | 28c, 32 |
+| S37 | `/korisnik/[id]` | 28b, 28c |
 
 ### 9.4 Tables
 | Table | Steps |
@@ -4665,7 +5380,8 @@ Regenerated for v1.1 by comparing every id against each step's **Implements** ro
 | `app_settings` | 04, 18, 28 |
 | `attachments` | 06, 15 |
 | `breeder_inquiries` | 09, 25 |
-| `cities` | 04, 12, 27 |
+| `cities` | 04, 12, 27, 28b |
+| `conversations` | 28a, 28c |
 | `data_exports` | 04, 23, 30, 30a |
 | `dose_logs` | 06, 15, 17 |
 | `feeding_entries` | 07, 20 |
@@ -4673,16 +5389,19 @@ Regenerated for v1.1 by comparing every id against each step's **Implements** ro
 | `household_memberships` | 05, 22, 30 |
 | `household_pets` | 06, 22 |
 | `households` | 05, 22, 30 |
-| `idempotency_keys` | 04, 11, 30 |
+| `idempotency_keys` | 04, 11, 28c, 30 |
 | `intakes` | 09, 24 |
+| `listing_photos` | 28a, 28b |
+| `listings` | 28a, 28b, 28c |
 | `litters` | 09, 26 |
 | `memorial_records` | 06, 16 |
+| `messages` | 28a, 28c |
 | `moment_photos` | 07, 21 |
 | `moment_public_links` | 07, 21 |
 | `moments` | 07, 21 |
 | `organisation_invitations` | 05, 24, 30 |
 | `organisation_memberships` | 05, 12, 24, 30 |
-| `organisations` | 05, 12, 24, 28 |
+| `organisations` | 05, 12, 24, 28, 28a, 28b |
 | `partner_clicks` | 09, 27, 28 |
 | `partner_hours` | 09, 27, 28 |
 | `partners` | 09, 27, 28 |
@@ -4690,19 +5409,21 @@ Regenerated for v1.1 by comparing every id against each step's **Implements** ro
 | `pet_status_history` | 09, 24 |
 | `pets` | 06, 13, 16, 22, 24 |
 | `plans` | 04, 23, 31 |
-| `profiles` | 04, 12, 23, 30 |
-| `push_subscriptions` | 08, 18, 19 |
-| `r2_deletion_queue` | 04, 13, 30 |
-| `rate_limit_counters` | 04, 11, 30 |
+| `profiles` | 04, 12, 23, 28a, 28b, 28c, 30 |
+| `push_subscriptions` | 08, 18, 19, 28c |
+| `r2_deletion_queue` | 04, 13, 28a, 28b, 30 |
+| `rate_limit_counters` | 04, 11, 28c, 30 |
 | `record_transfers` | 09, 25, 30 |
 | `reminder_deliveries` | 08, 18, 19, 29, 30 |
 | `reminder_occurrences` | 08, 17, 19 |
-| `reminder_preferences` | 08, 18, 29 |
+| `reminder_preferences` | 08, 18, 28a, 28c, 29 |
 | `reminders` | 08, 14, 15, 16, 17, 20, 22, 29 |
+| `reports` | 28a, 28c |
 | `stool_entries` | 07, 20 |
 | `subscription_payments` | 04, 31 |
 | `subscriptions` | 04, 23, 30, 31 |
 | `treatments` | 06, 08, 15 |
+| `user_blocks` | 28a, 28c |
 | `user_channels` | 08, 18, 29 |
 | `vaccinations` | 06, 08, 14 |
 | `vet_visits` | 06, 15 |
@@ -4720,12 +5441,15 @@ Regenerated for v1.1 by comparing every id against each step's **Implements** ro
 | RISK-26 | v1.0 change requests CR-01 … CR-23 stopped prompts at pre-flight checks. **Resolved in v1.1:** every CR is fixed upstream (§12) and each prompt now cites the fixing section. Residual: CR-24 leaves eight notifications unsent until Design §9.1 adds their copy; CR-26 leaves the production load of the cities seed unspecified. | Low | CR-24 and CR-26 do not block any step; Step 32 records their status and CR-26 must be closed before the first production release. |
 | RISK-27 | Later steps reference file names created by earlier steps (taken from their session logs); a missing log entry stalls the next step. | Low | Session logs are mandatory (§5). |
 | RISK-28 | Two steps need a one-time owner answer at run time (Step 08: nightly run time; Step 12: initial `TERMS_VERSION`) and Step 04 needs the owner's approval of the city list; a session started without the owner present stalls. | Low | Run those steps with the owner available; each prompt asks once and records the answer in its session log. |
+| RISK-37 | (v1.2) Steps 04, 05, 08, 10, 12, 18, 24 and 28 read upstream sections that now contain Šapa pomoći additions (TC v1.7 columns and the `message` preference, `Me.marketplace`, the seventh EP-28 row, the S12 *Poruke* card, the S29 *Donacije* card, the S26 *Moderacija* tab, the new composites), some of which need tables that exist only from Step 28a; a session may stop on them or build them early. Their prompts were not amended in v1.2 because Step 01 was being executed from the same repository. | Medium | Ordering invariant 11 (§4) assigns every such part to Steps 28a–28c and tells earlier steps to leave it out and log it; Steps 28a and 28b check what already exists before adding; amend those prompts in a later revision if a session stalls on them. |
+| RISK-38 | (v1.2) Steps 28b and 28c are larger than most steps (28b: five screens, the S29 card, nine operations and a daily job; 28c: S36, four screen additions, seven operations and notifications) and may not fit one session. | Medium | Calibrate on Step 28a; if 28b or 28c stalls, split it before re-running by inserting a suffixed step and moving part of its file allowlist and tests table, never by improvising inside the session. |
+| RISK-39 | (v1.2) The OQ-17 interim mappings (resolved date from `updated_at`, hidden reason from the report, donation recipient = organisation name, description 2,000 characters) may change when OQ-17 is answered, forcing a migration and screen rework after Steps 28a–28c have run. | Low | Each prompt names the interim mappings explicitly so they are easy to find; an OQ-17 answer becomes a new suffixed step. |
 
 ---
 
 ## 11. Assumptions
 
-_None recorded by the owner. Highest upstream ids remain ASM-09 and RISK-22._
+_None recorded by the owner. Highest upstream ids are ASM-10 (Brief v1.7) and RISK-36 (API v1.3); this plan's risks continue at RISK-37._
 
 ---
 
@@ -4738,6 +5462,8 @@ _None recorded by the owner. Highest upstream ids remain ASM-09 and RISK-22._
 | OQ-03 | Brief | Prices | Step 31 |
 | OQ-11 | API | Payment provider | Step 31 |
 | OQ-15 | Design | Privacy policy and terms of use texts (sr, en) for S30/S31 — owner, with a lawyer | Step 32 checklist item 4 only (Release Criterion 4 stays open; the step runs) |
+| OQ-16 | PRD (v1.7) | `[NEEDS CLARIFICATION]` Does an active breeder plan lift the Free limit of 3 active listings (BR-55)? Default until answered: no — only owner Premium and Shelter accounts are unlimited. Non-blocking (PRD §15, API §17). Who answers: Keti (owner). | — (affects Step 28a `listings_active_limit` and Step 28b `MarketplaceStatus.active_listing_limit`, S34/S35 counters; both apply the default. A "yes" needs TC §5.10 and API `MarketplaceStatus` revised first, then those two steps amended or a suffixed step if they already ran) |
+| OQ-17 | API (v1.3) | `[NEEDS CLARIFICATION]` Fields the Šapa pomoći screens render that TC v1.7 cannot supply exactly: (a) resolved date — no `listings.resolved_at`, derived from `updated_at`; (b) hidden time and the Operator's "Razlog za korisnika" — no columns, derived from the actioned report, note only in the email; (c) donation *Primalac* legal name and *Svrha* — `organisations.name` and "Donacija — <listing title>"; (d) Design limits differ from PRD/TC (description ≤ 1000 vs 2000, title ≥ 5 vs 1); (e) bank-account format has no TC check (EP-88 validates in the action); (f) no screen edits `display_name`; (g) S33's *resolved* state for a non-author vs FR-62 — the contract follows FR-62. Proposed: `listings.resolved_at`, `listings.hidden_at`, `listings.moderation_note`, `profiles.marketplace_suspension_note`, `organisations.donation_recipient`; align S34 to 2000. Non-blocking — "interim mappings are defined" (API §17). Who answers: Keti (owner). | — (Step 28a adds none of the proposed columns; Step 28b applies (a), (b) on S35, (c), (d), (e), (f), (g); Step 28c applies (b) on S26 and keeps the note out of storage) |
 | OQ-01, OQ-04, OQ-10 | Brief / Design | Targets, partner pricing, proposed composites | — |
 
 **Change requests raised by v1.0 — all resolved upstream** (owner approval 2026-10-19; prompts in v1.1 cite the resolving section)
@@ -4776,6 +5502,13 @@ _None recorded by the owner. Highest upstream ids remain ASM-09 and RISK-22._
 | CR-25 | TC ADR-17 | Name the toolchain packages that ADR-17 leaves implicit: ESLint and `eslint-config-next`, `@tailwindcss/postcss`, the `@types/*` packages create-next-app installs, `@testing-library/jest-dom` / `user-event` (under "Testing Library"), and the Supabase CLI as a dev dependency. Steps 01–02 install them as the ADR-01/ADR-14/ADR-15 toolchain; confirm by adding them to ADR-17. | 01, 02 |
 | CR-26 | TC ADR-11 / §8 | How `supabase/seed/cities.sql` reaches production: `supabase db push` on `main` applies migrations only, and the local seed must not run in production. Must be answered before the first production release. | 03, 04, 32 |
 
+**Change requests raised by v1.2** (non-blocking; the steps carry the stated interim rule; Step 32 records their status)
+
+| ID | Against | Change request | Interim rule in the steps | Steps affected |
+|---|---|---|---|---|
+| CR-27 | TC ADR-16 | ADR-16 names route groups for signed-in (`app/(app)`, `app/(org)`) and public (`app/(public)`) pages, but S32, S33 and S37 render in `AppShell` when signed in and in `PublicShell wide` when signed out, and S34–S36 in either the owner or the organisation shell (Design §11 "A / P", "A / O"). Confirm a route group for these pages and its shell rule in ADR-16. | `app/(sapa)/` with `app/(sapa)/layout.tsx` choosing `PublicShell wide` / organisation `AppShell` / owner `AppShell` from the session | 28b, 28c |
+| CR-28 | TC §5.10 | TC §5.10 says a `medicine_care` category violation "maps to `listing_type_not_allowed`", while API v1.3 §7.1 (SQLSTATE `23514` on the `listings.category` check), EP-75 and §7.2 return `422 category_not_allowed`. Align the TC wording with the API, which owns what crosses the wire. | the API mapping (`category_not_allowed`) | 28a, 28b |
+
 ---
 
 ## 13. Glossary Additions
@@ -4789,6 +5522,8 @@ _None recorded by the owner. Highest upstream ids remain ASM-09 and RISK-22._
 | Checklist item lock | (v1.1) An open question that keeps one verification item of a runnable step open instead of locking the whole step (Step 32 item 4, OQ-15). |
 | Session log | The record appended under a step after it runs. |
 | Calibration pass | Running Steps 01–03 first to adjust sizing and allowlists. |
+| Interim mapping | (v1.2) How a step renders a field the data model cannot supply exactly while a non-blocking open question is unanswered, as defined upstream (API v1.3 §17 OQ-17); named in the prompt so it can be revisited. |
+| `(sapa)` route group | (v1.2, CR-27) The folder `app/(sapa)/` holding S32–S37, whose layout picks the public or the signed-in shell from the session. |
 
 ---
 

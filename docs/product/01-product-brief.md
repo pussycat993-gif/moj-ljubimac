@@ -6,7 +6,7 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 01 — Product Brief |
-| Version | 1.6 |
+| Version | 1.7 |
 | Date | 2026-10-19 |
 | Author | Keti Vrtunić (interview facilitated by "Đura", Senior PM persona) |
 | Status | Draft — awaiting owner review |
@@ -22,12 +22,13 @@
 | 1.4 | 2026-10-19 | OQ-05 resolved: v1 interface in Serbian (Latin script) and English. |
 | 1.5 | 2026-10-19 | Change requests from Technical Constraints: Viber delivery is built but switched on only once Premium revenue covers its fixed monthly cost; public launch waits for a registered business and a domestic card-processing contract. |
 | 1.6 | 2026-10-19 | Pet hotels / pet boarding added as a fourth partner type (CAP-07). |
+| 1.7 | 2026-10-19 | New capability CAP-08 "Šapa pomoći" (community listings: shelter needs with donation info, giving, selling, seeking; 1:1 messaging; report, block, Operator moderation). Persona P6, ASM-10, RISK-29 and RISK-30, glossary terms added; scope warning updated to eight themes. |
 
 ---
 
 ## 1. Executive Summary
 
-Moj Ljubimac is a Serbian- and English-language web application that keeps a pet's complete health record in one place and makes sure owners never miss a vaccination, medication dose, or vet check-up, by delivering reminders through the channels they already use: email, push notifications, WhatsApp, and Viber. It serves dog and cat owners and their households first, and also gives animal shelters (free) and breeders (paid) a way to manage many animals, adoptions, and litters. Local vet clinics, pet shops, grooming salons, and pet hotels can promote themselves inside the product with one-tap contact actions (call, message, email, website), creating a second revenue stream alongside Premium subscriptions. The product ships on the web only, because it must reach users without the cost of mobile app store distribution, and it is designed to stand on its own permanently rather than as a stopgap. Success is measured by how many pets actively receive reminders each month.
+Moj Ljubimac is a Serbian- and English-language web application that keeps a pet's complete health record in one place and makes sure owners never miss a vaccination, medication dose, or vet check-up, by delivering reminders through the channels they already use: email, push notifications, WhatsApp, and Viber. It serves dog and cat owners and their households first, and also gives animal shelters (free) and breeders (paid) a way to manage many animals, adoptions, and litters. Local vet clinics, pet shops, grooming salons, and pet hotels can promote themselves inside the product with one-tap contact actions (call, message, email, website), creating a second revenue stream alongside Premium subscriptions. A community board, "Šapa pomoći" ("Helping Paw"), lets shelters post what they need and lets anyone give away, sell, or look for pet items and talk to each other directly, with no money passing through the product. The product ships on the web only, because it must reach users without the cost of mobile app store distribution, and it is designed to stand on its own permanently rather than as a stopgap. Success is measured by how many pets actively receive reminders each month.
 
 ---
 
@@ -86,6 +87,11 @@ Shelters and breeders additionally use paper files and spreadsheets. `[Assumptio
 - **Jobs-to-be-done:** Be visible to owners at the moment of need; receive calls, messages, and website visits.
 - **Note:** Partners are paying customers, not record-keeping users. In v1 they are onboarded and billed by the operator, not through the product.
 
+### Secondary — P6: Community Member (Šapa pomoći)
+- **Context:** Any signed-in user — owner, household member, breeder, or shelter staff — with spare pet items to give away or sell, or looking for something; shelters additionally post what they need. Visitors who are not signed in can browse listings.
+- **Jobs-to-be-done:** Give away or sell food, equipment, and furniture the pet no longer uses; find an item cheaply; help a shelter with exactly what it needs; agree the details with the other person without sharing a phone number.
+- **Pains:** Scattered Facebook groups and classifieds, posts that go stale, shelters' needs lost in feeds, exposure of personal contact details to strangers.
+
 ### Anti-persona — explicitly not for
 - **Veterinary clinics looking for practice-management software** (patient records for all clients, appointment books, invoicing). Moj Ljubimac is the owner's record, not the clinic's system.
 - **Anyone seeking veterinary diagnosis or medical advice.** The product records and reminds; it does not advise on treatment.
@@ -95,7 +101,7 @@ Shelters and breeders additionally use paper files and spreadsheets. `[Assumptio
 
 ## 5. Value Proposition
 
-For dog and cat owners in Serbia who keep losing track of their pet's health care, **Moj Ljubimac** is a pet health record in the browser that keeps the full history in one place and delivers reminders on email, WhatsApp, or Viber, shared with everyone in the household. Unlike the paper vet booklet or a personal calendar, it cannot be lost, is always up to date for the whole family, and reaches owners where they already communicate, with no app download required.
+For dog and cat owners in Serbia who keep losing track of their pet's health care, **Moj Ljubimac** is a pet health record in the browser that keeps the full history in one place and delivers reminders on email, WhatsApp, or Viber, shared with everyone in the household. Unlike the paper vet booklet or a personal calendar, it cannot be lost, is always up to date for the whole family, and reaches owners where they already communicate, with no app download required. Its "Šapa pomoći" board turns the same community into a place where shelters' needs are met and spare pet items find a new home.
 
 ---
 
@@ -108,6 +114,7 @@ For dog and cat owners in Serbia who keep losing track of their pet's health car
 | Phone calendar / notes | No health history, not shared | Full record + shared household view |
 | International pet-health apps | English-first, store-only, no local providers | Serbian-first, works in any browser, local vets and pet shops, Viber/WhatsApp delivery |
 | Spreadsheets (shelters, breeders) | Manual, not shareable with adopters/buyers | Multi-animal accounts with adoption and litter tracking |
+| Facebook groups / general classifieds | Posts go stale, shelter needs get buried, contact details exposed | Pet-only listings that expire after 30 days, shelter needs with donation info, in-app messaging without sharing phone or email |
 
 **Positioning:** the local, Serbian-language pet health record that reaches people on the messaging apps they already use, with no store download required, and that connects owners, shelters, breeders, and local providers in one place.
 
@@ -148,7 +155,7 @@ Over 1–3 years, Moj Ljubimac becomes the default pet health record in Serbia: 
 
 ## 9. Scope — In Scope (v1)
 
-v1 contains seven capability themes. Each is a candidate EPIC for the PRD.
+v1 contains eight capability themes. Each is a candidate EPIC for the PRD.
 
 - **CAP-01 — Pet Health Record.** Pet profile, vaccinations, treatments/therapies, vet visits with attachments, weight history, birthday, and export of the full record as a shareable document for the vet.
 - **CAP-02 — Care Log & Moments.** Daily nutrition and stool log; "moments" (photos and notes from the pet's life) and sharing them outside the product.
@@ -157,8 +164,9 @@ v1 contains seven capability themes. Each is a candidate EPIC for the PRD.
 - **CAP-05 — Accounts, Subscriptions & Data Control.** Registration and sign-in; Free tier (one pet) and paid Premium; user control over personal data, including account deletion.
 - **CAP-06 — Multi-Animal Organisation Accounts.** Shelter accounts (free) with animal intake, health tracking, and the full adoption process; breeder accounts (paid) with breeding animals, litter records, and per-animal health tracking.
 - **CAP-07 — Local Partners.** Vet clinics, pet shops, grooming salons, and pet hotels (boarding) listed near the user with one-tap "call", "send message", "send email", and "visit website" actions as paid promotion, including featured placement. Partners are added and billed manually by the operator through an operator admin area, which is also used to approve shelter accounts.
+- **CAP-08 — Šapa pomoći (Helping Paw).** A community board of listings in four types: shelter needs ("Potreba", with a "Doniraj" button that shows the shelter's donation info — bank account and/or payment link, drop-off address and hours), giving away ("Poklanjam"), selling ("Prodajem", price in RSD or "po dogovoru"), and seeking ("Tražim"). Listings have fixed categories, species, city, and up to 5 photos; they are public to browse without sign-in and expire after 30 days unless extended. Free users may have 3 active listings; Premium users and shelters are unlimited. Signed-in users talk 1:1 about a listing through in-app messaging with email and push notification, can report and block other users, and the Operator moderates reports. Money never passes through the product.
 
-> ⚠️ **Scope warning:** seven themes across three user segments plus a B2B partner programme is at the upper limit for a v1 built by a single person. The owner has consciously accepted this (see RISK-01). Delivery order within v1 is to be decided in the Build Plan.
+> ⚠️ **Scope warning:** eight themes across three user segments plus a B2B partner programme is at the upper limit for a v1 built by a single person. The owner has consciously accepted this (see RISK-01). Delivery order within v1 is to be decided in the Build Plan.
 
 ---
 
@@ -171,6 +179,7 @@ v1 contains seven capability themes. Each is a candidate EPIC for the PRD.
 | Self-service partner portal and in-product partner billing | Premature; partners are few at launch and are handled manually by the operator. |
 | Veterinary practice-management features | Different product for a different customer (see anti-persona). |
 | Medical diagnosis or treatment advice | Liability; the product records and reminds, it does not advise. |
+| Money handling for Šapa pomoći (donations, sale payments, escrow, delivery) | Payment and liability burden; donations and sales are settled directly between people, outside the product (CAP-08). |
 
 ---
 
@@ -187,6 +196,7 @@ v1 contains seven capability themes. Each is a candidate EPIC for the PRD.
 | ASM-07 | Local vets and pet shops will pay for promotion inside the product. | Partner pilot conversations before launch; paying partners at 6 months. |
 | ASM-08 | Messaging costs at target scale fit within €20/month. | Monthly cost tracking against delivered-reminder volume. |
 | ASM-09 | The proposed metric targets (OQ-01) are realistic for a solo, unpromoted launch. | Review at month 3. |
+| ASM-10 | Owners and shelters will use Šapa pomoći to give, sell, seek, and donate instead of (or alongside) Facebook groups. | Active listings, listings marked resolved, and conversations started per month from month 1. |
 
 ---
 
@@ -194,13 +204,15 @@ v1 contains seven capability themes. Each is a candidate EPIC for the PRD.
 
 | ID | Risk | Type | Severity | Mitigation idea |
 |---|---|---|---|---|
-| RISK-01 | v1 scope (7 capabilities, 3 segments + partners) is too large for one builder; launch slips indefinitely. | Business | High | Build Plan sequences v1 in waves; public launch may start once the owner-facing core is ready. |
+| RISK-01 | v1 scope (8 capabilities, 3 segments + partners + community board) is too large for one builder; launch slips indefinitely. | Business | High | Build Plan sequences v1 in waves; public launch may start once the owner-facing core is ready. |
 | RISK-02 | WhatsApp/Viber messaging costs exceed €20/month as usage grows. | Business | High | Email is the free channel for everyone; WhatsApp and Viber delivery is Premium-only, so messaging cost scales with paying users. |
 | RISK-03 | A website has weaker presence than an installed app; users forget to return. | Product | High | Reminders are the return mechanism; encourage saving the site to the phone's home screen. |
 | RISK-04 | Partner programme hits a cold start: partners won't pay without users. | Market | Medium | Offer early partners free or discounted placement until user targets are met. |
 | RISK-05 | Personal data handling (owners, household members, adopters, buyers) must comply with Serbian personal data protection law; messaging platforms require user consent and impose business-messaging rules. | Regulatory | Medium | Legal check of privacy terms and consent flows before launch; account deletion included in CAP-05. |
 | RISK-06 | Users treat records or reminders as medical advice; a missed or wrong reminder causes harm. | Regulatory | Medium | Clear terms that the product is a record-keeping aid; owner remains responsible for care decisions. |
 | RISK-07 | Single-person operation: support, partner sales, and development all depend on one person. | Business | Medium | Keep partner onboarding manual and lightweight; self-help content for users. |
+| RISK-29 | Šapa pomoći moderation load (reports, spam, inappropriate listings) exceeds what one Operator can handle. | Product | Medium | Fixed categories, 30-day expiry, Free limit of 3 active listings, user-side blocking, and a single reports queue; listings can be hidden in one action. |
+| RISK-30 | Scams or fraud between users (fake shelter needs, prepayment for items never sent) damage trust in the product. | Regulatory | Medium | Needs only from Operator-approved shelters; money never passes through the product; report reason "scam"; Operator can suspend a user from Šapa pomoći; safety tips on listing pages. |
 
 ---
 
@@ -248,6 +260,13 @@ v1 contains seven capability themes. Each is a candidate EPIC for the PRD.
 | Quick action | One-tap "call", "send message", "send email", or "visit website" button connecting an owner to a Partner. |
 | Operator | The person running the product (the owner), who manages partners manually in v1. |
 | Active reminded pet | A pet with at least one reminder delivered in the trailing 30 days; the north-star unit. |
+| Šapa pomoći | "Helping Paw" — the community board of listings and messaging (CAP-08). |
+| Listing | A post on Šapa pomoći of type need, giving, selling, or seeking; active for 30 days unless extended or resolved. |
+| Need | A listing type ("Potreba") that only approved shelters may post, describing what the shelter needs; carries a "Doniraj" button. |
+| Donation info | A shelter's bank account and/or payment link, drop-off address, and drop-off hours, shown by "Doniraj"; donations happen outside the product. |
+| Conversation | A 1:1 text message thread between a listing's author and one interested signed-in user, tied to that listing. |
+| Report | A user's flag on a listing or user, with a reason, reviewed by the Operator. |
+| Block | A user's choice to stop another user from messaging them and to hide that user's listings from them. |
 
 ---
 

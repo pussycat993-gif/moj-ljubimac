@@ -39,6 +39,7 @@
   --success-soft: #D9EBC8;
   --warning-soft: #F8E3A3;
   --destructive-soft: #F6D0D0;
+  --info-soft: #DCE4F2;
   --radius: 0.75rem;
 }
 
@@ -74,6 +75,7 @@
   --color-success-soft: var(--success-soft);
   --color-warning-soft: var(--warning-soft);
   --color-destructive-soft: var(--destructive-soft);
+  --color-info-soft: var(--info-soft);
 
   --font-heading: var(--font-nunito), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;

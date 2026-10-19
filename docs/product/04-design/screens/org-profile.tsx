@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react"
 import Link from "next/link"
-import { Check, ExternalLink, Globe, ImageIcon, Mail, Phone, Upload, X } from "lucide-react"
+import { Check, Clock, ExternalLink, Globe, HandHeart, ImageIcon, Landmark, Link2, Mail, MapPin, Phone, Upload, X } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -15,6 +15,8 @@ import { StateSwitcher } from "../components/state-switcher"
 
 // S29 — Javni profil organizacije · /organizacija/profil · FR-60
 // Admin edits description, phone, email, website and logo; Volunteer sees the same fields read-only.
+// v1.6 — "Donacije" (FR-72, EP-88, shelters only): bank account, payment link, drop-off address and hours, shown
+// by the "Doniraj" button on the shelter's Šapa pomoći needs (S33). Money never passes through the app.
 
 type OrgType = "shelter" | "breeder"
 type Role = "admin" | "volunteer"
@@ -28,6 +30,10 @@ type Profile = {
   email: string
   website: string
   logo: { name: string; size: string } | null
+  donationAccount: string
+  donationUrl: string
+  dropoffAddress: string
+  dropoffHours: string
 }
 
 const profiles: Record<OrgType, Profile> = {
@@ -41,6 +47,10 @@ const profiles: Record<OrgType, Profile> = {
     email: "kontakt@drugasansa.rs",
     website: "https://drugasansa.rs",
     logo: { name: "logo-druga-sansa.png", size: "0,3 MB" },
+    donationAccount: "160-0000012345678-90",
+    donationUrl: "https://drugasansa.rs/doniraj",
+    dropoffAddress: "Temerinski put 120, Novi Sad",
+    dropoffHours: "Subota 10:00 – 14:00 · Nedelja 10:00 – 13:00",
   },
   breeder: {
     name: "Odgajivačnica „Zlatna šapa“",
@@ -52,10 +62,14 @@ const profiles: Record<OrgType, Profile> = {
     email: "zlatnasapa@gmail.com",
     website: "",
     logo: null,
+    donationAccount: "",
+    donationUrl: "",
+    dropoffAddress: "",
+    dropoffHours: "",
   },
 }
 
-type Errors = Partial<Record<"description" | "phone" | "email" | "website", string>>
+type Errors = Partial<Record<"description" | "phone" | "email" | "website" | "donationAccount" | "donationUrl", string>>
 
 const DESCRIPTION_MAX = 600
 
@@ -65,6 +79,9 @@ function validate(p: Profile): Errors {
   if (p.phone && !/^[0-9 +/-]{6,}$/.test(p.phone)) e.phone = "Upiši ispravan broj telefona, npr. 021 123 456."
   if (p.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email)) e.email = "Upiši ispravnu mejl adresu."
   if (p.website && !/^https?:\/\/[^\s.]+\.[^\s]+$/.test(p.website)) e.website = "Adresa sajta počinje sa https://"
+  if (p.donationAccount && !/^\d{3}-\d{1,13}-\d{2}$/.test(p.donationAccount.trim()))
+    e.donationAccount = "Upiši račun u obliku 160-0000012345678-90."
+  if (p.donationUrl && !/^https:\/\/[^\s.]+\.[^\s]+$/.test(p.donationUrl)) e.donationUrl = "Link za uplatu počinje sa https://"
   return e
 }
 
@@ -302,6 +319,92 @@ export default function OrgProfileScreen() {
               </div>
             </Card>
 
+            {orgType === "shelter" && (
+              <Card className="gap-4 p-4 md:p-6">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-foreground/5">
+                    <HandHeart className="size-5 text-primary" aria-hidden />
+                  </span>
+                  <div className="min-w-0">
+                    <h2 className="font-heading text-lg font-bold">Donacije</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Prikazuje se kad neko klikne „Doniraj“ na potrebi azila u Šapi pomoći. Novac ne prolazi kroz Moj
+                      Ljubimac — uplate stižu direktno vama.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="min-w-0 space-y-2">
+                    <Label htmlFor="org-don-account">Broj računa</Label>
+                    <Input
+                      id="org-don-account"
+                      inputMode="numeric"
+                      placeholder="160-0000012345678-90"
+                      value={profile.donationAccount}
+                      onChange={(e) => set("donationAccount", e.target.value)}
+                      onBlur={() => setErrors((er) => ({ ...er, donationAccount: validate(profile).donationAccount }))}
+                      aria-invalid={!!errors.donationAccount}
+                      aria-describedby={errors.donationAccount ? "org-don-account-error" : undefined}
+                      className="h-11 md:h-9"
+                    />
+                    {errors.donationAccount && (
+                      <p id="org-don-account-error" className="text-sm text-destructive">
+                        {errors.donationAccount}
+                      </p>
+                    )}
+                  </div>
+                  <div className="min-w-0 space-y-2">
+                    <Label htmlFor="org-don-url">Link za uplatu</Label>
+                    <Input
+                      id="org-don-url"
+                      type="url"
+                      placeholder="https://"
+                      value={profile.donationUrl}
+                      onChange={(e) => set("donationUrl", e.target.value)}
+                      onBlur={() => setErrors((er) => ({ ...er, donationUrl: validate(profile).donationUrl }))}
+                      aria-invalid={!!errors.donationUrl}
+                      aria-describedby={errors.donationUrl ? "org-don-url-error" : "org-don-url-hint"}
+                      className="h-11 md:h-9"
+                    />
+                    {errors.donationUrl ? (
+                      <p id="org-don-url-error" className="text-sm text-destructive">
+                        {errors.donationUrl}
+                      </p>
+                    ) : (
+                      <p id="org-don-url-hint" className="text-sm text-muted-foreground">
+                        Npr. stranica za uplatu karticom ili PayPal.
+                      </p>
+                    )}
+                  </div>
+                  <div className="min-w-0 space-y-2 md:col-span-2">
+                    <Label htmlFor="org-dropoff-address">Adresa za donošenje</Label>
+                    <Input
+                      id="org-dropoff-address"
+                      autoComplete="street-address"
+                      placeholder="Ulica i broj, grad"
+                      value={profile.dropoffAddress}
+                      onChange={(e) => set("dropoffAddress", e.target.value)}
+                      className="h-11 md:h-9"
+                    />
+                  </div>
+                  <div className="min-w-0 space-y-2 md:col-span-2">
+                    <Label htmlFor="org-dropoff-hours">Radno vreme za donošenje</Label>
+                    <Textarea
+                      id="org-dropoff-hours"
+                      rows={2}
+                      placeholder="npr. Subota 10:00 – 14:00 · Nedelja 10:00 – 13:00"
+                      value={profile.dropoffHours}
+                      onChange={(e) => set("dropoffHours", e.target.value)}
+                    />
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Sva polja su opciona. Ako nijedno nije popunjeno, potrebe azila nemaju dugme „Doniraj“ — samo
+                  „Pošalji poruku“.
+                </p>
+              </Card>
+            )}
+
             <div className="flex flex-col-reverse gap-2 md:flex-row md:justify-end">
               <Button type="button" variant="outline" className="h-11 md:h-9" onClick={() => changeOrgType(orgType)}>
                 Poništi izmene
@@ -332,6 +435,17 @@ export default function OrgProfileScreen() {
               <ReadOnlyField label="Sajt" value={profile.website} icon={Globe} />
               <ReadOnlyField label="Logo" value={profile.logo ? profile.logo.name : "Nije dodat"} icon={ImageIcon} />
             </dl>
+            {orgType === "shelter" && (
+              <div className="space-y-3">
+                <h2 className="font-heading text-lg font-bold">Donacije</h2>
+                <dl className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <ReadOnlyField label="Broj računa" value={profile.donationAccount} icon={Landmark} />
+                  <ReadOnlyField label="Link za uplatu" value={profile.donationUrl} icon={Link2} />
+                  <ReadOnlyField label="Adresa za donošenje" value={profile.dropoffAddress} icon={MapPin} />
+                  <ReadOnlyField label="Radno vreme za donošenje" value={profile.dropoffHours} icon={Clock} />
+                </dl>
+              </div>
+            )}
           </Card>
         )}
       </div>

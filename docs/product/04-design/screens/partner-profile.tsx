@@ -142,6 +142,8 @@ export default function PartnerProfileScreen() {
           </Link>
         </Button>
 
+        {(view === "loading" || view === "error") && <h1 className="sr-only">Profil partnera</h1>}
+
         {view === "loading" && (
           <div className="space-y-6" aria-busy="true" aria-label="Učitavanje">
             <Card className="flex-row items-center gap-4 p-4 md:p-6">

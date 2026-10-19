@@ -6,11 +6,11 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 04 — Design System & Living Screens |
-| Version | 1.5 |
+| Version | 1.6 |
 | Date | 2026-10-19 |
 | Author | Keti Vrtunić (interview facilitated by "Jelena", Design Systems lead persona) |
-| Traces to | Brief v1.6 · PRD v1.6 · Technical Constraints v1.6 |
-| Status | Draft — 31 screens written and verified in a preview build (see `04-design/README.md`) |
+| Traces to | Brief v1.7 · PRD v1.7 · Technical Constraints v1.7 |
+| Status | Draft — 37 screens written and verified in a preview build (see `04-design/README.md`) |
 
 **Change log**
 
@@ -22,23 +22,24 @@
 | 1.3 | 2026-10-19 | Change requests from the API Contract field audit: new S27 treatment form; channel connection (push, WhatsApp) in S12; organisation name/city/PIB in S15; city as a list everywhere; pet names always in the nominative; no photo captions; structured partner hours and separate messaging number; household name and declined invitations in S14. |
 | 1.4 | 2026-10-19 | Codex direction adopted: large pastel pet headers and cards, species icons in avatars, reminder-type icon tiles, pastel status pills, "Danas" as a card row, sidebar with full logo, counts and user footer, pet search; new S28 new password, S29 organisation public profile, S11 edit variant. |
 | 1.5 | 2026-10-19 | Owner-approved change requests from the Build Plan review: CR-11 i18n rule (every string in `sr.ts` and `en.ts`); CR-12 S10 manual reminder rows open S11 edit; CR-13 S12 WhatsApp "Uskoro dostupno" state; CR-14 new §9.1 Message copy (email, push, action pages) with template ids; CR-18 S14 team invitation variant; CR-21 new S30 Politika privatnosti and S31 Uslovi korišćenja with placeholder legal text (new OQ-15); CR-22 S03 vet suggestion card, S17 "Plaćanje uskoro dostupno" state, count badge on the phone bottom nav, web app manifest exception to the no-hex rule. `ReminderRow` gains an optional `href`; public footer links go to `/privatnost` and `/uslovi`. |
+| 1.6 | 2026-10-19 | New capability CAP-08 **Šapa pomoći** (EPIC-08, FR-61…FR-72): six new screens S32 list, S33 listing detail (with "Doniraj" donation info), S34 listing form (+ edit), S35 my listings, S36 messages (inbox + thread), S37 public user profile; S12 gets a "Poruke" notification card, S26 a "Moderacija" tab, S29 a "Donacije" section. Navigation: *Šapa pomoći* (HandHeart) in owner and organisation shells, phone bottom nav 5 items, *Poruke* (MessageCircle) with unread badge in the sidebar footer and phone top bar; admin *Moderacija*; `PublicShell` gains `wide`. New token `--info-soft`; new composites `ListingTypeTag`, `ListingCard`, `ReportDialog` / `BlockDialog`. §9.1 message copy for `new_message`, `listing_expiring`, `listing_expired`, `listing_hidden`, `marketplace_suspended`. Also fixed: S25 loading/error states lacked an `h1`. |
 
 ---
 
 ## 1. Executive Summary
 
-This design system dresses all seven Moj Ljubimac epics in one visual language and defines 31 living screens. Foundations: a warm cream page with white cards, the existing brand brown `#563218` as primary, a per-pet accent (rose for female, teal for male, neutral for organisations), Nunito headings with Inter body text, a 4 px spacing base, 8/12 px radii and two shadow levels, light mode only. On phones the app uses a bottom navigation bar; on computers a left sidebar. One shared pattern each for loading, empty, error, Premium-locked, and read-only states. Traces to Brief v1.6, PRD v1.6, Technical Constraints v1.6.
+This design system dresses all eight Moj Ljubimac epics in one visual language and defines 37 living screens. Foundations: a warm cream page with white cards, the existing brand brown `#563218` as primary, a per-pet accent (rose for female, teal for male, neutral for organisations), Nunito headings with Inter body text, a 4 px spacing base, 8/12 px radii and two shadow levels, light mode only. On phones the app uses a bottom navigation bar; on computers a left sidebar. One shared pattern each for loading, empty, error, Premium-locked, and read-only states. Traces to Brief v1.7, PRD v1.7, Technical Constraints v1.7.
 
 ---
 
 ## 2. Inherited Context
 
-- **Personas:** P1 Pet Owner (primary), P2 Household Member, P3 Shelter, P4 Breeder, P5 Partner (via directory), plus the Operator (admin) and the Visitor (public pages).
+- **Personas:** P1 Pet Owner (primary), P2 Household Member, P3 Shelter, P4 Breeder, P5 Partner (via directory), P6 Community member (any signed-in user in Šapa pomoći, CAP-08), plus the Operator (admin) and the Visitor (public pages).
 - **North-star:** active reminded pets → reminders get first-class placement (dashboard "Today" strip, dedicated tab in navigation).
 - **Stack (TC v1.1):** Next.js App Router, TypeScript, shadcn/ui, Tailwind CSS v4, lucide-react (ADR-01, ADR-14). Interactive screens use `"use client"`.
 - **Locale:** Serbian (Latin) default, English available (NFR-05). Screens are written in Serbian.
 - **UI-shaping NFRs:** usable from 360 px (NFR-03); WCAG 2.1 AA, keyboard and screen reader (NFR-04); attachments ≤ 10 MB images/PDF (NFR-09).
-- **Gated states implied by the PRD:** Premium-locked (BR-01, BR-10), read-only household (BR-28, FR-31), read-only organisation copy after transfer (BR-38), Viber hidden while switched off (BR-14b), shelter pending approval (BR-32).
+- **Gated states implied by the PRD:** Premium-locked (BR-01, BR-10; Šapa pomoći: 4th active listing on Free, BR-55), read-only household (BR-28, FR-31), read-only organisation copy after transfer (BR-38), Viber hidden while switched off (BR-14b), shelter pending approval (BR-32); Šapa pomoći signed-out (browse only, FR-61/FR-62), blocked user (BR-59) and suspended from Šapa pomoći (BR-60).
 - **Carried-forward open questions:** OQ-01, OQ-03, OQ-04 (targets and prices) — non-blocking for design; prices on screens are marked as placeholders.
 
 ---
@@ -79,6 +80,7 @@ Light mode only for v1. All colours are semantic tokens; no screen uses a raw he
 | `--warning` / `--warning-foreground` | `#B45309` / `#FFFFFF` | due soon, Premium expiring |
 | `--destructive` / `--destructive-foreground` | `#B91C1C` / `#FFFFFF` | delete, missed |
 | `--success-soft` / `--warning-soft` / `--destructive-soft` | `#D9EBC8` / `#F8E3A3` / `#F6D0D0` | pastel status pills, always with `--foreground` text |
+| `--info-soft` | `#DCE4F2` soft blue (v1.6) | only the *Tražim* listing type tag (no status meaning); always with `--foreground` text |
 
 `--pet-accent` and `--pet-accent-soft` resolve from the nearest `data-pet-sex` attribute: `female` → rose pair, `male` → pistachio pair, otherwise neutral. **Rule:** soft tones are surfaces only and never carry text other than the deep tone or `--foreground`; anything that must be seen against the card (text, rings, bars, underline) uses the deep tone.
 
@@ -99,6 +101,8 @@ Light mode only for v1. All colours are semantic tokens; no screen uses a raw he
 | success or warning **as text on background** | 4.47 | ❌ below 4.5 — not allowed |
 | success or warning as text on a 10 % tint of itself | ≈ 4.38 | ❌ not allowed |
 | foreground on success-soft / warning-soft / destructive-soft | 12.98 / 12.85 / 11.56 | AA ✅ |
+| foreground on info-soft | 12.79 | AA ✅ |
+| info-soft surface vs card / background | 1.28 / 1.14 | decorative only — the tag carries icon + label |
 
 **Rules derived from these numbers:**
 - Success and warning colours appear as **text only on `--card`**. Status badges are **pastel pills with `--foreground` text** (`bg-success-soft text-foreground`), never a pastel fill with coloured text.
@@ -145,6 +149,7 @@ Light mode only for v1. All colours are semantic tokens; no screen uses a raw he
   --success-soft: #D9EBC8;
   --warning-soft: #F8E3A3;
   --destructive-soft: #F6D0D0;
+  --info-soft: #DCE4F2;
   --radius: 0.75rem;
 }
 
@@ -180,6 +185,7 @@ Light mode only for v1. All colours are semantic tokens; no screen uses a raw he
   --color-success-soft: var(--success-soft);
   --color-warning-soft: var(--warning-soft);
   --color-destructive-soft: var(--destructive-soft);
+  --color-info-soft: var(--info-soft);
 
   --font-heading: var(--font-nunito), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
@@ -230,22 +236,23 @@ Fonts loaded with `next/font/google` (subsets `latin`, `latin-ext` — required 
 ## 5. Layout System
 
 ### 5.1 App shell (Owner, Household Member)
-- **Phones (< md):** top bar (logo mark, pet switcher, profile avatar) + scrolling content + **bottom navigation** fixed, 4 items: *Ljubimci*, *Podsetnici*, *Partneri*, *Profil*. Content gets `pb-24` so the bar never covers it.
+- **Phones (< md):** top bar (logo mark, pet switcher, **Poruke** icon button, profile avatar) + scrolling content + **bottom navigation** fixed, 5 items (v1.6): *Ljubimci*, *Podsetnici*, *Šapa pomoći* (lucide `HandHeart`, bottom-nav label shortened to *Šapa* with the full name as `aria-label` — the full label does not fit 72 px at 360 px), *Partneri*, *Profil*. Content gets `pb-24` so the bar never covers it.
+- **Poruke (v1.6, FR-68):** `MessageCircle` icon linking to `/poruke` (S36) with an unread badge = number of conversations with unread messages (EP-80) — in the phone top bar (44 px icon button, `aria-label` "Poruke, N nepročitanih") and in the sidebar footer area above the user row (passed as `counts.poruke`). Zero → no badge. Owner and organisation shells only.
 - **Count badge (CR-22):** *Podsetnici* carries a count badge = today's pending reminders (EP-25 `total` for filter `today`, status pending) — in the sidebar and on the phone bottom-nav icon. Zero → no badge.
-- **Computers (≥ md):** **left sidebar** 240 px (`w-60`) with logo, the same 4 items plus *Domaćinstvo* and *Podešavanja*; content area centred, `max-w-5xl`, `px-6 py-8`.
+- **Computers (≥ md):** **left sidebar** 240 px (`w-60`) with logo, *Ljubimci*, *Podsetnici*, *Šapa pomoći*, *Partneri*, *Domaćinstvo*, *Podešavanja*, *Profil*; footer area with *Poruke* and the user row; content area centred, `max-w-5xl`, `px-6 py-8`.
 - **Pet context:** inside a pet's pages the content is wrapped in `data-pet-sex` so the pet header band and tab underline use `--pet-accent`.
 
 ### 5.2 Organisation shell (Shelter, Breeder)
-Same structure, different items: *Životinje*, *Zahtevi* (shelter) / *Upiti* (breeder), *Legla* (breeder only), *Tim*, *Profil*. All accents neutral.
+Same structure, different items: *Životinje*, *Zahtevi* (shelter) / *Upiti* (breeder), *Legla* (breeder only), *Šapa pomoći* (v1.6 — shelters publish needs here; breeders can give, sell or seek), *Tim*, *Javni profil*, *Profil*; *Poruke* in the footer area and phone top bar as in 5.1. Phone bottom nav: shelter 4 items, breeder 5. All accents neutral.
 
 ### 5.3 Public shell (Visitor)
-No navigation. Slim top bar with the logo mark and a "Napravi nalog" button; content `max-w-3xl`, centred; footer with links *Politika privatnosti* → `/privatnost` (S30) and *Uslovi korišćenja* → `/uslovi` (S31).
+No navigation. Slim top bar with the logo mark and a "Napravi nalog" button; content `max-w-3xl`, centred; footer with links *Politika privatnosti* → `/privatnost` (S30) and *Uslovi korišćenja* → `/uslovi` (S31). **`wide` variant (v1.6):** `max-w-5xl` header, content and footer plus a ghost *Prijavi se* button (from `sm`) — used by the signed-out Šapa pomoći pages S32, S33, S37, which need a card grid or detail + aside.
 
 ### 5.4 Auth shell
 Centred card `max-w-md` on the cream ground, logo above. Used for sign-in, registration, invitation acceptance.
 
 ### 5.5 Admin shell (Operator)
-Computer-first: left sidebar *Azili na čekanju*, *Partneri*, *Statistika*, *Podešavanja kanala*. On phones it collapses to a top tab row.
+Computer-first: left sidebar *Azili na čekanju*, *Partneri*, *Statistika*, *Kanali*, *Moderacija* (v1.6, `Flag`, count badge = open Šapa pomoći reports). On phones it uses the bottom nav (5 items) plus the in-page tab row.
 
 ### 5.6 Grid patterns
 - **Card grid:** 1 column < md, 2 columns md, 3 columns lg (`grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3` — the explicit `grid-cols-1` is required: an implicit grid track sizes to min-content and overflows phones).
@@ -286,7 +293,7 @@ Rule: **primitives are composed from shadcn/ui, never hand-rolled.**
 
 | Composite | Built from | Purpose |
 |---|---|---|
-| `AppShell` | Button, Avatar, Sheet | owner/org/admin shells: sidebar with full logo, "MENI" label, count badges (`counts`, shown in the sidebar and on the phone bottom nav), user footer (`user`); bottom nav on phones |
+| `AppShell` | Button, Avatar, Sheet | owner/org/admin shells: sidebar with full logo, "MENI" label, count badges (`counts`, shown in the sidebar and on the phone bottom nav), user footer (`user`); bottom nav on phones. v1.6: *Šapa pomoći* item (`short` bottom-nav label), *Poruke* link with unread badge (`counts.poruke`) in the sidebar footer and phone top bar; admin *Moderacija* (`counts.moderacija`) |
 | `PetAvatar` | Avatar | photo, species icon, or initial; `onSoft` puts a white circle on pastel blocks |
 | `PetHeader` | Card, PetAvatar, Badge | large pastel (`bg-pet-accent-soft`) top block with avatar, name in deep accent, chips; actions below |
 | `PremiumLock` | Card, Button, Badge | the single Premium-locked pattern |
@@ -298,7 +305,10 @@ Rule: **primitives are composed from shadcn/ui, never hand-rolled.**
 | `StatusBadge` | Badge | pastel status pills (Urađeno, Uskoro, Propušteno), Danas, Premium |
 | `ReminderTypeIcon` | lucide icons | rounded tile per reminder type: Droplet (dose), Syringe (vaccination), Stethoscope (vet follow-up), UtensilsCrossed (meal), Cake (birthday), Bell (manual) |
 | `StateSwitcher` | Tabs | dev-only state preview in mock screens |
-| `PublicShell`, `AuthShell` | Button, LogoMark | public and auth frames (in `shells.tsx`); the public footer links to S30 / S31 |
+| `PublicShell`, `AuthShell` | Button, LogoMark | public and auth frames (in `shells.tsx`); the public footer links to S30 / S31; `PublicShell wide` (v1.6) for Šapa pomoći public pages |
+| `ListingTypeTag` | Badge | v1.6 — pastel pill per listing type, icon + label, `text-foreground`: *Potreba* `HandHeart` `bg-destructive-soft` · *Poklanjam* `Gift` `bg-success-soft` · *Prodajem* `Tag` `bg-warning-soft` · *Tražim* `Search` `bg-info-soft`. The same file exports the type/category/species labels, `outcomeForType` and `formatRsd` |
+| `ListingCard` | Card, ListingTypeTag | v1.6 — one listing in a grid (S32, S37): 4:3 photo (placeholder `bg-foreground/5` + `ImageIcon` in mocks) with the type tag and photo count, title (whole card is the link to S33), price line (*2.500 RSD* / *Po dogovoru* / *Besplatno*), city · category · species, author · date |
+| `ReportDialog`, `BlockDialog` | Dialog, RadioGroup, Textarea, AlertDialog | v1.6 (`safety-dialogs.tsx`) — report a listing or user (reason *Spam ili reklama / Prevara / Neprimeren sadržaj / Dobrobit životinja / Drugo*, note ≤ 500, note required for *Drugo*; sent confirmation) and block confirmation (*Da, blokiraj*, destructive). Used in S33, S36, S37 |
 
 **Proposed additions (raised while writing screens — not yet approved, see OQ-10):** `DateField` (Serbian-locale date picker, now repeated in several screens), compact inline `PremiumLock` for a single switch/checkbox, `AttachmentChip`, organisation/request statuses in `StatusBadge` (screens currently use plain `Badge`), `LogoAvatar` for organisations/partners, `InlineAlert` for form-level errors, `Toaster` mounted in the shells (screens currently confirm inline with `role="status"`), and an optional `label` on `StateSwitcher`.
 
@@ -328,7 +338,11 @@ Rule: **primitives are composed from shadcn/ui, never hand-rolled.**
 - **Read-only:** `ReadOnlyBanner` at the top of the page (`Eye` icon + reason) and every edit control hidden — not disabled.
 - **Confirmations:** Sonner toast at bottom centre, 4 s (*"Vakcina sačuvana"*). Destructive actions use `AlertDialog` with *"Da, obriši"* in destructive variant.
 - **Validation:** inline under the field in `text-destructive text-sm`, on blur and on submit.
-- **Status badges (solid fills):** *Urađeno* `bg-success-soft` · *Uskoro* `bg-warning-soft` · *Propušteno* `bg-destructive-soft` (all with `text-foreground`) · *Danas* `bg-primary` · *Premium* primary outline.
+- **Status badges (solid fills):** *Urađeno* `bg-success-soft` · *Uskoro* `bg-warning-soft` · *Propušteno* `bg-destructive-soft` (all with `text-foreground`) · *Danas* `bg-primary` · *Premium* primary outline. Listing statuses reuse `StatusBadge`: *Aktivan* (done), *Ističe za N dana* (soon, ≤ 3 days), *Istekao* / *Sakriven* (missed), *Rešeno* (done).
+- **Listing type tags (v1.6):** `ListingTypeTag` only — never a status colour on its own; the tag always carries icon + label, so type is never colour-only.
+- **Signed-out (Šapa pomoći, v1.6):** public pages render in `PublicShell wide`; every action that needs an account (message, Doniraj, report, block, new listing) is replaced by one primary *"Prijavi se da pošalješ poruku"* (S33) or a sign-in card (S32) — never shown disabled.
+- **Suspended from Šapa pomoći (v1.6, BR-60):** a status card with `ShieldAlert` in `text-destructive` explaining the suspension and the support address; create/extend/message controls hidden; browsing and reading old messages still work.
+- **Blocked (v1.6, BR-59):** in the thread (S36) and profile (S37) a status line/`ReadOnlyBanner` *"Blokirao/la si ovog korisnika…"* with *Odblokiraj*; the composer and the user's listings are hidden.
 
 ---
 
@@ -337,7 +351,7 @@ Rule: **primitives are composed from shadcn/ui, never hand-rolled.**
 - **Locale:** Serbian Latin by default; every string also exists in English (NFR-05). Screens are written in Serbian.
 - **i18n rule (CR-11):** every screen step adds all of its strings to both `lib/i18n/sr.ts` and `lib/i18n/en.ts`. The Serbian text is the copy in the mockups; the English text is a faithful translation of it — no new copy, no extra or missing messages. A key present in one file and missing in the other fails the build. Message copy in §9.1 follows the same rule.
 - **Tone:** informal "ti", warm, short. Name the pet, always in the **nominative** — names are never declined, because user-entered names cannot be inflected reliably: *"Luna — vakcina ističe za 7 dana"*, *"Lek za: Luna"*, not *"Luni ističe vakcina"*.
-- **Terminology:** use Brief/PRD glossary terms exactly — *Uspomena* (Memorial), *Trenutak* (Moment), *Domaćinstvo* (Household), *Partner*, *Podsetnik* (Reminder), *Premium*, *Azil*, *Odgajivačnica*, *Leglo*, *Udomljavanje*.
+- **Terminology:** use Brief/PRD glossary terms exactly — *Uspomena* (Memorial), *Trenutak* (Moment), *Domaćinstvo* (Household), *Partner*, *Podsetnik* (Reminder), *Premium*, *Azil*, *Odgajivačnica*, *Leglo*, *Udomljavanje*; Šapa pomoći (v1.6): *Šapa pomoći* (never translated in Serbian UI; EN "Helping Paw"), *Oglas* (Listing), *Potreba* (Need — shelter only), *Poklanjam / Prodajem / Tražim* (giving / selling / seeking), *Razgovor* (Conversation), *Poruke* (Messages), *Prijavi* (Report), *Blokiraj* (Block), *Doniraj* + *Podaci za donacije* (Donation info), *Rešeno* with *Poklonjeno / Prodato / Donirano / Pronađeno*, *Po dogovoru* (negotiable price). Users appear by display name (nickname or *Ime P.*), never with email or phone.
 - **Formats:** dates `19. 10. 2026.`; time `08:00`; money `2.990 RSD`; weight `4,2 kg`, `850 g`.
 - **Mock data:** realistic Serbian names and places — pets *Luna* (female cat), *Maks* (male dog), *Kiki* (female rabbit); people *Ivana Petrović*, *Marko Jovanović*; places *Novi Sad*, *Beograd*, *Bečej*; partners *Veterinarska ambulanta „Dr Vet"*, *Pet shop „Šapica"*, *Grooming salon „Čupko"*, *Pet hotel „Kod Mace"*. Never "Lorem ipsum", never "John Doe". Prices for Premium/breeder plans are placeholders until OQ-03 closes and are marked `/* placeholder price — OQ-03 */` in code.
 
@@ -401,6 +415,26 @@ Copy for everything the product sends outside the app screens, plus the two acti
 | `account_deletion_scheduled` | Email | Subject | Nalog će biti obrisan {date} | Your account will be deleted on {date} |
 | | | Body | Primili smo zahtev za brisanje naloga. Nalog je isključen, a {date} brišemo ga trajno sa svim podacima. Predomislio/la si se? Prijavi se pre tog datuma i otkaži brisanje. | We got your request to delete your account. It's switched off now, and on {date} we delete it permanently with all its data. Changed your mind? Sign in before then and cancel the deletion. |
 | | | Button | Otkaži brisanje | Cancel deletion |
+| `new_message` | Email | Subject | Nova poruka: {listing} | New message: {listing} |
+| | | Body | Zdravo, {first_name}! Imaš novu poruku o oglasu **{listing}** (pošiljalac: {sender}): „{preview}“ | Hi {first_name}! You have a new message about **{listing}** (from: {sender}): "{preview}" |
+| | | Button | Odgovori (opens S36 `/poruke/{conversation_id}`) | Reply (opens S36 `/poruke/{conversation_id}`) |
+| | Push | Title | {sender} | {sender} |
+| | | Body | {listing}: {preview} | {listing}: {preview} |
+| | | Action | Odgovori | Reply |
+| | | Note | `{preview}` = first 120 characters of the message; `{sender}` = display name. Sent by EP-82 only on channels switched on in S12 *Poruke*; never WhatsApp/Viber. | `{preview}` = first 120 characters; `{sender}` = display name. Only on channels switched on in S12. |
+| `listing_expiring` | Email | Subject | Oglas ističe za 3 dana: {listing} | Your listing ends in 3 days: {listing} |
+| | | Body | Tvoj oglas **{listing}** je aktivan do {date}. Ako je još aktuelan, produži ga za 30 dana. Ako je rešen, označi ga kao rešen. | Your listing **{listing}** is active until {date}. If it's still current, extend it by 30 days. If it's done, mark it as resolved. |
+| | | Buttons | **Produži** (opens S35 and extends, EP-77) · Označi kao rešeno | **Extend** (opens S35 and extends, EP-77) · Mark as resolved |
+| `listing_expired` | Email | Subject | Oglas je istekao: {listing} | Your listing has ended: {listing} |
+| | | Body | Tvoj oglas **{listing}** je istekao {date} i više se ne prikazuje u Šapi pomoći. Možeš da ga objaviš ponovo na još 30 dana. | Your listing **{listing}** ended on {date} and is no longer shown in Šapa pomoći. You can publish it again for another 30 days. |
+| | | Button | Objavi ponovo | Publish again |
+| `listing_hidden` | Email | Subject | Oglas je sakriven: {listing} | Your listing was hidden: {listing} |
+| | | Body | Operater je sakrio tvoj oglas **{listing}** jer krši pravila Šape pomoći. Razlog: {reason}. Ako misliš da je greška, odgovori na ovaj mejl. | An operator hid your listing **{listing}** because it breaks the Šapa pomoći rules. Reason: {reason}. If you think this is a mistake, reply to this email. |
+| | | Button | Moji oglasi | My listings |
+| `marketplace_suspended` | Email | Subject | Nalog je isključen iz Šape pomoći | Your account was suspended from Šapa pomoći |
+| | | Body | Zbog prijava drugih korisnika tvoj nalog je isključen iz Šape pomoći: ne možeš da objavljuješ oglase ni da šalješ poruke, a tvoji aktivni oglasi su sakriveni. Kartoni, podsetnici i domaćinstvo rade kao i do sada. Razlog: {reason}. Ako misliš da je greška, odgovori na ovaj mejl. | Because of reports from other users, your account was suspended from Šapa pomoći: you can't publish listings or send messages, and your active listings are hidden. Records, reminders and your household work as before. Reason: {reason}. If you think this is a mistake, reply to this email. |
+
+`{listing}` is the listing title as typed; `{reason}` is the Operator's note from S26, or the report reason label when the note is empty. Display names (`{sender}`) are never declined — hence "pošiljalac: {sender}" instead of a genitive.
 
 Organisation names stay as typed (nominative, never declined); where Serbian needs a gendered verb after an organisation name, the masculine form is used, as for the default noun *azil* / *udruženje*.
 
@@ -430,14 +464,14 @@ Shells: **A** = App shell (owner), **O** = Organisation shell, **P** = Public sh
 | S05 | EPIC-01 | Novi pregled sa prilozima | `/ljubimci/[id]/pregledi/novi` | FR-07, FR-08 | A | `vet-visit-form.tsx` |
 | S27 | EPIC-01 | Nova terapija | `/ljubimci/[id]/terapije/nova` | FR-06 | A | `treatment-form.tsx` |
 | S28 | EPIC-05 | Nova lozinka | `/prijava/nova-lozinka` | FR-34 | U | `new-password.tsx` |
-| S29 | EPIC-06 | Javni profil organizacije | `/organizacija/profil` | FR-60 | O | `org-profile.tsx` |
+| S29 | EPIC-06 | Javni profil organizacije | `/organizacija/profil` | FR-60, FR-72 | O | `org-profile.tsx` |
 | S06 | EPIC-01 | Uspomene | `/uspomene` | FR-11, FR-12 | A | `memorials.tsx` |
 | S07 | EPIC-02 | Dnevnik ishrane i stolice | `/ljubimci/[id]/dnevnik` | FR-14, FR-15, FR-16 | A | `care-log.tsx` |
 | S08 | EPIC-02 | Trenuci | `/ljubimci/[id]/trenuci` | FR-17, FR-18, FR-19 | A | `moments.tsx` |
 | S09 | EPIC-02 | Javni trenutak | `/t/[slug]` | FR-19 | P | `public-moment.tsx` |
 | S10 | EPIC-03 | Podsetnici | `/podsetnici` | FR-20, FR-24 | A | `reminders.tsx` |
 | S11 | EPIC-03 | Novi podsetnik | `/podsetnici/novi` | FR-21 | A | `reminder-form.tsx` |
-| S12 | EPIC-03 | Podešavanja podsetnika | `/podesavanja/podsetnici` | FR-22, FR-23, FR-25 | A | `reminder-settings.tsx` |
+| S12 | EPIC-03 | Podešavanja podsetnika | `/podesavanja/podsetnici` | FR-22, FR-23, FR-25, FR-69 | A | `reminder-settings.tsx` |
 | S13 | EPIC-04 | Domaćinstvo | `/domacinstvo` | FR-26, FR-27, FR-28, FR-29, FR-30, FR-32 | A | `household.tsx` |
 | S14 | EPIC-04 / EPIC-06 | Prihvati poziv / karton | `/poziv/[token]` | FR-26, FR-50, FR-51 | U | `invite-accept.tsx` |
 | S15 | EPIC-05 | Registracija | `/registracija` | FR-33, FR-35 | U | `register.tsx` |
@@ -451,17 +485,23 @@ Shells: **A** = App shell (owner), **O** = Organisation shell, **P** = Public sh
 | S23 | EPIC-06 | Javna stranica azila / odgajivačnice | `/o/[slug]` | FR-46, FR-47, FR-49 | P | `public-org.tsx` |
 | S24 | EPIC-07 | Partneri u blizini | `/partneri` | FR-52, FR-53, FR-55, FR-56 | A | `partners.tsx` |
 | S25 | EPIC-07 | Profil partnera | `/partneri/[id]` | FR-54, FR-55 | A | `partner-profile.tsx` |
-| S26 | EPIC-07 | Admin | `/admin` | FR-42, FR-57, FR-58 (+ BR-14b switch) | D | `admin.tsx` |
+| S26 | EPIC-07 | Admin | `/admin` | FR-42, FR-57, FR-58 (+ BR-14b switch), FR-71 | D | `admin.tsx` |
 | S30 | EPIC-05 | Politika privatnosti | `/privatnost` | Release Criterion 4 | P | `privacy.tsx` |
 | S31 | EPIC-05 | Uslovi korišćenja | `/uslovi` | Release Criterion 4 | P | `terms.tsx` |
+| S32 | EPIC-08 | Šapa pomoći | `/sapa-pomoci` | FR-61 | A / P | `sapa-pomoci.tsx` |
+| S33 | EPIC-08 | Oglas | `/sapa-pomoci/[id]` | FR-62, FR-66, FR-68, FR-70 | A / P | `listing-detail.tsx` |
+| S34 | EPIC-08 | Novi / izmeni oglas | `/sapa-pomoci/nova`, `/sapa-pomoci/[id]/izmeni` | FR-63, FR-64 | A / O | `listing-form.tsx` |
+| S35 | EPIC-08 | Moji oglasi | `/sapa-pomoci/moje` | FR-64, FR-65 | A / O | `my-listings.tsx` |
+| S36 | EPIC-08 | Poruke | `/poruke`, `/poruke/[id]` | FR-68, FR-69, FR-70 | A / O | `messages.tsx` |
+| S37 | EPIC-08 | Profil korisnika | `/korisnik/[id]` | FR-67, FR-70 | A / P | `user-profile.tsx` |
 
-**Coverage (31 screens):** EPIC-01 ✅ (7) · EPIC-02 ✅ (3) · EPIC-03 ✅ (3) · EPIC-04 ✅ (2) · EPIC-05 ✅ (8) · EPIC-06 ✅ (5) · EPIC-07 ✅ (3). Every screen traces to PRD FRs, or (S30, S31) to PRD Release Criterion 4; no screen outside PRD scope. (S14 is counted under EPIC-04.)
+**Coverage (37 screens / 8 epics):** EPIC-01 ✅ (7) · EPIC-02 ✅ (3) · EPIC-03 ✅ (3) · EPIC-04 ✅ (2) · EPIC-05 ✅ (8) · EPIC-06 ✅ (5) · EPIC-07 ✅ (3) · EPIC-08 ✅ (6). Every screen traces to PRD FRs, or (S30, S31) to PRD Release Criterion 4; no screen outside PRD scope. (S14 is counted under EPIC-04.) EPIC-08 FRs also land in existing screens: FR-69 in S12, FR-71 in S26, FR-72 in S29; FR-61…FR-72 are all covered. Šapa pomoći screens are reached from the owner (A) and organisation (O) shells; S32, S33 and S37 are also public (P, `PublicShell wide`) when signed out.
 
 ---
 
 ## 12. Screen Specs
 
-Every screen: inline Serbian mock data, local React state only, `"use client"`, states listed below. "States" abbreviations: **D** default · **L** loading · **E** empty · **X** error · **G** Premium-locked · **R** read-only. Each screen file has a small state switcher (dev-only `Tabs` above the content, labelled "Prikaz stanja") so reviewers can see every state.
+Every screen: inline Serbian mock data, local React state only, `"use client"`, states listed below. "States" abbreviations: **D** default · **L** loading · **E** empty · **X** error · **G** Premium-locked · **R** read-only · (v1.6) **O** signed-out · **B** blocked · **S** suspended from Šapa pomoći. Each screen file has a small state switcher (dev-only `Tabs` above the content, labelled "Prikaz stanja") so reviewers can see every state.
 
 **S01 Moji ljubimci** — Search field ("Pretraži ljubimce…", FR-59) next to "Dodaj ljubimca". "Danas" card: on md+ a row of up to 3 reminder cards (type icon, title, pet · time, status pill, "Urađeno"), stacked on phones. Pet cards: pastel top block (species avatar, name, breed, sex chip), stats (Starost, Težina), "Sledeći podsetnik", footer "Karton ažuriran pre …" + "Otvori karton →". "Dodaj ljubimca" button; on Free with 1 active pet it opens `PremiumLock` (FR-36). Link to Uspomene. States D L E (*"Dodaj svog prvog ljubimca"*) G. Phones: 1 column; md 2; lg 3.
 
@@ -477,7 +517,7 @@ Every screen: inline Serbian mock data, local React state only, `"use client"`, 
 
 **S28 Nova lozinka** — Auth shell; new password + repeat (min 8 characters); states default, mismatch, link expired (`invalid_action_token`), success → "Prijavi se".
 
-**S29 Javni profil organizacije** — Organisation shell; Admin edits description, phone, email, website, logo (FR-60); Volunteer read-only; shelter/breeder variants.
+**S29 Javni profil organizacije** — Organisation shell; Admin edits description, phone, email, website, logo (FR-60); Volunteer read-only; shelter/breeder variants. **Donacije** card (v1.6, FR-72, EP-88 — shelters only, hidden for breeders): `HandHeart` tile, one line that it is shown by "Doniraj" and that money never passes through the app; fields *Broj računa* (format `160-0000012345678-90`, inline error), *Link za uplatu* (`https://`), *Adresa za donošenje*, *Radno vreme za donošenje* (free text, e.g. *Subota 10:00 – 14:00 · Nedelja 10:00 – 13:00*); all optional, with the note that without any of them the shelter's needs show only *"Pošalji poruku"* (EP-74 donation flag). Volunteer view lists the four values read-only.
 
 **S06 Uspomene** — Muted cards (no accent) with date and reason; "Vrati među aktivne" (G when slot taken on Free); Free counter "2 / 2 uspomene". States D E G.
 
@@ -491,7 +531,7 @@ Every screen: inline Serbian mock data, local React state only, `"use client"`, 
 
 **S11 Novi / izmeni podsetnik** — Title*, za koga (ljubimac Select or "Samo za mene"), datum i vreme*, ponavljanje (Select). Edit variant prefilled with "Obriši podsetnik" (AlertDialog). States D X, edit.
 
-**S12 Podešavanja podsetnika** — One Card per type (Vakcine, Terapije/doze, Kontrole, Obroci, Rođendani, Moji podsetnici): lead-time chips (multi), delivery time, channel Checkboxes (Email, Push, WhatsApp with Premium badge/G on Free; Viber absent while switched off); doses and meals show *"Stižu tačno u zadato vreme"*. WhatsApp counter "12 / 30 poruka ovog meseca". iPhone push hint card ("Dodaj na početni ekran"). A "Kanali" card on top: Push (isključeno / uključeno / blokirano u pregledaču) and WhatsApp number connection (number → "Pošalji kod" → code → "Povezano" → "Prekini vezu"; G on Free). States D G, plus push-on/WhatsApp-connected and push-blocked variants, and **"WhatsApp uskoro"** (CR-13): for Premium users before the WhatsApp channel is live, the WhatsApp section shows an *"Uskoro dostupno"* badge and one line instead of the number form, every WhatsApp channel checkbox is disabled and unchecked with *"Uskoro dostupno"* beside it, and the monthly counter card is hidden.
+**S12 Podešavanja podsetnika** — One Card per type (Vakcine, Terapije/doze, Kontrole, Obroci, Rođendani, Moji podsetnici): lead-time chips (multi), delivery time, channel Checkboxes (Email, Push, WhatsApp with Premium badge/G on Free; Viber absent while switched off); doses and meals show *"Stižu tačno u zadato vreme"*. WhatsApp counter "12 / 30 poruka ovog meseca". iPhone push hint card ("Dodaj na početni ekran"). A "Kanali" card on top: Push (isključeno / uključeno / blokirano u pregledaču) and WhatsApp number connection (number → "Pošalji kod" → code → "Povezano" → "Prekini vezu"; G on Free). **"Šapa pomoći" → "Poruke" card** (v1.6, FR-69): `MessageCircle` tile, *"Kad ti neko piše povodom oglasa. Stižu odmah."*, two Switch rows *Mejl* and *Push* (on by default; no lead time, no delivery time, never WhatsApp/Viber — stored as `reminder_preferences` type `message`); while browser push is not on, a hint *"Push stiže tek kad uključiš obaveštenja u kartici „Kanali“ iznad."*; both off → *"Nove poruke ćeš videti samo u aplikaciji, u Porukama."* States D G, plus push-on/WhatsApp-connected and push-blocked variants, and **"WhatsApp uskoro"** (CR-13): for Premium users before the WhatsApp channel is live, the WhatsApp section shows an *"Uskoro dostupno"* badge and one line instead of the number form, every WhatsApp channel checkbox is disabled and unchecked with *"Uskoro dostupno"* beside it, and the monthly counter card is hidden.
 
 **S13 Domaćinstvo** — Members list (role, joined date, remove), invite Dialog (email or copy link), shared-pets Switch list, counter "3 / 6 članova", own reminder opt-in Switch for members. States D G (Free owner) R (owner's Premium lapsed: banner + hidden controls) E.
 
@@ -523,7 +563,19 @@ Every screen: inline Serbian mock data, local React state only, `"use client"`, 
 
 **S31 Uslovi korišćenja** — Same layout as S30; sections *Opšte*, *Nalog*, *Premium i plaćanje*, *Sadržaj korisnika*, *Odgovornost*, *Izmene uslova*, *Kontakt*; same placeholder (OQ-15). The intro shows "Verzija {TERMS_VERSION}" (constant in `lib/legal.ts`, TC CR-09 — the version registration stores). States D.
 
-**S26 Admin** — Admin shell; Tabs: Azili na čekanju (approve/reject), Partneri (Table: name, type, city, Istaknut Switch with "3 / 3" limit hint, plaćeno do, status; add/edit Dialog with "Pronađi koordinate" button), Statistika (clicks per partner per action), Kanali (Viber Switch with cost warning).
+**S26 Admin** — Admin shell; Tabs: Azili na čekanju (approve/reject), Partneri (Table: name, type, city, Istaknut Switch with "3 / 3" limit hint, plaćeno do, status; add/edit Dialog with "Pronađi koordinate" button), Statistika (clicks per partner per action), Kanali (Viber Switch with cost warning), **Moderacija** (v1.6, FR-71, EP-86; tab label and nav badge carry the open-report count): *Otvorene prijave* — one card per report: reason pill (`StatusBadge` missed), target *Oglas* / *Korisnik*, "Prijava za isti oglas: N", listing title or user name, author and reporter display names, date, the reporter's note on `bg-foreground/5`; actions *Odbaci prijavu* (ghost), *Sakrij oglas* (outline, listing reports only), *Isključi autora / korisnika* (destructive) — hide and suspend confirm in an AlertDialog with an optional *"Razlog za korisnika"* (goes into `listing_hidden` / `marketplace_suspended`, §9.1); *"Obrađeno ovog meseca: N"*. Section *Sakriveni oglasi i isključeni korisnici* lists restrictions with *Vrati oglas* / *Vrati pristup* (restore). Empty: *"Nema otvorenih prijava"*. States D L E X apply to every tab.
+
+**S32 Šapa pomoći** — `/sapa-pomoci`, FR-61 (EP-73). AppShell when signed in, `PublicShell wide` when signed out (the state switcher shows both). Header: h1 *Šapa pomoći*, one line, *Moji oglasi* (outline) and *Novi oglas* (primary). Filters: type chips in a scroll strip (*Sve*, *Potrebe azila*, *Poklanjam*, *Prodajem*, *Tražim*), then three Selects in `grid-cols-1 sm:grid-cols-3` — *Kategorija* (Hrana, Oprema i igračke, Nameštaj za ljubimce, Transporteri, Lekovi i nega — only offered with *Sve* or *Potrebe azila*, Ostalo), *Za koga* (Psi, Mačke, Ostale životinje), *Grad* (city list). Result line *"48 oglasa · najnoviji prvo"*, `ListingCard` grid (1 / 2 / 3 columns), offset pagination *Prethodna · Strana 1 od 3 · Sledeća*. Listings of blocked users never appear (BR-59). Mock data: Azil „Druga šansa“ *Potrebno 20 kg granula za odrasle pse*; *Poklanjam grebalicu za mačke, Bečej*; *Prodajem transporter za psa* 2.500 RSD; *Tražim kavez za zeca*; more needs/gifts across Novi Sad, Bečej, Beograd, Subotica. States D, O (sign-in card *"Oglase možeš da pregledaš i bez naloga. Prijavi se da pošalješ poruku, objaviš oglas ili doniraš azilu."* + *Prijavi se*; header actions hidden), L (card skeletons), E (*"Nema oglasa za ove filtere"* + *Poništi filtere*, or *"Još nema oglasa"* + *Novi oglas*), X, S (suspension card; header actions hidden).
+
+**S33 Oglas** — `/sapa-pomoci/[id]`, FR-62, FR-66, FR-68, FR-70 (EP-74, EP-78, EP-82, EP-84, EP-85). Back link *← Šapa pomoći*. Detail + aside (`lg:grid-cols-[minmax(0,1fr)_320px]`). Main card: gallery (4:3 main photo, "1 / 4" counter, up to 5 thumbnails as `aria-pressed` buttons), tags (`ListingTypeTag`, category, species), h1 title, `⋯` menu (*Prijavi oglas*, *Blokiraj korisnika* — not for shelter needs), price as section heading (*2.500 RSD* / *Po dogovoru* / *Besplatno*), city, *Opis*, *"Objavljeno … · Aktivan do …"*. Aside: action card — selling/giving/seeking: *Pošalji poruku* → Dialog with a prefilled first message (≤ 2000, counter) → *"Poruka je poslata…"* + *Otvori razgovor* (if a conversation already exists, the button opens it — BR-61); need: *Doniraj* (primary) + *Pošalji poruku azilu* (outline); author card (initials avatar — square for shelters, display name, city · *član od septembra 2026.*, *Aktivnih oglasa: N*, *Pogledaj profil* → S37, or *Javna stranica azila* → S23 for shelters); safety tip card (*"Stvari razmenjuj uživo i ne plaćaj unapred nepoznatim osobama…"*). **Doniraj Dialog** (FR-66): title *Doniraj: Azil „Druga šansa“*, line *"Novac ne prolazi kroz Moj Ljubimac…"*, three `bg-foreground/5` blocks — *Uplata na račun* (account in card-title size + *Kopiraj* → *Kopirano*, recipient, purpose), *Online uplata* (*Uplati online* external link), *Donošenje u azil* (address, hours) — each block omitted when its field is empty; footer *Pošalji poruku azilu* · *Zatvori*. The button exists only when EP-74's donation flag is set. States D (selling), need, O (*"Prijavi se da pošalješ poruku"* primary + *Napravi nalog* link; menu hidden), own listing (*"Ovo je tvoj oglas"*: *N razgovora o oglasu* → S36, *Izmeni oglas* → S34, *Produži 30 dana*, *Označi kao rešeno* → AlertDialog; no message button — `cannot_message_self`), resolved (*Rešeno — Prodato* pill, *"Oglas više nije aktivan"*, messaging hidden), S (*"Poruke nisu dostupne"*), L, X, unavailable (hidden, expired or blocked author → EmptyState *"Oglas nije dostupan"*; blocking from the menu ends here).
+
+**S34 Novi / izmeni oglas** — `/sapa-pomoci/nova`, `/sapa-pomoci/[id]/izmeni`, FR-63, FR-64 (EP-75, photos via EP-13 `listing_photo`). `max-w-3xl` form; subline with the active counter (*"Aktivni oglasi: 1 / 3 na Free planu"*; shelters *"bez ograničenja broja oglasa"*). Cards: *Vrsta oglasa* — RadioGroup as bordered option tiles with `ListingTypeTag` + one-line hint (*Poklanjam*, *Prodajem*, *Tražim*; *Potreba* only for members of an approved shelter — owners see *"Potrebe sa dugmetom „Doniraj“ objavljuju samo odobreni azili."*); *Osnovno* — *Naslov\** (5–80, counter), *Opis\** (≤ 1000, counter), *Kategorija\** (*Lekovi i nega* offered only for *Potreba*; switching type away clears it), *Za koga\**, *Grad\** (city list); *Cena* (selling only) — RSD Input + *Po dogovoru* Checkbox (disables the amount), note that payment is arranged between people; *Fotografije* — up to 5 square tiles (first labelled *Naslovna*, remove icon button), dashed *Dodaj* tile, *"N / 5"*, JPG/PNG ≤ 10 MB; for needs an info card linking to S29 *Donacije*; expiry line *"Oglas je aktivan 30 dana. Tri dana pre isteka šaljemo ti mejl da ga produžiš."*. Footer *Otkaži* · *Objavi oglas* (edit: *Sačuvaj izmene*, plus *Obriši oglas* → AlertDialog *Da, obriši*). Validation inline on blur and submit. States D, shelter (Organisation shell, *Potreba* selected), edit, invalid (inline errors), X (alert *"Oglas nije sačuvan — veza je prekinuta…"*), G (4th active listing on Free → `PremiumLock` over the blurred form, `premium_required:listings`), S (*"Ne možeš da objavljuješ oglase"* card instead of the form).
+
+**S35 Moji oglasi** — `/sapa-pomoci/moje`, FR-64, FR-65 (EP-76, EP-77). Header with *Novi oglas* (hidden when the Free limit is reached or suspended). Counter card *"Aktivni oglasi 2 / 3"* + `Progress` + *"Na Free planu imaš do 3 aktivna oglasa. Sakriveni oglasi se ne računaju. Premium: bez ograničenja."* (hidden for Premium/shelters in production). Tabs *Aktivni (N)* (active + hidden), *Istekli (N)*, *Rešeni (N)*. Row card: thumbnail, `ListingTypeTag` + status pill (*Aktivan*, *Ističe za 3 dana*, *Sakriven*, *Istekao*, *Rešeno*), title (link to S33, 2 lines), price · *Aktivan do …* / *Istekao …* / *Poklonjeno 28. 09. 2026.*, `⋯` menu (*Izmeni*, *Označi kao rešeno* → AlertDialog naming the type's outcome — *Poklonjeno / Prodato / Donirano / Pronađeno*, *Obriši* → AlertDialog); hidden listings show the Operator's reason on `bg-foreground/5`; footer *"Razgovora: N · nepročitano: N"* → S36 and *Produži 30 dana* (primary when ≤ 3 days left) or, for expired, *Objavi ponovo (30 dana)* — disabled with an explanation when the Free limit is reached. States D L E (*"Još nemaš aktivnih oglasa"* + *Novi oglas*, per tab) X G (3 / 3 → `PremiumLock` card above the list) S (banner; edit/extend hidden, delete allowed).
+
+**S36 Poruke** — `/poruke`, `/poruke/[id]`, FR-68, FR-69, FR-70 (EP-80…EP-85). h1 *Poruke* above one Card. **lg:** two panes `lg:grid-cols-[320px_minmax(0,1fr)]`, fixed 640 px height, each pane scrolls. **Phones:** one pane — the inbox; tapping a row opens the thread with a 44 px back button (*"Nazad na razgovore"*). Inbox row: initials avatar (square for shelters), display name (semibold when unread), time (*14:32*, *Juče*, *16. 10.*), listing title (*"Tvoj oglas: …"* when the user is the author), last message (*"Ti: …"* for own), unread count pill. Thread header: avatar, name → S37 (or S23 for shelters), listing title → S33 (*"· oglas više nije aktivan"* when resolved/expired), `ListingTypeTag` (from `sm`), `⋯` menu *Prijavi korisnika* / *Blokiraj*. Messages: day separator, own bubbles `bg-primary text-primary-foreground` right, others `bg-foreground/5` left, time and *"· Pročitano"* on own read messages (EP-83), screen-reader prefix *"Ti:"* / name. Composer: Textarea (2 rows, ≤ 2000) + 44 px send icon button, *"Samo tekst · N / 2000"*, inline error when empty; `rate_limited` (30 messages / hour) and `user_blocked` show as an inline error under the composer. States D, thread open (phone), L, E (*"Još nema poruka"* + *Pogledaj oglase*), X, B (*"Blokirao/la si korisnika …"* + *Odblokiraj*, composer hidden, inbox row shows *Blokiran korisnik*), S (banner; old messages readable, composer replaced by a note).
+
+**S37 Profil korisnika** — `/korisnik/[id]`, FR-67, FR-70 (EP-79). AppShell signed in, `PublicShell wide` signed out. Header card: 80 px initials avatar, h1 display name (*Marko J.*), city, *"Član od septembra 2026."*, *"Aktivnih oglasa: 3"*, `⋯` menu (*Prijavi korisnika*, *Blokiraj*; hidden signed out), line *"Mejl i telefon se ne prikazuju. Javi se porukom iz nekog od oglasa."* Section *Aktivni oglasi* — `ListingCard` grid. Shelters have no S37 (their author link goes to S23). States D, O, L, E (*"Trenutno nema aktivnih oglasa"*), X, B (`ReadOnlyBanner` *"Blokirao/la si ovog korisnika…"* + *Odblokiraj*, listings hidden), unavailable (suspended or deleted → *"Profil nije dostupan"*).
 
 ---
 
@@ -550,6 +602,15 @@ Every screen: inline Serbian mock data, local React state only, `"use client"`, 
 | ReadOnlyBanner | The banner shown when a view is read-only. |
 | State switcher | Dev-only tabs in each mock screen to preview its states. |
 | LogoMark | The logo composite with `mark`, `horizontal`, and `full` variants. |
+| Šapa pomoći | CAP-08 / EPIC-08 (EN "Helping Paw"): the community board where signed-in users give, sell or seek pet items and shelters post needs; public to browse. |
+| Oglas (Listing) | One Šapa pomoći post of type *Potreba*, *Poklanjam*, *Prodajem* or *Tražim*; active 30 days, then expired unless extended; can be marked *Rešeno*. |
+| Potreba (Need) | A shelter-only listing type with a *Doniraj* button that shows the shelter's donation info. |
+| Podaci za donacije (Donation info) | Shelter bank account, payment link, drop-off address and drop-off hours, edited in S29 and shown by *Doniraj*; money never passes through the app. |
+| Razgovor (Conversation) | The 1:1 text thread between a listing's author and one interested user (one per listing + user), shown in S36. |
+| Prijava (Report) / Blokiranje (Block) | A user's report of a listing or user to the Operator (S26 *Moderacija*); a block stops the other user from messaging you and hides their listings for you. |
+| Isključenje iz Šape pomoći (Suspension) | Operator action: the user can no longer publish or message, and their listings are hidden; the rest of the app is unaffected. |
+| ListingTypeTag / ListingCard | The Šapa pomoći type pill and grid card composites (§6). |
+| `--info-soft` | The pastel surface of the *Tražim* tag; no status meaning. |
 
 ---
 

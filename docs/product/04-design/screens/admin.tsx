@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Building2, CircleCheck, Crosshair, MessageCircle, Pencil, Plus, TriangleAlert } from "lucide-react"
+import { Building2, CircleCheck, Crosshair, EyeOff, Flag, MessageCircle, Pencil, Plus, RotateCcw, TriangleAlert, UserX } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,7 +38,7 @@ import { StateSwitcher } from "../components/state-switcher"
 import { StatusBadge } from "../components/status-badge"
 
 type ViewState = "default" | "loading" | "empty" | "error"
-type TabKey = "azili" | "partneri" | "statistika" | "kanali"
+type TabKey = "azili" | "partneri" | "statistika" | "kanali" | "moderacija"
 type PartnerType = "vet" | "shop" | "grooming" | "hotel"
 
 const typeLabel: Record<PartnerType, string> = {
@@ -137,6 +137,72 @@ const initialPartners: AdminPartner[] = [
   { id: "p6", name: "Grooming salon „Čupko“", type: "grooming", city: "Novi Sad", featured: true, paidUntil: "28. 02. 2027.", active: true, message_number: "+381 64 633 8180", message_channel: "viber", hours: weekdays("10:00", "18:00", ["uto", "sre", "cet", "pet", "sub"]) },
   { id: "p7", name: "Pet hotel „Kod Mace“", type: "hotel", city: "Novi Sad", featured: false, paidUntil: "30. 09. 2026.", active: false, message_number: "+381 60 820 7770", message_channel: "whatsapp", hours: weekdays("00:00", "24:00", [...workWeek, "sub", "ned"]) },
 ]
+
+// Šapa pomoći moderation (FR-71, EP-86). Reasons as in the report dialog (FR-70).
+type ReportReason = "spam" | "scam" | "inappropriate" | "animal_welfare" | "other"
+const reasonLabel: Record<ReportReason, string> = {
+  spam: "Spam ili reklama",
+  scam: "Prevara",
+  inappropriate: "Neprimeren sadržaj",
+  animal_welfare: "Dobrobit životinja",
+  other: "Drugo",
+}
+
+type Report = {
+  id: string
+  reason: ReportReason
+  target: "listing" | "user"
+  listingTitle?: string
+  author: string
+  reporter: string
+  reportedOn: string
+  note: string
+  sameTargetCount: number
+}
+
+const initialReports: Report[] = [
+  {
+    id: "r1",
+    reason: "scam",
+    target: "listing",
+    listingTitle: "Prodajem transporter za mačke, slanje kurirom",
+    author: "Goran M.",
+    reporter: "Ivana P.",
+    reportedOn: "19. 10. 2026.",
+    note: "Traži uplatu unapred na račun, ne želi lično preuzimanje.",
+    sameTargetCount: 2,
+  },
+  {
+    id: "r2",
+    reason: "spam",
+    target: "user",
+    author: "Dejan V.",
+    reporter: "Jelena S.",
+    reportedOn: "18. 10. 2026.",
+    note: "Šalje istu poruku sa linkom prodavnice na sve oglase.",
+    sameTargetCount: 1,
+  },
+  {
+    id: "r3",
+    reason: "animal_welfare",
+    target: "listing",
+    listingTitle: "Tražim lekove za psa bez recepta",
+    author: "Petar K.",
+    reporter: "Marko J.",
+    reportedOn: "17. 10. 2026.",
+    note: "Traži antibiotike za psa bez pregleda kod veterinara.",
+    sameTargetCount: 1,
+  },
+]
+
+type Restriction = { id: string; kind: "listing" | "user"; name: string; detail: string }
+
+const initialRestrictions: Restriction[] = [
+  { id: "h1", kind: "listing", name: "Prodajem hranu na veliko, dostava cela Srbija", detail: "Dejan V. · sakriven 17. 10. 2026. · spam" },
+  { id: "h2", kind: "user", name: "Branko L.", detail: "Isključen iz Šape pomoći 15. 10. 2026. · prevara" },
+]
+
+type ModAction = { report: Report; kind: "hide" | "suspend" }
 
 const stats = [
   { name: "Veterinarska ambulanta „Dr Vet“", call: 142, message: 61, email: 18, web: 44 },
@@ -404,9 +470,47 @@ export default function AdminScreen() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [viberOn, setViberOn] = useState(false)
   const [confirmViber, setConfirmViber] = useState(false)
+  const [reports, setReports] = useState<Report[]>(initialReports)
+  const [restrictions, setRestrictions] = useState<Restriction[]>(initialRestrictions)
+  const [modAction, setModAction] = useState<ModAction | null>(null)
+  const [handled, setHandled] = useState(4)
 
   const shelterList = view === "empty" ? [] : shelters
   const partnerList = view === "empty" ? [] : partners
+  const reportList = view === "empty" ? [] : reports
+  const restrictionList = view === "empty" ? [] : restrictions
+
+  function dismiss(r: Report) {
+    setReports((prev) => prev.filter((x) => x.id !== r.id))
+    setHandled((h) => h + 1)
+    setNotice("Prijava je odbačena. Oglas i korisnik ostaju kakvi jesu.")
+  }
+
+  function confirmModAction() {
+    if (!modAction) return
+    const { report: r, kind } = modAction
+    setReports((prev) => prev.filter((x) => x.id !== r.id))
+    setHandled((h) => h + 1)
+    if (kind === "hide") {
+      setRestrictions((prev) => [
+        { id: `h-${r.id}`, kind: "listing", name: r.listingTitle ?? "", detail: `${r.author} · sakriven 19. 10. 2026. · ${reasonLabel[r.reason].toLowerCase()}` },
+        ...prev,
+      ])
+      setNotice(`Oglas „${r.listingTitle}“ je sakriven. ${r.author} je dobio/la mejl.`)
+    } else {
+      setRestrictions((prev) => [
+        { id: `s-${r.id}`, kind: "user", name: r.author, detail: `Isključen iz Šape pomoći 19. 10. 2026. · ${reasonLabel[r.reason].toLowerCase()}` },
+        ...prev,
+      ])
+      setNotice(`${r.author} je isključen/a iz Šape pomoći i dobio/la je mejl. Aktivni oglasi te osobe su sakriveni.`)
+    }
+    setModAction(null)
+  }
+
+  function restore(x: Restriction) {
+    setRestrictions((prev) => prev.filter((y) => y.id !== x.id))
+    setNotice(x.kind === "listing" ? `Oglas „${x.name}“ je ponovo vidljiv.` : `${x.name} ponovo može da koristi Šapu pomoći.`)
+  }
 
   function featuredCount(type: PartnerType, city: string) {
     return partners.filter((p) => p.type === type && p.city === city && p.featured && p.active).length
@@ -429,7 +533,7 @@ export default function AdminScreen() {
   }
 
   return (
-    <AppShell variant="admin" active={tab} user={{ name: "Marko Jovanović" }}>
+    <AppShell variant="admin" active={tab} user={{ name: "Marko Jovanović" }} counts={{ moderacija: reportList.length }}>
       <StateSwitcher
         states={[
           { value: "default", label: "Podrazumevano" },
@@ -457,6 +561,9 @@ export default function AdminScreen() {
               <TabsTrigger value="partneri">Partneri</TabsTrigger>
               <TabsTrigger value="statistika">Statistika</TabsTrigger>
               <TabsTrigger value="kanali">Kanali</TabsTrigger>
+              <TabsTrigger value="moderacija">
+                Moderacija{reportList.length > 0 ? ` (${reportList.length})` : ""}
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -725,8 +832,142 @@ export default function AdminScreen() {
               </>
             )}
           </TabsContent>
+
+          {/* Moderacija — Šapa pomoći reports queue (FR-71) */}
+          <TabsContent value="moderacija" className="mt-4 space-y-6">
+            {view === "loading" && <TableSkeleton />}
+            {view === "error" && <ErrorState onRetry={() => setView("default")} />}
+            {(view === "default" || view === "empty") && (
+              <>
+                <section aria-labelledby="reports-heading" className="space-y-4">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+                    <h2 id="reports-heading" className="font-heading text-[22px] leading-7 font-bold">
+                      Otvorene prijave
+                    </h2>
+                    <p className="text-sm text-muted-foreground">Obrađeno ovog meseca: {handled}</p>
+                  </div>
+                  {reportList.length === 0 ? (
+                    <EmptyState
+                      icon={Flag}
+                      title="Nema otvorenih prijava"
+                      description="Kad neko prijavi oglas ili korisnika u Šapi pomoći, prijava stiže ovde."
+                    />
+                  ) : (
+                    reportList.map((r) => (
+                      <Card key={r.id} className="gap-4 p-4 md:p-6">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <StatusBadge status="missed" label={reasonLabel[r.reason]} />
+                              <Badge variant="secondary">{r.target === "listing" ? "Oglas" : "Korisnik"}</Badge>
+                              {r.sameTargetCount > 1 && (
+                                <span className="text-xs font-medium text-muted-foreground">
+                                  Prijava za isti oglas: {r.sameTargetCount}
+                                </span>
+                              )}
+                            </div>
+                            <h3 className="font-heading text-lg font-bold break-words">
+                              {r.target === "listing" ? r.listingTitle : r.author}
+                            </h3>
+                            <p className="truncate text-sm text-muted-foreground">
+                              {r.target === "listing" ? `Autor: ${r.author} · ` : ""}Prijavio/la: {r.reporter}
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-xs font-medium text-muted-foreground">{r.reportedOn}</span>
+                        </div>
+                        <p className="rounded-sm bg-foreground/5 p-3 text-sm break-words">{r.note}</p>
+                        <div className="flex flex-col gap-2 md:flex-row md:justify-end">
+                          <Button variant="ghost" className="h-11 md:h-9" onClick={() => dismiss(r)}>
+                            Odbaci prijavu
+                          </Button>
+                          {r.target === "listing" && (
+                            <Button
+                              variant="outline"
+                              className="h-11 md:h-9"
+                              onClick={() => setModAction({ report: r, kind: "hide" })}
+                            >
+                              <EyeOff className="size-4" aria-hidden />
+                              Sakrij oglas
+                            </Button>
+                          )}
+                          <Button
+                            variant="destructive"
+                            className="h-11 md:h-9"
+                            onClick={() => setModAction({ report: r, kind: "suspend" })}
+                          >
+                            <UserX className="size-4" aria-hidden />
+                            {r.target === "listing" ? "Isključi autora" : "Isključi korisnika"}
+                          </Button>
+                        </div>
+                      </Card>
+                    ))
+                  )}
+                </section>
+
+                <section aria-labelledby="restrictions-heading" className="space-y-4">
+                  <h2 id="restrictions-heading" className="font-heading text-[22px] leading-7 font-bold">
+                    Sakriveni oglasi i isključeni korisnici
+                  </h2>
+                  {restrictionList.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Trenutno ništa nije sakriveno.</p>
+                  ) : (
+                    <Card className="gap-0 py-0">
+                      <ul className="divide-y divide-border">
+                        {restrictionList.map((x) => (
+                          <li key={x.id} className="flex flex-col gap-2 p-4 md:flex-row md:items-center">
+                            <div className="flex min-w-0 flex-1 items-start gap-3">
+                              {x.kind === "listing" ? (
+                                <EyeOff className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+                              ) : (
+                                <UserX className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+                              )}
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium">{x.name}</p>
+                                <p className="truncate text-xs font-medium text-muted-foreground">{x.detail}</p>
+                              </div>
+                            </div>
+                            <Button variant="outline" size="sm" className="h-11 shrink-0 md:h-8" onClick={() => restore(x)}>
+                              <RotateCcw className="size-4" aria-hidden />
+                              {x.kind === "listing" ? "Vrati oglas" : "Vrati pristup"}
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    </Card>
+                  )}
+                </section>
+              </>
+            )}
+          </TabsContent>
         </Tabs>
       </div>
+
+      <AlertDialog open={modAction !== null} onOpenChange={(o) => !o && setModAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {modAction?.kind === "hide"
+                ? `Sakriti oglas „${modAction.report.listingTitle}“?`
+                : `Isključiti korisnika ${modAction?.report.author} iz Šape pomoći?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {modAction?.kind === "hide"
+                ? "Oglas nestaje iz liste i sa javne stranice. Autor dobija mejl sa razlogom. Možeš da ga vratiš kasnije."
+                : "Ne može da objavljuje oglase ni da šalje poruke, a aktivni oglasi te osobe se sakrivaju. Ostatak aplikacije radi normalno. Dobija mejl sa razlogom."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="mod-reason">Razlog za korisnika (opciono)</Label>
+            <Textarea id="mod-reason" placeholder="npr. Oglas traži uplatu unapred, što nije dozvoljeno." />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Otkaži</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmModAction}>
+              {modAction?.kind === "hide" ? "Da, sakrij" : "Da, isključi"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={rejecting !== null} onOpenChange={(o) => !o && setRejecting(null)}>
         <AlertDialogContent>

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
 import { AppShell } from "../components/shells"
 import { PremiumLock } from "../components/premium-lock"
 import { ReminderTypeIcon, type ReminderType } from "../components/reminder-type-icon"
@@ -20,6 +21,8 @@ import { StatusBadge } from "../components/status-badge"
 // D = Premium user (WhatsApp available, monthly counter) · G = Free user (WhatsApp Premium-locked)
 // Channel variants: ON = push on + WhatsApp connected · BLK = push blocked in the browser
 // SOON = Premium user before WhatsApp goes live (CR-13): WhatsApp shown as "Uskoro dostupno", disabled
+// v1.6 — "Poruke" card (FR-69): Šapa pomoći new-message notifications, email + push switches, no lead time;
+// stored as reminder_preferences type `message`. Never WhatsApp/Viber.
 
 type ViewState = "D" | "ON" | "BLK" | "SOON" | "G"
 type PushState = "off" | "on" | "blocked"
@@ -148,6 +151,8 @@ export default function ReminderSettingsScreen() {
   const [waConnected, setWaConnected] = useState("")
   const [waCode, setWaCode] = useState("")
   const [waError, setWaError] = useState("")
+  const [msgEmail, setMsgEmail] = useState(true)
+  const [msgPush, setMsgPush] = useState(true)
 
   const isFree = view === "G"
   const waSoon = view === "SOON"
@@ -585,6 +590,67 @@ export default function ReminderSettingsScreen() {
                 </fieldset>
               </Card>
             ))}
+          </div>
+        </section>
+
+        <section aria-labelledby="messages-heading" className="space-y-4">
+          <h2 id="messages-heading" className="font-heading text-[22px] leading-7 font-bold">
+            Šapa pomoći
+          </h2>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card className="gap-4 p-4 md:p-6">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-foreground/5">
+                  <MessageCircle className="size-5 text-primary" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                  <h3 className="font-heading text-lg font-bold">Poruke</h3>
+                  <p className="text-sm text-muted-foreground">Kad ti neko piše povodom oglasa. Stižu odmah.</p>
+                </div>
+              </div>
+              <Separator />
+              <div className="flex flex-col gap-2">
+                <div className="flex min-h-11 items-center gap-3 rounded-sm bg-foreground/5 px-3">
+                  <Label htmlFor="msg-email" className="flex min-w-0 flex-1 items-center gap-2">
+                    <Mail className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                    <span className="truncate">Mejl</span>
+                  </Label>
+                  <Switch
+                    id="msg-email"
+                    checked={msgEmail}
+                    onCheckedChange={(v) => {
+                      setMsgEmail(v)
+                      setSaved(false)
+                    }}
+                  />
+                </div>
+                <div className="flex min-h-11 items-center gap-3 rounded-sm bg-foreground/5 px-3">
+                  <Label htmlFor="msg-push" className="flex min-w-0 flex-1 items-center gap-2">
+                    <Smartphone className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                    <span className="truncate">Push</span>
+                  </Label>
+                  <Switch
+                    id="msg-push"
+                    checked={msgPush}
+                    onCheckedChange={(v) => {
+                      setMsgPush(v)
+                      setSaved(false)
+                    }}
+                    aria-describedby={push !== "on" ? "msg-push-hint" : undefined}
+                  />
+                </div>
+              </div>
+              {push !== "on" && msgPush && (
+                <p id="msg-push-hint" className="text-sm text-muted-foreground">
+                  Push stiže tek kad uključiš obaveštenja u kartici „Kanali“ iznad.
+                </p>
+              )}
+              {!msgEmail && !msgPush && (
+                <p className="text-sm text-muted-foreground">
+                  Nove poruke ćeš videti samo u aplikaciji, u Porukama.
+                </p>
+              )}
+            </Card>
           </div>
         </section>
 

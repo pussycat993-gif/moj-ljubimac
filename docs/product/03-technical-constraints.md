@@ -6,10 +6,10 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 03 — Technical Constraints |
-| Version | 1.6 |
+| Version | 1.7 |
 | Date | 2026-10-19 |
 | Author | Keti Vrtunić (interview facilitated by "Iva", Staff Engineer persona) |
-| Traces to | `01-product-brief.md` v1.6 · `02-prd.md` v1.6 · `04-design-system.md` v1.5 · `05-api-integration-contract.md` v1.2 (all 2026-10-19) |
+| Traces to | `01-product-brief.md` v1.7 · `02-prd.md` v1.7 · `04-design-system.md` v1.6 · `05-api-integration-contract.md` v1.3 (all 2026-10-19) |
 | Status | Draft — awaiting owner review (Data Model in particular) |
 
 **Change log**
@@ -23,22 +23,24 @@
 | 1.4 | 2026-10-19 | OQ-13: `r2_deletion_queue`, `payment_webhook_events`, `subscriptions.last_notice_days`, nullable `created_by` (on delete set null), unique indexes for meal schedule and dose logs. |
 | 1.5 | 2026-10-19 | Change requests from the Build Plan: ADR-15 test strategy, ADR-16 repository and folder layout. |
 | 1.6 | 2026-10-19 | Owner-approved change requests CR-01 … CR-20 (Build Plan review): ADR-17 approved libraries; ADR-18 no edge caching of public pages (reverses the 5-minute cache); Next.js 16.x pinned and request-interception file rule (ADR-01); ADR-10 amended (no preview deployments, CI applies migrations); ADR-11 cities seed; ADR-13 backup and export mechanics; ADR-16 amended (`lib/server/`, `scripts/`, `public/sw.js`, page + client files); tables `idempotency_keys` and `rate_limit_counters`; `TERMS_VERSION` constant; database error format; §8.1 environment variables; pg_cron → `pg_net` dispatch via Vault secrets. |
+| 1.7 | 2026-10-19 | CAP-08 "Šapa pomoći" (Brief v1.7, PRD v1.7): new §5.10 with `listings`, `listing_photos`, `conversations`, `messages`, `user_blocks`, `reports`; new columns `profiles.display_name`, `profiles.marketplace_suspended_at`, `organisations.donation_bank_account`, `donation_url`, `dropoff_address`, `dropoff_hours`; `reminder_preferences.type` gains `message`; §5.8 now 34 entities; daily listing expiry job (§8); NFR-11 target (§7); non-goals for real-time chat and in-app donation/sale payments (§9); RISK-31, RISK-32. |
 
 ---
 
 ## 1. Executive Summary
 
-This document defines how Moj Ljubimac is built: thirteen architecture decisions, the physical data model for every PRD entity, the third-party services, and the technical path to every PRD non-functional requirement. The architecture is a single Next.js application hosted on Cloudflare, backed by one Supabase project (Postgres, Auth, scheduled jobs) with files on Cloudflare R2, a once-per-minute database job dispatching reminders by email (Resend), web push, WhatsApp, and (when switched on) Viber, and subscriptions charged through Monri. Every choice is sized for one builder and a running budget of about €20/month. It traces to Brief v1.5 and PRD v1.3.
+This document defines how Moj Ljubimac is built: thirteen architecture decisions, the physical data model for every PRD entity, the third-party services, and the technical path to every PRD non-functional requirement. The architecture is a single Next.js application hosted on Cloudflare, backed by one Supabase project (Postgres, Auth, scheduled jobs) with files on Cloudflare R2, a once-per-minute database job dispatching reminders by email (Resend), web push, WhatsApp, and (when switched on) Viber, and subscriptions charged through Monri. Every choice is sized for one builder and a running budget of about €20/month. It traces to Brief v1.5 and PRD v1.3; v1.7 adds the Šapa pomoći community board (§5.10) from Brief v1.7 and PRD v1.7.
 
 ---
 
-## 2. Inherited Context (from Brief v1.5 & PRD v1.3)
+## 2. Inherited Context (from Brief v1.5 & PRD v1.3; CAP-08 from Brief v1.7 & PRD v1.7)
 
 - **Constraints:** web only; one person builds and operates; no deadline; running costs ≈ €20/month; Serbian (Latin) and English; public launch waits for a registered business and a domestic card-processing contract.
 - **North-star:** active reminded pets (≥ 1 delivered reminder in the trailing 30 days) — the reminder pipeline is the most reliability-critical path.
-- **Epics:** EPIC-01 Pet Health Record · EPIC-02 Care Log & Moments · EPIC-03 Reminders · EPIC-04 Household Sharing · EPIC-05 Accounts & Subscriptions · EPIC-06 Organisation Accounts · EPIC-07 Local Partners.
-- **Domain entities (PRD §4):** User, Subscription, Household, Household Membership, Pet, Organisation, Organisation Membership, Weight Entry, Vaccination, Treatment, Dose Log, Vet Visit, Attachment, Feeding Entry, Stool Entry, Moment, Moment Photo, Public Link, Memorial Record, Reminder, Reminder Delivery, Intake, Adoption Request, Litter, Breeder Inquiry, Record Transfer, Partner, Partner Click.
-- **NFRs:** NFR-01 … NFR-10 (PRD §10).
+- **Epics:** EPIC-01 Pet Health Record · EPIC-02 Care Log & Moments · EPIC-03 Reminders · EPIC-04 Household Sharing · EPIC-05 Accounts & Subscriptions · EPIC-06 Organisation Accounts · EPIC-07 Local Partners · EPIC-08 Šapa pomoći (v1.7).
+- **Domain entities (PRD §4):** User, Subscription, Household, Household Membership, Pet, Organisation, Organisation Membership, Weight Entry, Vaccination, Treatment, Dose Log, Vet Visit, Attachment, Feeding Entry, Stool Entry, Moment, Moment Photo, Public Link, Memorial Record, Reminder, Reminder Delivery, Intake, Adoption Request, Litter, Breeder Inquiry, Record Transfer, Partner, Partner Click; v1.7: Listing, Listing Photo, Conversation, Message, User Block, Report.
+- **NFRs:** NFR-01 … NFR-11 (PRD §10; NFR-11 no real-time messaging, v1.7).
+- **Šapa pomoći rules (PRD v1.7):** listing types and permissions (BR-54), Free limit of 3 active listings and ≤ 5 photos (BR-55), 30-day expiry with a reminder 3 days before and extension (BR-56), price or "po dogovoru" (BR-57), no money through the product (BR-58), blocking (BR-59), suspension (BR-60), one conversation per listing and interested user (BR-61).
 
 **Change requests raised in this interview and applied upstream**
 - Apple sign-in deferred beyond v1 (requires a paid Apple Developer account) → PRD v1.2.
@@ -251,6 +253,8 @@ Postgres (Supabase). Conventions for every table unless stated otherwise:
 | deletion_due_at | timestamptz | `deletion_requested_at + 30 days`; indexed for the nightly job |
 | terms_accepted_at | timestamptz | not null; set at registration |
 | terms_version | text | not null; version of terms accepted — registration stores the `TERMS_VERSION` constant from `lib/legal.ts` (v1.6, CR-09) |
+| display_name | text | v1.7; nickname shown on the public profile and in conversations (FR-67); check `char_length` 2–40; when null the app shows `full_name` |
+| marketplace_suspended_at | timestamptz | v1.7; null unless the Operator suspended the user from Šapa pomoći (FR-71, BR-60) |
 
 **subscriptions** (Subscription)
 | Column | Type | Notes |
@@ -336,6 +340,11 @@ Postgres (Supabase). Conventions for every table unless stated otherwise:
 | phone, email, website | text | public contact details |
 | logo_r2_key | text | |
 | created_by | uuid FK → profiles | |
+| donation_bank_account | text | v1.7; shelters only; shown by "Doniraj" (FR-66, FR-72) |
+| donation_url | text | v1.7; payment link; check `donation_url ~ '^https://'` |
+| dropoff_address | text | v1.7; drop-off address for item donations |
+| dropoff_hours | text | v1.7; free text, e.g. "pon–pet 10–16h" |
+- Donation columns are readable only by signed-in users (EP-78), never through the public page query (EP-24); only an organisation Admin may update them (FR-72).
 
 **organisation_memberships** (Organisation Membership)
 | Column | Type | Notes |
@@ -478,11 +487,12 @@ Postgres (Supabase). Conventions for every table unless stated otherwise:
 | Column | Type | Notes |
 |---|---|---|
 | user_id | uuid FK → profiles | |
-| type | same enum as `reminders.type` | |
-| lead_minutes | integer[] | e.g. {10080, 0}; ignored for `treatment_dose` and `meal` |
+| type | enum `preference_type`: the values of `reminders.type` plus `message` (v1.7) | `message` holds the new-message notification switch (FR-69); it has no reminders or occurrences |
+| lead_minutes | integer[] | e.g. {10080, 0}; ignored for `treatment_dose`, `meal`, and `message` |
 | delivery_time | time | time of day for lead-time notices |
 | channels | enum[] | subset of email/push/whatsapp/viber |
 - Unique (`user_id`, `type`).
+- For `type = 'message'`: check `channels <@ '{email,push}'`; default row `{email, push}` created with the profile (FR-69); an empty array switches notifications off.
 
 **push_subscriptions** — technical necessity: browser endpoints for Web Push (ADR-05) — `user_id` FK, `endpoint text unique`, `p256dh text`, `auth text`, `user_agent text`.
 
@@ -599,14 +609,109 @@ Triggers and RPC functions that reject a write raise an exception whose `MESSAGE
 | Record Transfer | record_transfers |
 | Partner | partners |
 | Partner Click | partner_clicks |
+| Listing | listings |
+| Listing Photo | listing_photos |
+| Conversation | conversations |
+| Message | messages |
+| User Block | user_blocks |
+| Report | reports |
 
-All 28 PRD entities map to exactly one table. Additional technical tables: `idempotency_keys`, `rate_limit_counters`, `r2_deletion_queue`, `payment_webhook_events`, `data_exports`, `organisation_invitations`, `partner_hours`, `subscription_payments`, `plans`, `household_invitations`, `household_pets` (many-to-many join), `reminder_occurrences`, `reminder_preferences`, `push_subscriptions`, `user_channels`, `app_settings`, `pet_status_history`, `cities`.
+All 34 PRD entities map to exactly one table. Additional technical tables: `idempotency_keys`, `rate_limit_counters`, `r2_deletion_queue`, `payment_webhook_events`, `data_exports`, `organisation_invitations`, `partner_hours`, `subscription_payments`, `plans`, `household_invitations`, `household_pets` (many-to-many join), `reminder_occurrences`, `reminder_preferences`, `push_subscriptions`, `user_channels`, `app_settings`, `pet_status_history`, `cities`.
 
 ### 5.9 Deletion and retention jobs
 - **Nightly:** permanently delete accounts whose `deletion_due_at` has passed — database rows and their R2 files (BR-31, NFR-06); transfer household ownership first (BR-27).
 - **Nightly:** purge `reminder_deliveries` older than 12 months (NFR-08); expire unaccepted invitations and transfers.
 - **Nightly:** purge `idempotency_keys` older than 24 hours and `rate_limit_counters` whose window has ended.
 - **Pet deletion (FR-13):** cascade deletes rows; R2 keys are queued and removed by the same nightly job.
+- **Daily (v1.7):** listing expiry job (EP-87) — sends the 3-day expiry notice and sets `listings.status = 'expired'` where `expires_at` has passed (FR-65, BR-56). Listing deletion (FR-64) and account deletion cascade to listings, photos, conversations, and messages; photo R2 keys are queued.
+
+### 5.10 Šapa pomoći (v1.7)
+
+Community listings, 1:1 messaging, blocking, and reports (CAP-08, FR-61 … FR-72). Shared enums: `listing_type` (`need` / `giving` / `selling` / `seeking`), `listing_category` (`food` / `equipment_toys` / `furniture` / `carriers` / `medicine_care` / `other`), `listing_species` (`dog` / `cat` / `other`), `listing_status` (`active` / `resolved` / `expired` / `hidden`), `listing_outcome` (`given` / `sold` / `donated` / `found`), `report_reason` (`spam` / `scam` / `inappropriate` / `animal_welfare` / `other`), `report_status` (`open` / `actioned` / `dismissed`).
+
+**listings** (Listing)
+| Column | Type | Notes |
+|---|---|---|
+| author_id | uuid FK → profiles | not null; on delete cascade |
+| organisation_id | uuid FK → organisations | set only for `need` (the shelter); on delete cascade; check `(type = 'need') = (organisation_id is not null)` |
+| type | enum `listing_type` | not null (BR-54) |
+| title | text | not null; check `char_length` 1–80 |
+| description | text | not null; check `char_length` 1–2000 |
+| category | enum `listing_category` | not null; check `category <> 'medicine_care' or type = 'need'` (BR-54) |
+| species | enum `listing_species` | not null |
+| city_id | uuid FK → cities | not null |
+| price_minor | integer | RSD para; selling only; check `> 0` |
+| price_negotiable | boolean | not null default false; "po dogovoru" (BR-57) |
+| status | enum `listing_status` | not null default `active` |
+| resolved_outcome | enum `listing_outcome` | check `(status = 'resolved') = (resolved_outcome is not null)` |
+| published_at | timestamptz | not null default now() |
+| expires_at | timestamptz | not null; `published_at + 30 days` on insert; extend sets `now() + 30 days` (BR-56) |
+| expiry_notice_sent_at | timestamptz | set by the expiry job when the 3-day notice is sent; cleared on extend so a re-run never double-sends |
+| created_at, updated_at | timestamptz | conventions |
+- Price check (BR-57): `type = 'selling'` requires exactly one of `price_minor is not null`, `price_negotiable = true`; other types require `price_minor is null and price_negotiable = false`.
+- Indexes: partial (`published_at desc`) where `status = 'active'` — public list, newest first (EP-73); partial (`city_id`, `type`, `category`, `species`, `published_at desc`) where `status = 'active'` — filtered list; (`author_id`, `status`) — Free limit count and "Moje objave" (EP-76); partial (`expires_at`) where `status = 'active'` — expiry job (EP-87); (`organisation_id`) where not null.
+- Restore after hide (FR-71): status returns to `active` if `expires_at > now()`, otherwise `expired`.
+
+**listing_photos** (Listing Photo) — `listing_id` FK (cascade), `r2_key text not null`, `position smallint not null check between 1 and 5`; unique (`listing_id`, `position`), which caps a listing at 5 photos (BR-55). Uploaded through EP-13 with purpose `listing_photo`; keys go to `r2_deletion_queue` on delete.
+
+**conversations** (Conversation)
+| Column | Type | Notes |
+|---|---|---|
+| listing_id | uuid FK → listings | on delete set null — the conversation survives deletion of the listing and shows "listing deleted" (FR-64, BR-61) |
+| starter_id | uuid FK → profiles | not null; the interested user; on delete cascade |
+| owner_id | uuid FK → profiles | not null; the listing's author at creation; on delete cascade; check `starter_id <> owner_id` (`cannot_message_self`) |
+| last_message_at | timestamptz | not null; updated by trigger on every message insert |
+- Unique (`listing_id`, `starter_id`) (BR-61).
+- Indexes: (`starter_id`, `last_message_at desc`) and (`owner_id`, `last_message_at desc`) — inbox (EP-80).
+
+**messages** (Message)
+| Column | Type | Notes |
+|---|---|---|
+| conversation_id | uuid FK → conversations | not null; on delete cascade |
+| sender_id | uuid FK → profiles | not null; must be the conversation's `starter_id` or `owner_id`; on delete cascade |
+| body | text | not null; check `char_length(btrim(body))` 1–2000 (FR-68) |
+| created_at | timestamptz | not null default now() |
+| read_at | timestamptz | null until the recipient opens the conversation (EP-83) |
+- No `updated_at`: messages cannot be edited.
+- Indexes: (`conversation_id`, `created_at`) — thread, newest last (EP-81); partial (`conversation_id`) where `read_at is null` — unread counts (EP-80).
+
+**user_blocks** (User Block) — `blocker_id` FK → profiles (cascade), `blocked_id` FK → profiles (cascade), `created_at`; unique (`blocker_id`, `blocked_id`); check `blocker_id <> blocked_id`. Index (`blocked_id`) for the message trigger. No `updated_at`.
+
+**reports** (Report)
+| Column | Type | Notes |
+|---|---|---|
+| reporter_id | uuid FK → profiles | on delete set null; not null at creation (trigger) |
+| listing_id | uuid FK → listings | nullable; on delete set null |
+| reported_user_id | uuid FK → profiles | nullable; on delete set null; set to the author when a listing is reported |
+| reason | enum `report_reason` | not null |
+| note | text | check `char_length ≤ 500`; required when `reason = 'other'` |
+| status | enum `report_status` | not null default `open` |
+| handled_by | uuid FK → profiles | Operator; on delete set null |
+| handled_at | timestamptz | set with `actioned` / `dismissed` |
+- Check: `listing_id is not null or reported_user_id is not null` at creation.
+- Unique partial indexes: (`reporter_id`, `listing_id`) where `status = 'open' and listing_id is not null`; (`reporter_id`, `reported_user_id`) where `status = 'open' and listing_id is null` — one open report per target (FR-70).
+- Index (`status`, `created_at`) — moderation queue, oldest first (EP-86).
+
+**Triggers** (errors use the §5.7.1 format; codes in API Contract §7.1)
+- `listings_active_limit` — before insert, and before update that sets `status = 'active'` (extend from `expired`, restore): when `type <> 'need'`, the author has no active Premium and `account_type <> 'shelter'`, and the author already has 3 rows with `status = 'active'`, raise `premium_required:listings` (BR-55).
+- `listings_need_shelter_only` — before insert/update: `type = 'need'` requires `organisation_id` to be an `approved` organisation of type `shelter` in which the author has a membership; otherwise raise `listing_type_not_allowed` (BR-54).
+- `medicine_care` only for needs — enforced by the check on `listings.category` above; violations map to `listing_type_not_allowed`.
+- `listing_photos_max` — before insert: more than 5 photos per listing raises `validation_failed` (backs the position check, BR-55).
+- `conversations_listing_active` — before insert: the listing must have `status = 'active'` (`listing_not_active`), `owner_id` is set from the listing's author, and `starter_id <> owner_id` (`cannot_message_self`) (BR-61).
+- `messages_not_blocked` — before insert: if the other party has a `user_blocks` row blocking the sender, raise `user_blocked` (BR-59).
+- `marketplace_not_suspended` — before insert on `listings` and `messages`, and before update on `listings` by the author: if the author/sender has `marketplace_suspended_at` set, raise `marketplace_suspended` (BR-60).
+- `messages_touch_conversation` — after insert on `messages`: set `conversations.last_message_at = new.created_at`.
+- `listing_photos` and `listings` delete → enqueue `r2_key` values in `r2_deletion_queue` (ADR-07).
+
+**Row Level Security**
+- `listings`, `listing_photos`: anonymous and signed-in `select` where `status = 'active'` and the author's `marketplace_suspended_at is null` (FR-61, FR-62, BR-60); the author selects all of their own rows; the Operator selects all. The "hide blocked authors" filter (BR-59) is applied in the list query (EP-73) for signed-in users. Insert/update/delete only by the author; `status = 'hidden'` and restore only by the Operator.
+- Public profile (FR-67): exposed only through a `security definer` function returning `id`, `display_name` (or `full_name`), city, `created_at`, and active listings — never `email` or any phone (EP-79); `profiles` RLS is unchanged.
+- `conversations`, `messages`: `select` only for `starter_id` and `owner_id`; `messages` insert only with `sender_id = auth.uid()` and the sender a party; `read_at` updated only by the recipient. The Operator has no read access to messages in v1; reports carry the reporter's note.
+- `user_blocks`: the blocker selects, inserts, and deletes their own rows; the blocked user cannot see them.
+- `reports`: insert by any signed-in user with `reporter_id = auth.uid()`; the reporter selects their own; the Operator selects and updates all.
+- Donation columns on `organisations`: read through EP-78 for signed-in users only; updated only by an organisation Admin (FR-72).
+
+**Notifications** — EP-82 sends the new-message email (Resend) and push (`push_subscriptions`) as a side effect, following the recipient's `reminder_preferences` row of type `message` (FR-69). No WhatsApp or Viber. Listing expiry notices and expired, hidden, and suspension emails are always sent by email (Design §9.1 templates `listing_expiring`, `listing_expired`, `listing_hidden`, `marketplace_suspended`).
 
 ---
 
@@ -616,9 +721,9 @@ All 28 PRD entities map to exactly one table. Additional technical tables: `idem
 |---|---|---|
 | Database, auth, scheduled jobs (all epics) | Supabase (Free plan at launch) | ADR-01, ADR-02, ADR-03, ADR-04, ADR-06 |
 | App hosting | Cloudflare Workers | ADR-03 |
-| Files: attachments, photos, logos, backups, data archives (FR-08, FR-17, FR-41, FR-54) | Cloudflare R2 | ADR-07, ADR-13 |
-| Email reminders and transactional email (FR-23, FR-26, FR-47, FR-49, FR-50, FR-25) | Resend | ADR-08 |
-| Push reminders (FR-23) | Web Push (VAPID) — no third party | ADR-05 |
+| Files: attachments, photos, logos, backups, data archives (FR-08, FR-17, FR-41, FR-54, FR-63) | Cloudflare R2 | ADR-07, ADR-13 |
+| Email reminders and transactional email (FR-23, FR-26, FR-47, FR-49, FR-50, FR-25, FR-65, FR-69, FR-71) | Resend | ADR-08 |
+| Push reminders and new-message notifications (FR-23, FR-69) | Web Push (VAPID) — no third party | ADR-05 |
 | WhatsApp reminders (FR-23, Premium) | WhatsApp Business Platform (Meta Cloud API), utility message templates | Billed per delivered message (Serbia is in the "Rest of Central & Eastern Europe" rate group); bounded by the 30/month cap (BR-14a). Chosen over a reseller to avoid a markup. |
 | Viber reminders (FR-23, Premium) | Viber chatbot | Fixed €100/month per bot plus per-message fees; built but switched off until revenue covers it (BR-14b). |
 | Google sign-in (FR-33) | Google OAuth via Supabase Auth | ADR-06 |
@@ -643,6 +748,7 @@ All 28 PRD entities map to exactly one table. Additional technical tables: `idem
 | NFR-08 Delivery history 12 months | Nightly purge of `reminder_deliveries` older than 12 months | No delivery row older than 12 months + 1 day |
 | NFR-09 Attachments ≤ 10 MB | Size and type checked in the browser before upload and enforced by a database check | Uploads > 10 MB or of other types are rejected in both places |
 | NFR-10 Running costs ≤ €20/month | Free tiers (ADR-03, ADR-07, ADR-08), Viber off (BR-14b), WhatsApp capped (BR-14a) | Monthly invoices total ≤ €20 until Premium revenue funds upgrades |
+| NFR-11 No real-time messaging | Inbox, threads, and unread counts are read on each page load (EP-80, EP-81); no WebSockets, Supabase Realtime, or polling loops | A message sent by one user appears for the other after a page load or refresh; no live connection is opened by any page |
 
 ---
 
@@ -652,8 +758,8 @@ All 28 PRD entities map to exactly one table. Additional technical tables: `idem
 - **Production:** Cloudflare Workers + Supabase project + R2 bucket + Resend domain.
 - **No staging and no preview deployments** (ADR-10, amended v1.6). Non-`main` branches run CI only.
 - **CI/CD:** on every push, type-check, lint, tests, and build run. On a push to `main` that passes, CI applies pending migrations to production (`supabase db push`) and then deploys the app to Cloudflare. Database changes are versioned migration files in `supabase/migrations/`.
-- **Scheduled jobs:** pg_cron (every minute: reminder dispatch and 30-minute re-send; every 5 minutes: data export archives (ADR-13); nightly: occurrence generation — scheduled in the reminders build step — deletions, retention, idempotency/rate-limit purge, invitation/transfer expiry, subscription renewals and expiry notices). GitHub Actions nightly: database backup to the R2 backup bucket (14-day retention, ADR-13).
-- **pg_cron → app calls (v1.6, CR-15):** pg_cron calls the app's internal routes (reminder dispatch, `/api/internal/exports`) through `pg_net`, reading the target URL and the shared secret from Supabase Vault secrets `dispatch_url` and `dispatch_secret`, set per environment; the route rejects requests without a matching `DISPATCH_SECRET`. Locally, pg_cron can be disabled and dispatch run manually.
+- **Scheduled jobs:** pg_cron (every minute: reminder dispatch and 30-minute re-send; every 5 minutes: data export archives (ADR-13); nightly: occurrence generation — scheduled in the reminders build step — deletions, retention, idempotency/rate-limit purge, invitation/transfer expiry, subscription renewals and expiry notices; daily (v1.7): listing expiry job EP-87 — 3-day expiry notices and expiry of listings past `expires_at`, at 09:00 Europe/Belgrade so emails arrive in the morning). GitHub Actions nightly: database backup to the R2 backup bucket (14-day retention, ADR-13).
+- **pg_cron → app calls (v1.6, CR-15):** pg_cron calls the app's internal routes (reminder dispatch, `/api/internal/exports`, and from v1.7 the listing expiry job EP-87) through `pg_net`, reading the target URL and the shared secret from Supabase Vault secrets `dispatch_url` and `dispatch_secret`, set per environment; the route rejects requests without a matching `DISPATCH_SECRET`. Locally, pg_cron can be disabled and dispatch run manually.
 
 ### 8.1 Environment variables and secrets (v1.6, CR-03)
 
@@ -708,6 +814,8 @@ All 28 PRD entities map to exactly one table. Additional technical tables: `idem
 | Apple sign-in | Requires a paid Apple Developer account (ADR-06). |
 | Storing card data | Only Monri token references are kept (ADR-09). |
 | Native mobile apps | Brief §10. |
+| Real-time chat for Šapa pomoći (v1.7) | Messages and unread counts appear on the next page load or refresh (NFR-11); no WebSockets or Supabase Realtime, which would add connection limits and cost on the Free plans. |
+| In-app payments for donations or sales (v1.7) | Money never passes through the product (BR-58, Brief §10); "Doniraj" only shows the shelter's donation info. |
 
 ---
 
@@ -722,6 +830,8 @@ All 28 PRD entities map to exactly one table. Additional technical tables: `idem
 | RISK-15 | Email free-tier limits on Resend are exceeded as users grow. | Medium | Monitor daily volume; paid tier when revenue allows. |
 | RISK-16 | The chosen acquiring bank does not approve merchant-initiated (recurring) charges. | High | Ask about MIT approval before signing; otherwise fall back to manual renewal via a PRD change. |
 | RISK-17 | WhatsApp per-message cost, now also charged inside the service window, rises with Premium growth. | Low | 30-message monthly cap per user (BR-14a); review the cap against revenue quarterly. |
+| RISK-31 | New-message emails (FR-69) and listing expiry emails (FR-65) multiply Resend volume and push it past the free-tier limits sooner (compounds RISK-15). | Medium | Users can switch message notifications off per channel; rate limit on sending messages (API EP-82); monitor daily email volume and move message notifications to push-first if needed. |
+| RISK-32 | Listing photos and message history grow R2 storage and the Supabase Free database size (compounds RISK-12). | Low | ≤ 5 photos per listing; Free limit of 3 active listings; photos removed with deleted listings via `r2_deletion_queue`; text-only messages ≤ 2,000 characters; monitor size monthly. |
 
 ---
 
@@ -753,6 +863,8 @@ _No technical assumptions were recorded during this interview._
 | R2 key | The identifier of a file stored on Cloudflare R2. |
 | Operator switch | A setting only the Operator can change, e.g. turning the Viber channel on. |
 | Preview link | A temporary deployment of a non-`main` branch — not used in v1 (ADR-10, amended v1.6). |
+| Listing expiry job | The daily scheduled job (EP-87) that sends 3-day expiry notices and expires listings past `expires_at` (v1.7). |
+| Marketplace suspension | `profiles.marketplace_suspended_at` set by the Operator; blocks listing and message writes for that user only (v1.7). |
 
 ---
 

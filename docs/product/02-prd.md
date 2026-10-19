@@ -6,10 +6,10 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 02 — Product Requirements Document |
-| Version | 1.6 |
+| Version | 1.7 |
 | Date | 2026-10-19 |
 | Author | Keti Vrtunić (interview facilitated by "Đura", Senior PM persona) |
-| Traces to | `01-product-brief.md` v1.6 (2026-10-19); downstream: Technical Constraints v1.6 · Design System v1.5 · API Contract v1.2 |
+| Traces to | `01-product-brief.md` v1.7 (2026-10-19); downstream: Technical Constraints v1.7 · Design System v1.6 · API Contract v1.3 |
 | Status | Draft — awaiting owner review |
 
 **Change log**
@@ -23,19 +23,20 @@
 | 1.4 | 2026-10-19 | Pet hotels (boarding) added as a partner type (Brief v1.6): FR-52, FR-54, FR-56, BR-43. |
 | 1.5 | 2026-10-19 | FR-59 pet search; FR-21 covers editing and deleting manual reminders; FR-34 covers password reset; BR-46 organisation ownership when the last admin leaves; FR-60 organisation public profile editing; defaults confirmed in API Contract OQ-12 recorded as BR-47 … BR-52. |
 | 1.6 | 2026-10-19 | Owner-approved change requests from the Build Plan review: CR-23 requirement count corrected to 60 (FR-01 … FR-60) in §1, §11 and Release Criterion 1; CR-18 BR-53 — a person invited to an organisation team keeps their own account type. |
+| 1.7 | 2026-10-19 | New EPIC-08 / CAP-08 "Šapa pomoći" (Brief v1.7): FR-61 … FR-72, UC-11 … UC-13, BR-54 … BR-61, E-28 … E-35, NFR-11, OQ-16; six new domain entities (Listing, ListingPhoto, Conversation, Message, UserBlock, Report). Requirement count now 72 (§1, §11, Release Criterion 1); Release Criterion 6 includes moderation. |
 
 ---
 
 ## 1. Executive Summary
 
-This PRD turns the seven v1 capabilities of the Moj Ljubimac Product Brief (v1.4) into 60 testable functional requirements (FR-01 … FR-60), grouped into seven epics: the pet health record, care log and moments, multi-channel reminders, household sharing, accounts and subscriptions, shelter and breeder organisation accounts, and local partners with an operator admin area. Each requirement carries a user story, Given/When/Then acceptance criteria, and a priority. The owner chose a single public launch with all seven capabilities complete, so every requirement is P0. During the interview, four Brief change requests were raised and applied to the Brief (v1.2 to v1.4).
+This PRD turns the eight v1 capabilities of the Moj Ljubimac Product Brief (v1.7) into 72 testable functional requirements (FR-01 … FR-72), grouped into eight epics: the pet health record, care log and moments, multi-channel reminders, household sharing, accounts and subscriptions, shelter and breeder organisation accounts, local partners with an operator admin area, and the "Šapa pomoći" community board with messaging and moderation. Each requirement carries a user story, Given/When/Then acceptance criteria, and a priority. The owner chose a single public launch with all eight capabilities complete, so every requirement is P0. During the interview, four Brief change requests were raised and applied to the Brief (v1.2 to v1.4).
 
 ---
 
 ## 2. Inherited Context (from Brief v1.4, 2026-10-19)
 
 - **Problem:** pet owners in Serbia have no single, reliable place for their pet's health history and routinely miss time-sensitive care (Brief §2, founder assumptions).
-- **Personas:** P1 Pet Owner (primary), P2 Household Member, P3 Animal Shelter (free), P4 Breeder (paid), P5 Partner (vet clinic, pet shop, grooming salon). Anti-personas: practice-management seekers, medical-advice seekers, retail-tooling seekers.
+- **Personas:** P1 Pet Owner (primary), P2 Household Member, P3 Animal Shelter (free), P4 Breeder (paid), P5 Partner (vet clinic, pet shop, grooming salon, pet hotel), P6 Community Member (any signed-in user posting or answering Šapa pomoći listings; Brief v1.7). Anti-personas: practice-management seekers, medical-advice seekers, retail-tooling seekers.
 - **North-star metric:** active reminded pets, meaning pets with ≥ 1 delivered reminder in the trailing 30 days.
 - **Constraints shaping priority:** web only; built and operated by one person; no deadline; running costs ≤ €20/month; Serbian (Latin) and English interface.
 
@@ -62,6 +63,7 @@ This PRD turns the seven v1 capabilities of the Moj Ljubimac Product Brief (v1.4
 | EPIC-05 | CAP-05 Accounts, Subscriptions & Data Control | Let users join, pay for Premium, and control their data. | P1, P2, P3, P4 |
 | EPIC-06 | CAP-06 Multi-Animal Organisation Accounts | Give shelters and breeders multi-animal management, adoption, litters, and record hand-over. | P3, P4 |
 | EPIC-07 | CAP-07 Local Partners | Connect owners with nearby paying partners and let the operator run the programme. | P1, P5, Operator |
+| EPIC-08 | CAP-08 Šapa pomoći | Let the community give, sell, seek, and donate pet items, talk 1:1 about a listing, and stay safe through reporting, blocking, and Operator moderation. | P6, P3, Visitor, Operator |
 
 ---
 
@@ -104,6 +106,17 @@ erDiagram
     USER ||--o{ BREEDER_INQUIRY : submits
     PET ||--o{ RECORD_TRANSFER : "is handed over via"
     PARTNER ||--o{ PARTNER_CLICK : records
+    USER ||--o{ LISTING : posts
+    ORGANISATION |o--o{ LISTING : "posts needs (shelter)"
+    LISTING ||--o{ LISTING_PHOTO : has
+    LISTING ||--o{ CONVERSATION : "is discussed in"
+    USER ||--o{ CONVERSATION : "starts (interested user)"
+    CONVERSATION ||--o{ MESSAGE : contains
+    USER ||--o{ MESSAGE : sends
+    USER ||--o{ USER_BLOCK : "blocks / is blocked"
+    USER ||--o{ REPORT : files
+    LISTING |o--o{ REPORT : "may be reported"
+    USER |o--o{ REPORT : "may be reported"
 ```
 
 **Notes**
@@ -111,6 +124,10 @@ erDiagram
 - An owner owns at most one household. A user may be a member of several households.
 - A pet belongs to exactly one owner account or one organisation. An organisation account has no personal pets.
 - A litter references a mother (required) and a father (optional), both pets of the same breeder.
+- A listing has exactly one author (a user) and at most 5 photos. A need listing also references the shelter organisation it is posted for; other types reference no organisation.
+- A conversation connects exactly two users — the listing's author and one interested user — about one listing; there is at most one conversation per listing and interested user (BR-61). Messages belong to one conversation.
+- A user block is a directed pair (blocker → blocked); each pair exists at most once.
+- A report targets a listing, a user, or both (a listing and its author), and is filed by a signed-in user.
 
 ---
 
@@ -125,6 +142,7 @@ erDiagram
 | CAP-05 | Accounts, Subscriptions & Data Control | EPIC-05 | FR-33 … FR-41 | ✅ Covered |
 | CAP-06 | Multi-Animal Organisation Accounts | EPIC-06 | FR-42 … FR-51, FR-60 | ✅ Covered |
 | CAP-07 | Local Partners | EPIC-07 | FR-52 … FR-58 | ✅ Covered |
+| CAP-08 | Šapa pomoći | EPIC-08 | FR-61 … FR-72 | ✅ Covered |
 
 ---
 
@@ -449,6 +467,103 @@ Fields: name\*, type\* (vet / pet shop / grooming salon / pet hotel), address\*,
 *As the Operator, I want click counts per partner and action, so that I can show partners their value.*
 - Given partner quick actions, Then each use of Call, Send message, Send email, and Visit website is counted per partner and shown in the admin area.
 
+### EPIC-08 / CAP-08 — Šapa pomoći
+
+**FR-61 — Browse listings**
+*As a Visitor or Community Member, I want to browse Šapa pomoći listings with filters, so that I find what I need or can help with.*
+Filters: type (need / giving / selling / seeking), category, species (dog / cat / other), city.
+- Given a Visitor who is not signed in, When they open Šapa pomoći, Then active listings are shown, newest first, in pages.
+- Given one or more filters, When applied, Then only active listings matching every selected filter are shown.
+- Given a listing that is resolved, expired, or hidden, or whose author is suspended from Šapa pomoći, Then it is not shown in the list.
+- Given a signed-in user who blocked another user, Then listings by the blocked user are not shown to them (BR-59).
+- Given no match, Then an empty result with a "clear filters" action is shown.
+
+**FR-62 — Listing detail**
+*As a Visitor or Community Member, I want to see a listing in full, so that I can decide whether to respond.*
+- Given an active listing, When anyone opens it (signed in or not), Then they see its photos, title, type, category, species, city, description, price in RSD or "po dogovoru" (selling only), posted date, expiry date, and an author card linking to the author's public profile (FR-67).
+- Given a need listing, Then a "Doniraj" button is shown (FR-66).
+- Given a listing that is not active, When opened by anyone other than its author or the Operator, Then a "listing is no longer available" message is shown instead of its content.
+- Given the listing's author, When they open it, Then edit, extend, mark resolved, and delete actions are shown instead of "Pošalji poruku".
+
+**FR-63 — Create a listing**
+*As a Community Member, I want to post a listing, so that I can give away, sell, seek, or (as a shelter) ask for what we need.*
+Fields: type\*, title\* (≤ 80 characters), description\* (≤ 2,000 characters), category\* (food / equipment and toys / furniture / carriers / medicine and care / other), species\* (dog / cat / other), city\*, price (selling only: amount in RSD or "po dogovoru"\*), up to 5 photos.
+- Given a signed-in user, When they save a giving, selling, or seeking listing with all required fields, Then it is published as active with an expiry date 30 days later.
+- Given a member of an approved shelter organisation, When they choose type "need", Then the listing is published for that shelter; Given any other user, Then "need" is not offered.
+- Given a listing whose type is not "need", When the category "medicine and care" is chosen, Then saving is blocked with a message.
+- Given a selling listing, When neither an amount nor "po dogovoru" is set, Then saving is blocked with a message.
+- Given a listing with 6 photos, When saving, Then saving is blocked with a message.
+- Given a Free user with 3 active listings, When they try to publish a 4th, Then it is blocked and a Premium offer is shown.
+- Given a Premium user, a user with a Shelter account, or any need listing, When publishing, Then there is no limit on active listings.
+
+**FR-64 — Manage my listings**
+*As a listing author, I want to edit, extend, resolve, or delete my listings, so that the board stays accurate.*
+- Given "Moje objave", Then the author sees all their listings grouped as active, resolved, and expired, each with its expiry date.
+- Given an active listing, When the author edits and saves it, Then the new values are shown and the expiry date does not change.
+- Given an active or expired listing, When the author taps "Produži", Then it is active with an expiry date 30 days from now.
+- Given an expired listing of a Free user who already has 3 active listings, When they extend it, Then it is blocked and a Premium offer is shown.
+- Given an active listing, When the author marks it resolved with an outcome (given / sold / donated / found), Then it leaves the public list and is shown as resolved with that outcome.
+- Given any of their listings, When the author confirms a single "Yes, delete" prompt, Then the listing and its photos are permanently removed; existing conversations remain readable and show "listing deleted".
+
+**FR-65 — Listing expiry**
+*As a listing author, I want my listings to expire unless I extend them, so that stale posts don't linger.*
+- Given an active listing, When 3 days remain before its expiry date, Then the author receives one email with a "Produži" button.
+- Given the email's "Produži" button, When the author uses it, Then the listing is extended as in FR-64.
+- Given an active listing whose expiry date has passed, Then it becomes expired, leaves the public list, and the author receives one email that it expired.
+
+**FR-66 — Donate to a shelter need**
+*As a Community Member, I want to see how to donate to a shelter's need, so that I can help directly.*
+- Given a signed-in user on a need listing, When they tap "Doniraj", Then the shelter's donation info is shown: bank account and/or payment link, drop-off address, and drop-off hours, as far as the shelter provided them (FR-72).
+- Given a Visitor who is not signed in, When they tap "Doniraj", Then they are asked to sign in or register and return to the listing afterwards.
+- Given a shelter with no donation info at all, Then "Doniraj" shows a message that the shelter has not added donation info yet, with "Pošalji poruku".
+- Given any donation, Then no money is collected or processed by the product (BR-58).
+
+**FR-67 — Public user profile**
+*As a Community Member, I want to see who posted a listing, so that I can judge whom I'm dealing with.*
+- Given any user's profile opened from a listing (signed in or not), Then it shows display name (nickname or name), city, member-since month and year, and the user's active listings.
+- Given any public profile, Then email address and phone number are never shown.
+- Given a shelter member's need listing, Then the author card shows the shelter's name and links to the shelter's public page.
+
+**FR-68 — Messaging**
+*As a Community Member, I want to message a listing's author inside the product, so that we can agree the details without sharing phone numbers.*
+- Given a signed-in user on an active listing they did not post, When they tap "Pošalji poruku" and send text, Then a conversation tied to that listing is created and the message is delivered to the author.
+- Given a user who already has a conversation about that listing, When they tap "Pošalji poruku" again, Then the existing conversation opens (BR-61).
+- Given the author of a listing, Then "Pošalji poruku" is not available on their own listing.
+- Given a Visitor who is not signed in, When they tap "Pošalji poruku", Then they are asked to sign in or register and return to the listing afterwards.
+- Given "Poruke", Then the inbox lists the user's conversations by latest message first, each with the listing title, the other user's display name, the last message, and an unread count; a total unread count is shown on the messages icon.
+- Given a conversation, When the user opens it, Then all messages are shown oldest to newest and the conversation's unread count becomes 0.
+- Given a message, Then it is text only, at most 2,000 characters; an empty message cannot be sent.
+
+**FR-69 — New-message notifications**
+*As a Community Member, I want to be told about a new message, so that I can answer without checking the product.*
+- Given a new message, When it is sent, Then the recipient receives an email and a push notification (if they enabled push on a device) with the sender's display name, the listing title, and a link to the conversation.
+- Given the "Poruke" card in reminder settings, When the user switches email or push off, Then new-message notifications are no longer sent on that channel.
+- Given a new user, Then new-message notifications are on for email and push by default.
+
+**FR-70 — Report and block**
+*As a Community Member, I want to report and block users, so that I'm protected from spam, scams, and abuse.*
+Report reasons: spam / scam / inappropriate content / animal welfare / other; note (≤ 500 characters, required for "other").
+- Given a signed-in user on a listing or a public profile, When they submit "Prijavi" with a reason, Then a report is recorded for the Operator and the user sees a confirmation.
+- Given a signed-in user, When they report the same listing or user again while their earlier report is open, Then the earlier report is shown as already submitted.
+- Given a signed-in user in a conversation or on a public profile, When they tap "Blokiraj" and confirm, Then the blocked user can no longer send them messages and the blocked user's listings are hidden from them.
+- Given a blocked user, When they try to send a message to the blocker, Then sending is refused with a message that the user cannot be contacted.
+- Given the blocker, When they unblock the user, Then messaging and listing visibility return to normal.
+
+**FR-71 — Operator moderation**
+*As the Operator, I want a moderation queue, so that I can act on reports quickly.*
+- Given the admin area's "Moderacija" tab, Then open reports are listed oldest first with reason, note, reporter, and the reported listing and/or user.
+- Given a reported listing, When the Operator hides it, Then it disappears from the public list and its detail, the report is marked actioned, and the author is emailed.
+- Given a reported user, When the Operator suspends them from Šapa pomoći, Then they cannot publish, edit, or extend listings or send messages, their listings are hidden, the report is marked actioned, and they are emailed.
+- Given a hidden listing or a suspended user, When the Operator restores it, Then the listing or the user's access and listings return to their previous state.
+- Given a report, When the Operator dismisses it, Then it is marked dismissed and nothing else changes.
+
+**FR-72 — Shelter donation info**
+*As a Shelter Admin, I want to enter our donation details, so that "Doniraj" tells people how to help.*
+Fields: bank account, payment link (https URL), drop-off address, drop-off hours — all optional.
+- Given a Shelter Admin on the organisation profile's "Donacije" section, When they save donation info, Then "Doniraj" on the shelter's need listings shows the new values.
+- Given a Volunteer, Then these fields are view-only.
+- Given a payment link that is not a valid https URL, When saving, Then saving is blocked with a message.
+
 ---
 
 ## 7. Use Cases
@@ -522,6 +637,27 @@ Fields: name\*, type\* (vet / pet shop / grooming salon / pet hotel), address\*,
 - **Main success scenario:** 1. Owner opens Partners or receives a vet suggestion (FR-52, FR-56). 2. Owner taps a quick action (FR-55). 3. The click is counted (FR-58).
 - **Alternate / exception flows:** E-22 (no location permission), E-23 (partner's paid-until passed), E-24 (partner missing a contact field).
 - **Postconditions:** owner contacted partner; operator sees the click.
+
+**UC-11 — Give away an item (CAP-08)**
+- **Actor:** P6 Community Member (author); P6 Community Member (interested user)
+- **Preconditions:** both signed in; the author is not suspended from Šapa pomoći.
+- **Main success scenario:** 1. Author publishes a giving listing with photos (FR-63). 2. Interested user finds it through filters (FR-61) and opens it (FR-62). 3. Interested user sends a message (FR-68); the author is notified by email and push (FR-69). 4. They agree the hand-over in the conversation. 5. Author marks the listing resolved as "given" (FR-64).
+- **Alternate / exception flows:** E-28 (Free author already has 3 active listings), E-30 (more than 5 photos), E-31 (listing expires before it is resolved), E-32 (interested user not signed in), E-34 (author has blocked the interested user).
+- **Postconditions:** listing resolved and off the public list; the conversation stays available to both users.
+
+**UC-12 — Donate to a shelter need (CAP-08)**
+- **Actor:** P3 Shelter (Admin or Volunteer); P6 Community Member
+- **Preconditions:** shelter approved by the Operator (FR-42); Shelter Admin has entered donation info (FR-72).
+- **Main success scenario:** 1. Shelter member publishes a need listing, e.g. "medicine and care" for cats (FR-63). 2. Community member opens it and taps "Doniraj" (FR-66). 3. They see the bank account, payment link, drop-off address, and hours, and donate outside the product. 4. Optionally they message the shelter to arrange a drop-off (FR-68). 5. Shelter marks the need resolved as "donated" (FR-64).
+- **Alternate / exception flows:** E-29 (non-shelter user tries "need" or "medicine and care"), E-32 (donor not signed in), FR-66 no-donation-info message.
+- **Postconditions:** no money passed through the product; the need is resolved.
+
+**UC-13 — Moderate a report (CAP-08)**
+- **Actor:** P6 Community Member (reporter); Operator
+- **Preconditions:** a listing or user has been reported (FR-70).
+- **Main success scenario:** 1. Reporter submits "Prijavi" with reason "scam" (FR-70). 2. Operator opens "Moderacija" and reviews the report (FR-71). 3. Operator hides the listing and suspends the author from Šapa pomoći. 4. The author is emailed; the report is marked actioned.
+- **Alternate / exception flows:** Operator dismisses the report (FR-71); Operator later restores the listing or user (FR-71); E-35 (suspended user tries to publish or message).
+- **Postconditions:** reported content no longer visible; report closed with the action recorded.
 
 ---
 
@@ -602,6 +738,16 @@ Fields: name\*, type\* (vet / pet shop / grooming salon / pet hotel), address\*,
 **Public moments**
 - BR-45: A public moment link shows only photos, text, and pet name; it can be disabled by the owner and is disabled automatically when the moment is deleted.
 
+**Šapa pomoći**
+- BR-54: Listing types are need, giving, selling, and seeking. Only members (Admin or Volunteer) of an approved shelter organisation may post needs, and a need is posted for that shelter; any signed-in user may post giving, selling, and seeking listings. The category "medicine and care" is allowed only for needs.
+- BR-55: A Free user may have at most 3 active listings at a time; Premium users and users with a Shelter account have no limit, and need listings never count toward or are stopped by the limit. Resolved, expired, and hidden listings do not count. A listing holds at most 5 photos.
+- BR-56: A listing expires 30 days after it is published. One reminder email is sent 3 days before expiry. The author may extend at any time ("Produži"), which sets the expiry to 30 days from that moment; extending an expired listing counts toward BR-55. Editing does not change the expiry date. Resolved outcomes: given, sold, donated, found.
+- BR-57: Only selling listings carry a price: an amount in whole RSD greater than 0, or "po dogovoru" (negotiable). Other types have no price.
+- BR-58: Money never passes through the product. "Doniraj" only shows the shelter's donation info (bank account, payment link, drop-off address, drop-off hours); sales are settled directly between the users.
+- BR-59: When user A blocks user B, B cannot send messages to A (in any conversation) and B's listings are hidden from A; A can unblock at any time. Blocking is not shown to B beyond the refusal to send.
+- BR-60: A user suspended from Šapa pomoći by the Operator cannot publish, extend, or edit listings or send messages; their listings are hidden from everyone; they can still read their existing conversations. The rest of the product is unaffected. Only the Operator can lift the suspension.
+- BR-61: There is at most one conversation per listing and interested user; new conversations can be started only on active listings, while existing conversations continue after the listing is resolved, expired, or deleted. A user cannot message their own listing. Public profiles never show email or phone.
+
 ---
 
 ## 9. Edge Cases & Error States
@@ -635,6 +781,14 @@ Fields: name\*, type\* (vet / pet shop / grooming salon / pet hotel), address\*,
 | E-25 | Free user tries PDF export or logo removal | Blocked, Premium offer | FR-10, FR-18 |
 | E-27 | Viber channel switched off by the Operator | Viber not offered as a channel | FR-23 |
 | E-26 | Free user tries to create a 2nd active pet | Blocked, Premium offer | FR-01 |
+| E-28 | Free user publishes or extends a listing while 3 are already active | Blocked, Premium offer | FR-63, FR-64 |
+| E-29 | User who is not a member of an approved shelter chooses "need", or "medicine and care" is chosen for a non-need listing | "Need" not offered; category blocked with message | FR-63 |
+| E-30 | Listing saved with 6 or more photos | Blocked with message | FR-63 |
+| E-31 | Active listing reaches its expiry date without being extended | Becomes expired, leaves the public list, author emailed; can be extended from "Moje objave" | FR-65, FR-64 |
+| E-32 | Visitor who is not signed in taps "Pošalji poruku" or "Doniraj" | Asked to sign in or register, then returned to the listing | FR-66, FR-68 |
+| E-33 | User tries to message their own listing, or start a conversation on a listing that is not active | Action not available | FR-68 |
+| E-34 | Blocked user tries to send a message to the blocker | Refused with a message that the user cannot be contacted; no notification sent | FR-70 |
+| E-35 | User suspended from Šapa pomoći tries to publish, extend, or message | Refused with a message; their listings stay hidden | FR-71 |
 
 ---
 
@@ -652,20 +806,21 @@ Fields: name\*, type\* (vet / pet shop / grooming salon / pet hotel), address\*,
 | NFR-08 | History of sent reminders is kept for 12 months. |
 | NFR-09 | Attachment size limit: 10 MB per file. |
 | NFR-10 | Running costs stay within €20/month (Brief §13). |
+| NFR-11 | Šapa pomoći messaging is not real-time: new messages and unread counts appear on the next page load or refresh; the product does not hold live connections. |
 
 ---
 
 ## 11. Prioritization
 
-The owner chose a **single public launch with all seven capabilities complete** (not wave-based). Therefore every requirement is **P0 / Must** for v1.
+The owner chose a **single public launch with all eight capabilities complete** (not wave-based). Therefore every requirement is **P0 / Must** for v1.
 
 | Priority | FRs | Count |
 |---|---|---|
-| P0 (Must) | FR-01 … FR-60 | 60 |
+| P0 (Must) | FR-01 … FR-72 | 72 |
 | P1 (Should) | — | 0 |
 | P2 (Could) | — | 0 |
 
-> ⚠️ **Mismatch with constraints:** 60 P0 requirements for a single builder with no deadline means launch only happens when everything is done (see RISK-08). Internal build order is decided in the Build Plan; it does not change the launch bar.
+> ⚠️ **Mismatch with constraints:** 72 P0 requirements for a single builder with no deadline means launch only happens when everything is done (see RISK-08). Internal build order is decided in the Build Plan; it does not change the launch bar.
 
 ---
 
@@ -673,18 +828,18 @@ The owner chose a **single public launch with all seven capabilities complete** 
 
 v1 is shippable when all of the following are true:
 
-1. All 60 P0 requirements (FR-01 … FR-60) are implemented and every acceptance criterion in §6 is verified.
+1. All 72 P0 requirements (FR-01 … FR-72) are implemented and every acceptance criterion in §6 is verified.
 2. Payments are tested end to end: trial, renewal, cancellation, expiry, downgrade, and breeder plan.
 3. Account deletion (with grace period) and full data download work.
 4. Privacy policy and terms of use are published at public URLs, in Serbian and English.
 5. Delivered reminders are counted, so the north-star metric can be measured from day one.
-6. The operator admin area works: shelter approval, partner management, paid-until hiding, click statistics.
+6. The operator admin area works: shelter approval, partner management, paid-until hiding, click statistics, and Šapa pomoći moderation (hide, suspend, restore, dismiss).
 
 ---
 
 ## 13. Assumptions
 
-_No new assumptions were recorded during this interview. Brief assumptions ASM-01 … ASM-09 remain authoritative._
+_No new assumptions were recorded during this interview. Brief assumptions ASM-01 … ASM-10 remain authoritative (ASM-10 added with CAP-08 in Brief v1.7)._
 
 ---
 
@@ -692,7 +847,7 @@ _No new assumptions were recorded during this interview. Brief assumptions ASM-0
 
 | ID | Risk | Severity | Mitigation idea |
 |---|---|---|---|
-| RISK-08 | Single big-bang launch with 60 P0 requirements delays any user feedback and any revenue until everything is built. | High | Build in internal waves (Build Plan) and run private testing with a small group before the public launch. |
+| RISK-08 | Single big-bang launch with 72 P0 requirements delays any user feedback and any revenue until everything is built. | High | Build in internal waves (Build Plan) and run private testing with a small group before the public launch. |
 | RISK-09 | Push notifications to a web product on iPhone work only after the user saves the site to the home screen, so iPhone users may expect push that never arrives. | Medium | Explain this to iPhone users when they choose push; email remains available to everyone. |
 | RISK-10 | Organisation features (adoption, litters, transfers, public pages, approvals) roughly double the product surface for segments with unvalidated demand (ASM-05, ASM-06). | Medium | Pilot with one shelter and one breeder during private testing. |
 
@@ -708,6 +863,7 @@ _No new assumptions were recorded during this interview. Brief assumptions ASM-0
 | OQ-06 | PRD | ✅ Resolved (v1.1): several channels may be selected per reminder type. | — |
 | OQ-07 | PRD | ✅ Resolved (v1.1): household becomes read-only until the new owner has Premium. | — |
 | OQ-08 | PRD | ✅ Resolved (v1.1): Available → Reserved → Sold; accepting an inquiry sets Reserved. | — |
+| OQ-16 | PRD (v1.7) | `[NEEDS CLARIFICATION]` Does an active breeder plan lift the Free limit of 3 active listings (BR-55)? Default until answered: no — only owner Premium and Shelter accounts are unlimited. | No |
 
 ---
 
@@ -736,6 +892,13 @@ Terms already defined in Brief §15 remain authoritative.
 | Featured partner | A partner shown at the top of its type in its city (max 3). |
 | Paid-until date | Date after which a partner is automatically hidden. |
 | Operator admin area | The owner's internal area for approving shelters and managing partners. |
+| Active listing | A Šapa pomoći listing that is published, not yet expired, resolved, or hidden; counts toward the Free limit of 3. |
+| Resolved listing | A listing its author closed with an outcome: given, sold, donated, or found. |
+| Expired listing | A listing whose 30-day period passed without extension; hidden from the public list, can be extended. |
+| Display name | The nickname or name shown on a user's public profile and in conversations. |
+| Inbox ("Poruke") | The list of a user's conversations with unread counts. |
+| Suspension (Šapa pomoći) | Operator action that stops a user from publishing and messaging and hides their listings. |
+| Moderation queue ("Moderacija") | The admin-area list of open reports. |
 
 ---
 
