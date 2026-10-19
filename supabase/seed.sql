@@ -102,3 +102,71 @@ join public.cities c on c.name_sr = o.city;
 insert into public.organisation_memberships (organisation_id, user_id, role) values
   ('b2000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000004', 'admin'),
   ('b2000000-0000-4000-8000-000000000002', 'a1000000-0000-4000-8000-000000000005', 'admin');
+
+-- Pets & health record ------------------------------------------------------------------
+-- Ivana (Premium) owns Luna and Maks; Luna is shared into her household (Jelena sees it).
+-- Marko (Free) owns Kiki. Milica's shelter has one intake animal, Žuća.
+-- Seed inserts run without a session, so every entry names its author.
+
+insert into public.pets (
+  id, owner_id, organisation_id, name, species, breed, colour_markings, microchip_number,
+  passport_number, note, sex, birth_date, birth_year, neutered, vet_name, vet_phone,
+  weight_unit, shelter_status, approx_age_text
+) values
+  ('c1000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001', null,
+   'Luna', 'cat', 'Britanska kratkodlaka', 'Plavo-siva, bela mrlja na grudima',
+   '688038000123456', 'RS-NS-0451-23', 'Ne voli transporter — staviti ćebe unutra.',
+   'female', '2023-04-12', null, 'yes',
+   'Veterinarska ambulanta „Dr Vet”, Novi Sad', '021 456 789', 'kg', null, null),
+  ('c1000000-0000-4000-8000-000000000002', 'a1000000-0000-4000-8000-000000000001', null,
+   'Maks', 'dog', 'Mešanac', null, null, null, null,
+   'male', null, 2022, 'unknown', null, null, 'kg', null, null),
+  ('c1000000-0000-4000-8000-000000000003', 'a1000000-0000-4000-8000-000000000002', null,
+   'Kiki', 'rabbit', null, null, null, null, null,
+   'female', null, 2025, 'unknown', null, null, 'kg', null, null),
+  ('c1000000-0000-4000-8000-000000000004', null, 'b2000000-0000-4000-8000-000000000001',
+   'Žuća', 'dog', 'Mešanac', null, null, null, null,
+   'female', null, null, 'unknown', null, null, 'kg', 'intake', 'oko 6 meseci');
+
+insert into public.household_pets (household_id, pet_id) values
+  ('b1000000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000001');
+
+insert into public.weight_entries (pet_id, measured_on, value, note, created_by) values
+  ('c1000000-0000-4000-8000-000000000001', '2026-04-17', 3.8, null, 'a1000000-0000-4000-8000-000000000001'),
+  ('c1000000-0000-4000-8000-000000000001', '2026-06-17', 4.0, null, 'a1000000-0000-4000-8000-000000000001'),
+  ('c1000000-0000-4000-8000-000000000001', '2026-10-02', 4.1, 'Izmereno kod „Dr Vet”', 'a1000000-0000-4000-8000-000000000001'),
+  ('c1000000-0000-4000-8000-000000000001', '2026-10-19', 4.2, null, 'a1000000-0000-4000-8000-000000000003'),
+  ('c1000000-0000-4000-8000-000000000002', '2026-08-14', 18.4, null, 'a1000000-0000-4000-8000-000000000001'),
+  ('c1000000-0000-4000-8000-000000000003', '2026-09-29', 1.7, null, 'a1000000-0000-4000-8000-000000000002'),
+  ('c1000000-0000-4000-8000-000000000004', '2026-10-18', 6.1, null, 'a1000000-0000-4000-8000-000000000004');
+
+insert into public.vaccinations (pet_id, name, given_on, next_due_on, clinic, batch_number, created_by) values
+  ('c1000000-0000-4000-8000-000000000001', 'Besnilo — Rabisin', '2025-10-26', '2026-10-26',
+   'Veterinarska ambulanta „Dr Vet”', 'RB-24-0917', 'a1000000-0000-4000-8000-000000000001'),
+  ('c1000000-0000-4000-8000-000000000001', 'Trovalentna — Purevax RCP', '2026-03-12', '2027-03-12',
+   'Veterinarska ambulanta „Dr Vet”', 'PX-26-1142', 'a1000000-0000-4000-8000-000000000001'),
+  ('c1000000-0000-4000-8000-000000000001', 'Leukoza (FeLV) — Purevax FeLV', '2024-03-12', null,
+   'Veterinarska ambulanta „Dr Vet”', 'FV-24-0310', 'a1000000-0000-4000-8000-000000000001');
+
+insert into public.treatments (
+  id, pet_id, type, name, dose, interval_value, interval_unit, starts_on, ends_on, created_by
+) values (
+  'c2000000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000001',
+  'medication', 'Tobrex kapi za oči', '1 kap u svako oko', 12, 'hours',
+  '2026-10-15', '2026-10-25', 'a1000000-0000-4000-8000-000000000001'
+);
+
+insert into public.dose_logs (treatment_id, given_at, created_by) values
+  ('c2000000-0000-4000-8000-000000000001', '2026-10-18 06:10:00+00', 'a1000000-0000-4000-8000-000000000001'),
+  ('c2000000-0000-4000-8000-000000000001', '2026-10-18 18:05:00+00', 'a1000000-0000-4000-8000-000000000003');
+
+insert into public.vet_visits (
+  id, pet_id, visited_on, clinic, reason, findings, recommendations, cost_minor,
+  follow_up_on, created_by
+) values (
+  'c3000000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000001',
+  '2026-10-02', 'Veterinarska ambulanta „Dr Vet”', 'Suzenje levog oka',
+  'Blagi konjunktivitis, bez povrede rožnjače.',
+  'Tobrex kapi 10 dana, kontrola posle terapije.', 299000, '2026-10-30',
+  'a1000000-0000-4000-8000-000000000001'
+);

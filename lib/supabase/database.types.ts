@@ -37,6 +37,38 @@ export type Database = {
                   Relationships: [
                     
                   ]
+                },"attachments": {
+                  Row: {
+                    "created_at": string,"created_by": string | null,"file_name": string | null,"id": string,"mime_type": string,"pet_id": string,"r2_key": string,"size_bytes": number,"updated_at": string,"vet_visit_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"created_by"?: string | null,"file_name"?: string | null,"id"?: string,"mime_type": string,"pet_id": string,"r2_key": string,"size_bytes": number,"updated_at"?: string,"vet_visit_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"created_by"?: string | null,"file_name"?: string | null,"id"?: string,"mime_type"?: string,"pet_id"?: string,"r2_key"?: string,"size_bytes"?: number,"updated_at"?: string,"vet_visit_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "attachments_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "attachments_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "attachments_vet_visit_id_fkey"
+      columns: ["vet_visit_id"]
+isOneToOne: false
+      referencedRelation: "vet_visits"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"cities": {
                   Row: {
                     "created_at": string,"id": string,"latitude": number,"longitude": number,"name_en": string,"name_sr": string,"updated_at": string
@@ -68,6 +100,32 @@ export type Database = {
       columns: ["user_id"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"dose_logs": {
+                  Row: {
+                    "created_at": string,"created_by": string | null,"given_at": string,"id": string,"occurrence_id": string | null,"treatment_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"created_by"?: string | null,"given_at": string,"id"?: string,"occurrence_id"?: string | null,"treatment_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"created_by"?: string | null,"given_at"?: string,"id"?: string,"occurrence_id"?: string | null,"treatment_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "dose_logs_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "dose_logs_treatment_id_fkey"
+      columns: ["treatment_id"]
+isOneToOne: false
+      referencedRelation: "treatments"
       referencedColumns: ["id"]
     }
                   ]
@@ -123,6 +181,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"household_pets": {
+                  Row: {
+                    "created_at": string,"household_id": string,"pet_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"household_id": string,"pet_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"household_id"?: string,"pet_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "household_pets_household_id_fkey"
+      columns: ["household_id"]
+isOneToOne: false
+      referencedRelation: "households"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "household_pets_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"households": {
                   Row: {
                     "created_at": string,"id": string,"name": string,"owner_id": string | null,"read_only": boolean,"updated_at": string
@@ -160,6 +244,26 @@ isOneToOne: true
       columns: ["user_id"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"memorial_records": {
+                  Row: {
+                    "created_at": string,"date": string,"id": string,"note": string | null,"pet_id": string,"reason": Database["public"]['Enums']["memorial_reason"] | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"date": string,"id"?: string,"note"?: string | null,"pet_id": string,"reason"?: Database["public"]['Enums']["memorial_reason"] | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"date"?: string,"id"?: string,"note"?: string | null,"pet_id"?: string,"reason"?: Database["public"]['Enums']["memorial_reason"] | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "memorial_records_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: true
+      referencedRelation: "pets"
       referencedColumns: ["id"]
     }
                   ]
@@ -254,6 +358,32 @@ isOneToOne: false
                   }
                   Relationships: [
                     
+                  ]
+                },"pets": {
+                  Row: {
+                    "approx_age_text": string | null,"birth_date": string | null,"birth_year": number | null,"breed": string | null,"breeding_status": Database["public"]['Enums']["breeding_status"] | null,"colour_markings": string | null,"created_at": string,"id": string,"lifecycle": Database["public"]['Enums']["pet_lifecycle"],"litter_id": string | null,"microchip_number": string | null,"name": string,"neutered": Database["public"]['Enums']["neutered_status"],"note": string | null,"offspring_status": Database["public"]['Enums']["offspring_status"] | null,"organisation_id": string | null,"owner_id": string | null,"passport_number": string | null,"photo_r2_key": string | null,"price_minor": number | null,"public_description": string | null,"sex": Database["public"]['Enums']["pet_sex"],"shelter_status": Database["public"]['Enums']["shelter_status"] | null,"species": Database["public"]['Enums']["pet_species"],"species_other": string | null,"updated_at": string,"vet_name": string | null,"vet_phone": string | null,"weight_unit": Database["public"]['Enums']["weight_unit"]
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "approx_age_text"?: string | null,"birth_date"?: string | null,"birth_year"?: number | null,"breed"?: string | null,"breeding_status"?: Database["public"]['Enums']["breeding_status"] | null,"colour_markings"?: string | null,"created_at"?: string,"id"?: string,"lifecycle"?: Database["public"]['Enums']["pet_lifecycle"],"litter_id"?: string | null,"microchip_number"?: string | null,"name": string,"neutered"?: Database["public"]['Enums']["neutered_status"],"note"?: string | null,"offspring_status"?: Database["public"]['Enums']["offspring_status"] | null,"organisation_id"?: string | null,"owner_id"?: string | null,"passport_number"?: string | null,"photo_r2_key"?: string | null,"price_minor"?: number | null,"public_description"?: string | null,"sex": Database["public"]['Enums']["pet_sex"],"shelter_status"?: Database["public"]['Enums']["shelter_status"] | null,"species": Database["public"]['Enums']["pet_species"],"species_other"?: string | null,"updated_at"?: string,"vet_name"?: string | null,"vet_phone"?: string | null,"weight_unit"?: Database["public"]['Enums']["weight_unit"]
+                  }
+                  Update: {
+                    "approx_age_text"?: string | null,"birth_date"?: string | null,"birth_year"?: number | null,"breed"?: string | null,"breeding_status"?: Database["public"]['Enums']["breeding_status"] | null,"colour_markings"?: string | null,"created_at"?: string,"id"?: string,"lifecycle"?: Database["public"]['Enums']["pet_lifecycle"],"litter_id"?: string | null,"microchip_number"?: string | null,"name"?: string,"neutered"?: Database["public"]['Enums']["neutered_status"],"note"?: string | null,"offspring_status"?: Database["public"]['Enums']["offspring_status"] | null,"organisation_id"?: string | null,"owner_id"?: string | null,"passport_number"?: string | null,"photo_r2_key"?: string | null,"price_minor"?: number | null,"public_description"?: string | null,"sex"?: Database["public"]['Enums']["pet_sex"],"shelter_status"?: Database["public"]['Enums']["shelter_status"] | null,"species"?: Database["public"]['Enums']["pet_species"],"species_other"?: string | null,"updated_at"?: string,"vet_name"?: string | null,"vet_phone"?: string | null,"weight_unit"?: Database["public"]['Enums']["weight_unit"]
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "pets_organisation_id_fkey"
+      columns: ["organisation_id"]
+isOneToOne: false
+      referencedRelation: "organisations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "pets_owner_id_fkey"
+      columns: ["owner_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
                   ]
                 },"plans": {
                   Row: {
@@ -363,6 +493,110 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"treatments": {
+                  Row: {
+                    "created_at": string,"created_by": string | null,"dose": string | null,"ends_on": string | null,"id": string,"interval_unit": Database["public"]['Enums']["treatment_interval_unit"] | null,"interval_value": number | null,"name": string,"note": string | null,"pet_id": string,"starts_on": string,"type": Database["public"]['Enums']["treatment_type"],"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"created_by"?: string | null,"dose"?: string | null,"ends_on"?: string | null,"id"?: string,"interval_unit"?: Database["public"]['Enums']["treatment_interval_unit"] | null,"interval_value"?: number | null,"name": string,"note"?: string | null,"pet_id": string,"starts_on": string,"type": Database["public"]['Enums']["treatment_type"],"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"created_by"?: string | null,"dose"?: string | null,"ends_on"?: string | null,"id"?: string,"interval_unit"?: Database["public"]['Enums']["treatment_interval_unit"] | null,"interval_value"?: number | null,"name"?: string,"note"?: string | null,"pet_id"?: string,"starts_on"?: string,"type"?: Database["public"]['Enums']["treatment_type"],"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "treatments_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "treatments_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"vaccinations": {
+                  Row: {
+                    "batch_number": string | null,"clinic": string | null,"created_at": string,"created_by": string | null,"given_on": string,"id": string,"name": string,"next_due_on": string | null,"note": string | null,"pet_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "batch_number"?: string | null,"clinic"?: string | null,"created_at"?: string,"created_by"?: string | null,"given_on": string,"id"?: string,"name": string,"next_due_on"?: string | null,"note"?: string | null,"pet_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "batch_number"?: string | null,"clinic"?: string | null,"created_at"?: string,"created_by"?: string | null,"given_on"?: string,"id"?: string,"name"?: string,"next_due_on"?: string | null,"note"?: string | null,"pet_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "vaccinations_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "vaccinations_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"vet_visits": {
+                  Row: {
+                    "clinic": string | null,"cost_minor": number | null,"created_at": string,"created_by": string | null,"findings": string | null,"follow_up_on": string | null,"id": string,"pet_id": string,"reason": string,"recommendations": string | null,"updated_at": string,"visited_on": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "clinic"?: string | null,"cost_minor"?: number | null,"created_at"?: string,"created_by"?: string | null,"findings"?: string | null,"follow_up_on"?: string | null,"id"?: string,"pet_id": string,"reason": string,"recommendations"?: string | null,"updated_at"?: string,"visited_on": string
+                  }
+                  Update: {
+                    "clinic"?: string | null,"cost_minor"?: number | null,"created_at"?: string,"created_by"?: string | null,"findings"?: string | null,"follow_up_on"?: string | null,"id"?: string,"pet_id"?: string,"reason"?: string,"recommendations"?: string | null,"updated_at"?: string,"visited_on"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "vet_visits_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "vet_visits_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"weight_entries": {
+                  Row: {
+                    "created_at": string,"created_by": string | null,"id": string,"measured_on": string,"note": string | null,"pet_id": string,"updated_at": string,"value": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"measured_on": string,"note"?: string | null,"pet_id": string,"updated_at"?: string,"value": number
+                  }
+                  Update: {
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"measured_on"?: string,"note"?: string | null,"pet_id"?: string,"updated_at"?: string,"value"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "weight_entries_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "weight_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    }
+                  ]
                 }
           }
           Views: {
@@ -374,7 +608,7 @@ isOneToOne: false
                            }
           }
           Enums: {
-            "account_type": "owner"|"shelter"|"breeder","app_locale": "sr-Latn"|"en","approval_status": "pending"|"approved"|"rejected","data_export_status": "preparing"|"ready"|"failed"|"expired","invitation_status": "pending"|"accepted"|"declined"|"expired","organisation_role": "admin"|"volunteer","organisation_type": "shelter"|"breeder","payment_kind": "initial"|"renewal","payment_result": "succeeded"|"failed","subscription_plan": "premium_monthly"|"premium_yearly"|"breeder_monthly"|"breeder_yearly","subscription_status": "trialing"|"active"|"cancelled"|"expired"|"payment_failed"
+            "account_type": "owner"|"shelter"|"breeder","app_locale": "sr-Latn"|"en","approval_status": "pending"|"approved"|"rejected","breeding_status": "active"|"retired","data_export_status": "preparing"|"ready"|"failed"|"expired","invitation_status": "pending"|"accepted"|"declined"|"expired","memorial_reason": "passed_away"|"rehomed"|"lost","neutered_status": "yes"|"no"|"unknown","offspring_status": "available"|"reserved"|"sold","organisation_role": "admin"|"volunteer","organisation_type": "shelter"|"breeder","payment_kind": "initial"|"renewal","payment_result": "succeeded"|"failed","pet_lifecycle": "active"|"memorial","pet_sex": "male"|"female"|"unknown","pet_species": "dog"|"cat"|"rabbit"|"hamster"|"guinea_pig"|"chinchilla"|"ferret"|"bird"|"fish"|"turtle"|"lizard"|"snake"|"other","shelter_status": "intake"|"in_care"|"available"|"reserved"|"adopted"|"deceased"|"returned_to_owner","subscription_plan": "premium_monthly"|"premium_yearly"|"breeder_monthly"|"breeder_yearly","subscription_status": "trialing"|"active"|"cancelled"|"expired"|"payment_failed","treatment_interval_unit": "hours"|"days","treatment_type": "medication"|"deworming"|"flea_tick"|"other","weight_unit": "kg"|"g"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -494,7 +728,7 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "account_type": ["owner", "shelter", "breeder"],"app_locale": ["sr-Latn", "en"],"approval_status": ["pending", "approved", "rejected"],"data_export_status": ["preparing", "ready", "failed", "expired"],"invitation_status": ["pending", "accepted", "declined", "expired"],"organisation_role": ["admin", "volunteer"],"organisation_type": ["shelter", "breeder"],"payment_kind": ["initial", "renewal"],"payment_result": ["succeeded", "failed"],"subscription_plan": ["premium_monthly", "premium_yearly", "breeder_monthly", "breeder_yearly"],"subscription_status": ["trialing", "active", "cancelled", "expired", "payment_failed"]
+            "account_type": ["owner", "shelter", "breeder"],"app_locale": ["sr-Latn", "en"],"approval_status": ["pending", "approved", "rejected"],"breeding_status": ["active", "retired"],"data_export_status": ["preparing", "ready", "failed", "expired"],"invitation_status": ["pending", "accepted", "declined", "expired"],"memorial_reason": ["passed_away", "rehomed", "lost"],"neutered_status": ["yes", "no", "unknown"],"offspring_status": ["available", "reserved", "sold"],"organisation_role": ["admin", "volunteer"],"organisation_type": ["shelter", "breeder"],"payment_kind": ["initial", "renewal"],"payment_result": ["succeeded", "failed"],"pet_lifecycle": ["active", "memorial"],"pet_sex": ["male", "female", "unknown"],"pet_species": ["dog", "cat", "rabbit", "hamster", "guinea_pig", "chinchilla", "ferret", "bird", "fish", "turtle", "lizard", "snake", "other"],"shelter_status": ["intake", "in_care", "available", "reserved", "adopted", "deceased", "returned_to_owner"],"subscription_plan": ["premium_monthly", "premium_yearly", "breeder_monthly", "breeder_yearly"],"subscription_status": ["trialing", "active", "cancelled", "expired", "payment_failed"],"treatment_interval_unit": ["hours", "days"],"treatment_type": ["medication", "deworming", "flea_tick", "other"],"weight_unit": ["kg", "g"]
           }
         }
 } as const
