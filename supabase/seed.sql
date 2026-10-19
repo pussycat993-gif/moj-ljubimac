@@ -170,3 +170,30 @@ insert into public.vet_visits (
   'Tobrex kapi 10 dana, kontrola posle terapije.', 299000, '2026-10-30',
   'a1000000-0000-4000-8000-000000000001'
 );
+
+-- Care log & moments --------------------------------------------------------------------
+-- Luna's feeding and stool log (one feeding by Jelena, the member) and two moments by
+-- Ivana; the second has a public link.
+
+insert into public.feeding_entries (pet_id, fed_at, type, brand, amount_g, note, created_by) values
+  ('c1000000-0000-4000-8000-000000000001', '2026-10-18 06:30:00+00', 'dry', 'Royal Canin Indoor', 30, null,
+   'a1000000-0000-4000-8000-000000000001'),
+  ('c1000000-0000-4000-8000-000000000001', '2026-10-18 16:00:00+00', 'wet', 'Gourmet Gold', 85, null,
+   'a1000000-0000-4000-8000-000000000003'),
+  ('c1000000-0000-4000-8000-000000000001', '2026-10-19 06:30:00+00', 'dry', 'Royal Canin Indoor', 30,
+   'Pojela sve', 'a1000000-0000-4000-8000-000000000001');
+
+insert into public.stool_entries (pet_id, observed_at, consistency, blood_or_mucus, note, created_by) values
+  ('c1000000-0000-4000-8000-000000000001', '2026-10-18 08:15:00+00', 'normal', false, null,
+   'a1000000-0000-4000-8000-000000000001'),
+  ('c1000000-0000-4000-8000-000000000001', '2026-10-19 08:40:00+00', 'soft', false, 'Posle nove hrane',
+   'a1000000-0000-4000-8000-000000000001');
+
+insert into public.moments (id, pet_id, moment_date, text, created_by) values
+  ('c4000000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000001', '2026-09-14',
+   'Prvi put na terasi — sat vremena je gledala ptice.', 'a1000000-0000-4000-8000-000000000001'),
+  ('c4000000-0000-4000-8000-000000000002', 'c1000000-0000-4000-8000-000000000001', '2026-10-12',
+   'Luna je danas napunila tri i po godine.', 'a1000000-0000-4000-8000-000000000001');
+
+insert into public.moment_public_links (moment_id, slug) values
+  ('c4000000-0000-4000-8000-000000000002', 'Lu7nAk3QpZ9xRtW2mVb4Ys');

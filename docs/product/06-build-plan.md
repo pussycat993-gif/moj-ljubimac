@@ -63,7 +63,7 @@ The build runs in 33 steps (Step 01 … Step 32 plus Step 30a), each one coding 
 | 04 | Schema: accounts, reference & billing tables | ✅ | 02 | — | 2026-10-19 |
 | 05 | Schema: households & organisations | ✅ | 04 | — | 2026-10-19 |
 | 06 | Schema: pets & health record | ✅ | 05 | — | 2026-10-19 |
-| 07 | Schema: care log & moments | ⬜ | 06 | — | |
+| 07 | Schema: care log & moments | ✅ | 06 | — | 2026-10-19 |
 | 08 | Schema: reminders & delivery | ⬜ | 07 | — | |
 | 09 | Schema: organisation workflows & partners | ⬜ | 08 | — | |
 | 10 | Design foundation | ⬜ | 01 | — | |
@@ -1051,7 +1051,39 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+**2026-10-19**
+- **Built:** two migrations. `20261019233000_care_log.sql` adds the enums `feeding_type` and `stool_consistency`; the tables `feeding_entries` (`amount_g numeric(8,1) > 0`, index (pet_id, fed_at)) and `stool_entries` (`blood_or_mucus` not null, default false); `created_by` / `updated_at` triggers; the helper `private.can_access_pet_care(pet_id)` (owner or a member of a household the pet is shared with); and the shared role trigger `public.care_check_write()`. There is no count limit (BR-04). `20261019233005_moments.sql` adds:
+  - `moments`: text check `char_length ≤ 280` (BR-52) and index (pet_id).
+  - `moment_photos`: `position` not null and between 1 and 5, unique (moment_id, position) (BR-06).
+  - `moment_public_links`: `moment_id` unique, `slug` unique and not null, `active` default true, cascade with the moment (BR-45).
+  - `moments_enforce_free_limit`, which raises `premium_required:moments` on the 6th moment of a pet when the creator (`auth.uid()`, or `created_by` for System inserts) is not Premium (BR-01, BR-02, BR-24). It locks the pet row.
+  - `moment_photos_queue_r2_key` (after delete, so cascades are covered too).
+  - `private.moment_pet_id` and RLS on all five tables.
+
+  Seed: 3 feeding entries (one by Jelena) and 2 stool entries on Luna, plus two moments by Ivana. The second moment has a public link. The moments have no photos, so Step 06 R2 counts stay unchanged. `lib/supabase/database.types.ts` regenerated. pgTAP: 3 new files with 151 assertions (care_log 34, moments 55, care_moments_rls 62).
+- **Verification:** `npx supabase db reset` ✅ (13 migrations + both seed files) · `npm run db:types` ✅ exit 0 · `npm run typecheck` ✅ exit 0 · `npm run lint` ✅ exit 0 · `npm test` ✅ 5 files / 38 tests · `npx supabase test db` ✅ 20 files / 681 tests · `npm run build` ✅ exit 0.
+- **Deviations / decisions:**
+  - Same pattern as Steps 05/06. `care_check_write()` runs only for `current_user = 'authenticated'`. Update/delete `USING` admits the owner and members, so members get the API code instead of a silent no-op. Cascades and the service role are not affected. The owner writes every row, including while the household is read-only (BR-28 limits members only).
+  - Member writes:
+    - Any write while every sharing household is read-only → `household_read_only`.
+    - Update or delete of a feeding entry, stool entry or moment they did not create → `forbidden_role`.
+    - Any write to `moment_photos` or `moment_public_links` of a moment they did not create → `forbidden_role` (EP-21, EP-23 "own moments only"). These two tables have no `created_by` in TC §5.4, so ownership comes from `moments.created_by`.
+  - Organisation roles get no relation to care rows, even for their own organisation's animals (05- §4.4 "—"). Their reads return nothing and their inserts fail the RLS check (42501, rows absent). No organisation-specific error code is raised.
+  - The Free limit counts every moment on the pet, whoever created them, and the creator's own entitlement decides. A Free member on a Premium owner's pet with 5+ moments is refused (BR-24). The limit applies to every writer, System included.
+  - Not set by TC, chosen here:
+    - Enum names `feeding_type` / `stool_consistency`.
+    - `moment_photos.moment_id`, `moment_photos.position` and `moment_public_links.moment_id` are not null. A null position would bypass the unique constraint and BR-06, and §6 MomentPhoto has `position` non-null.
+    - Conventions columns (`id`, `created_at`, `updated_at`) on every table.
+    - No extra index on `stool_entries` (TC §5.4 lists none).
+  - Grants:
+    - `feeding_entries` / `stool_entries` / `moments`: insert on content columns plus `pet_id`; update on content columns; delete.
+    - `moment_photos`: insert (moment_id, r2_key, position) and delete; no update.
+    - `moment_public_links`: insert (moment_id, slug, active) and update (active) only. A link goes only with its moment (EP-23 keeps the slug).
+    - `id` is not client-insertable. There is no anon grant; EP-24 reads with the service role.
+  - The slug format (22-char base62) is not checked in the database. Generating it is Step 21's job.
+- **Follow-ups:**
+  - Step 21: the `moments_api` view and EP-24 route. Slug generation in `set_moment_public_link`. EP-21 `prepare_moment` checks "active pet" and "moment_date not in the future" (not enforced here). EP-21 confirm inserts `moments` and `moment_photos` in one transaction; the limit trigger runs on the moment insert.
+  - Step 20: the `feeding_entries_api` / `stool_entries_api` views. The EP-18 field rules (`fed_at` ≤ 5 min in the future, brand ≤ 100, note ≤ 500) are application validation.
 
 ---
 

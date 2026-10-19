@@ -129,6 +129,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"feeding_entries": {
+                  Row: {
+                    "amount_g": number | null,"brand": string | null,"created_at": string,"created_by": string | null,"fed_at": string,"id": string,"note": string | null,"pet_id": string,"type": Database["public"]['Enums']["feeding_type"],"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "amount_g"?: number | null,"brand"?: string | null,"created_at"?: string,"created_by"?: string | null,"fed_at": string,"id"?: string,"note"?: string | null,"pet_id": string,"type": Database["public"]['Enums']["feeding_type"],"updated_at"?: string
+                  }
+                  Update: {
+                    "amount_g"?: number | null,"brand"?: string | null,"created_at"?: string,"created_by"?: string | null,"fed_at"?: string,"id"?: string,"note"?: string | null,"pet_id"?: string,"type"?: Database["public"]['Enums']["feeding_type"],"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "feeding_entries_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "feeding_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"household_invitations": {
                   Row: {
                     "accepted_by": string | null,"created_at": string,"decided_at": string | null,"email": string | null,"expires_at": string,"household_id": string,"id": string,"status": Database["public"]['Enums']["invitation_status"],"token_hash": string,"updated_at": string
@@ -263,6 +289,72 @@ isOneToOne: false
       foreignKeyName: "memorial_records_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: true
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"moment_photos": {
+                  Row: {
+                    "created_at": string,"id": string,"moment_id": string,"position": number,"r2_key": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"moment_id": string,"position": number,"r2_key": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"moment_id"?: string,"position"?: number,"r2_key"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "moment_photos_moment_id_fkey"
+      columns: ["moment_id"]
+isOneToOne: false
+      referencedRelation: "moments"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"moment_public_links": {
+                  Row: {
+                    "active": boolean,"created_at": string,"id": string,"moment_id": string,"slug": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "active"?: boolean,"created_at"?: string,"id"?: string,"moment_id": string,"slug": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"created_at"?: string,"id"?: string,"moment_id"?: string,"slug"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "moment_public_links_moment_id_fkey"
+      columns: ["moment_id"]
+isOneToOne: true
+      referencedRelation: "moments"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"moments": {
+                  Row: {
+                    "created_at": string,"created_by": string | null,"id": string,"moment_date": string,"pet_id": string,"text": string | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"moment_date": string,"pet_id": string,"text"?: string | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"moment_date"?: string,"pet_id"?: string,"text"?: string | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "moments_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "moments_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pets"
       referencedColumns: ["id"]
     }
@@ -453,6 +545,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"stool_entries": {
+                  Row: {
+                    "blood_or_mucus": boolean,"consistency": Database["public"]['Enums']["stool_consistency"],"created_at": string,"created_by": string | null,"id": string,"note": string | null,"observed_at": string,"pet_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "blood_or_mucus"?: boolean,"consistency": Database["public"]['Enums']["stool_consistency"],"created_at"?: string,"created_by"?: string | null,"id"?: string,"note"?: string | null,"observed_at": string,"pet_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "blood_or_mucus"?: boolean,"consistency"?: Database["public"]['Enums']["stool_consistency"],"created_at"?: string,"created_by"?: string | null,"id"?: string,"note"?: string | null,"observed_at"?: string,"pet_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "stool_entries_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "stool_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"subscription_payments": {
                   Row: {
                     "amount_minor": number,"created_at": string,"currency": string,"id": string,"kind": Database["public"]['Enums']["payment_kind"],"monri_transaction_id": string,"result": Database["public"]['Enums']["payment_result"],"subscription_id": string,"updated_at": string
@@ -608,7 +726,7 @@ isOneToOne: false
                            }
           }
           Enums: {
-            "account_type": "owner"|"shelter"|"breeder","app_locale": "sr-Latn"|"en","approval_status": "pending"|"approved"|"rejected","breeding_status": "active"|"retired","data_export_status": "preparing"|"ready"|"failed"|"expired","invitation_status": "pending"|"accepted"|"declined"|"expired","memorial_reason": "passed_away"|"rehomed"|"lost","neutered_status": "yes"|"no"|"unknown","offspring_status": "available"|"reserved"|"sold","organisation_role": "admin"|"volunteer","organisation_type": "shelter"|"breeder","payment_kind": "initial"|"renewal","payment_result": "succeeded"|"failed","pet_lifecycle": "active"|"memorial","pet_sex": "male"|"female"|"unknown","pet_species": "dog"|"cat"|"rabbit"|"hamster"|"guinea_pig"|"chinchilla"|"ferret"|"bird"|"fish"|"turtle"|"lizard"|"snake"|"other","shelter_status": "intake"|"in_care"|"available"|"reserved"|"adopted"|"deceased"|"returned_to_owner","subscription_plan": "premium_monthly"|"premium_yearly"|"breeder_monthly"|"breeder_yearly","subscription_status": "trialing"|"active"|"cancelled"|"expired"|"payment_failed","treatment_interval_unit": "hours"|"days","treatment_type": "medication"|"deworming"|"flea_tick"|"other","weight_unit": "kg"|"g"
+            "account_type": "owner"|"shelter"|"breeder","app_locale": "sr-Latn"|"en","approval_status": "pending"|"approved"|"rejected","breeding_status": "active"|"retired","data_export_status": "preparing"|"ready"|"failed"|"expired","feeding_type": "dry"|"wet"|"treat"|"home_made"|"other","invitation_status": "pending"|"accepted"|"declined"|"expired","memorial_reason": "passed_away"|"rehomed"|"lost","neutered_status": "yes"|"no"|"unknown","offspring_status": "available"|"reserved"|"sold","organisation_role": "admin"|"volunteer","organisation_type": "shelter"|"breeder","payment_kind": "initial"|"renewal","payment_result": "succeeded"|"failed","pet_lifecycle": "active"|"memorial","pet_sex": "male"|"female"|"unknown","pet_species": "dog"|"cat"|"rabbit"|"hamster"|"guinea_pig"|"chinchilla"|"ferret"|"bird"|"fish"|"turtle"|"lizard"|"snake"|"other","shelter_status": "intake"|"in_care"|"available"|"reserved"|"adopted"|"deceased"|"returned_to_owner","stool_consistency": "normal"|"soft"|"diarrhoea"|"hard","subscription_plan": "premium_monthly"|"premium_yearly"|"breeder_monthly"|"breeder_yearly","subscription_status": "trialing"|"active"|"cancelled"|"expired"|"payment_failed","treatment_interval_unit": "hours"|"days","treatment_type": "medication"|"deworming"|"flea_tick"|"other","weight_unit": "kg"|"g"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -728,7 +846,7 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "account_type": ["owner", "shelter", "breeder"],"app_locale": ["sr-Latn", "en"],"approval_status": ["pending", "approved", "rejected"],"breeding_status": ["active", "retired"],"data_export_status": ["preparing", "ready", "failed", "expired"],"invitation_status": ["pending", "accepted", "declined", "expired"],"memorial_reason": ["passed_away", "rehomed", "lost"],"neutered_status": ["yes", "no", "unknown"],"offspring_status": ["available", "reserved", "sold"],"organisation_role": ["admin", "volunteer"],"organisation_type": ["shelter", "breeder"],"payment_kind": ["initial", "renewal"],"payment_result": ["succeeded", "failed"],"pet_lifecycle": ["active", "memorial"],"pet_sex": ["male", "female", "unknown"],"pet_species": ["dog", "cat", "rabbit", "hamster", "guinea_pig", "chinchilla", "ferret", "bird", "fish", "turtle", "lizard", "snake", "other"],"shelter_status": ["intake", "in_care", "available", "reserved", "adopted", "deceased", "returned_to_owner"],"subscription_plan": ["premium_monthly", "premium_yearly", "breeder_monthly", "breeder_yearly"],"subscription_status": ["trialing", "active", "cancelled", "expired", "payment_failed"],"treatment_interval_unit": ["hours", "days"],"treatment_type": ["medication", "deworming", "flea_tick", "other"],"weight_unit": ["kg", "g"]
+            "account_type": ["owner", "shelter", "breeder"],"app_locale": ["sr-Latn", "en"],"approval_status": ["pending", "approved", "rejected"],"breeding_status": ["active", "retired"],"data_export_status": ["preparing", "ready", "failed", "expired"],"feeding_type": ["dry", "wet", "treat", "home_made", "other"],"invitation_status": ["pending", "accepted", "declined", "expired"],"memorial_reason": ["passed_away", "rehomed", "lost"],"neutered_status": ["yes", "no", "unknown"],"offspring_status": ["available", "reserved", "sold"],"organisation_role": ["admin", "volunteer"],"organisation_type": ["shelter", "breeder"],"payment_kind": ["initial", "renewal"],"payment_result": ["succeeded", "failed"],"pet_lifecycle": ["active", "memorial"],"pet_sex": ["male", "female", "unknown"],"pet_species": ["dog", "cat", "rabbit", "hamster", "guinea_pig", "chinchilla", "ferret", "bird", "fish", "turtle", "lizard", "snake", "other"],"shelter_status": ["intake", "in_care", "available", "reserved", "adopted", "deceased", "returned_to_owner"],"stool_consistency": ["normal", "soft", "diarrhoea", "hard"],"subscription_plan": ["premium_monthly", "premium_yearly", "breeder_monthly", "breeder_yearly"],"subscription_status": ["trialing", "active", "cancelled", "expired", "payment_failed"],"treatment_interval_unit": ["hours", "days"],"treatment_type": ["medication", "deworming", "flea_tick", "other"],"weight_unit": ["kg", "g"]
           }
         }
 } as const
