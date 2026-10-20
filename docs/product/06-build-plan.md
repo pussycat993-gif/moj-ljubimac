@@ -69,7 +69,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 07 | Schema: care log & moments | ✅ | 06 | — | 2026-10-19 |
 | 08 | Schema: reminders & delivery | ✅ | 07 | — | 2026-10-20 |
 | 09 | Schema: organisation workflows & partners | ✅ | 08 | — | 2026-10-20 |
-| 10 | Design foundation | ⬜ | 01 | — | |
+| 10 | Design foundation | ✅ | 01 | — | 2026-10-20 |
 | 11 | Authentication, gates & server utilities | ⬜ | 04, 10 | — | |
 | 12 | Registration, profile, legal pages & i18n | ⬜ | 11, 05, 08 | — | |
 | 13 | Pets: list, create, edit, delete | ⬜ | 12, 06 | — | |
@@ -1532,7 +1532,26 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+**2026-10-20**
+- **Built:**
+  - shadcn/ui (CLI 4.22.1) initialised: `components.json`, `lib/utils.ts`; the 23 Design §6 primitives installed in `components/ui/`; `card.tsx` and `sonner.tsx` replaced by the `04-design/ui-overrides/` files.
+  - `app/globals.css` = `04-design/globals.css`, byte for byte.
+  - `app/layout.tsx`: Nunito 700 and Inter 400/500/600 via `next/font/google` (`latin`, `latin-ext`) as `--font-nunito` / `--font-inter` on `<html lang="sr-Latn">`; metadata title "Moj Ljubimac", icon `/brand/app-icon-192.png`, Apple touch icon `/brand/app-icon-180.png`. No Toaster.
+  - `app/manifest.ts` per the Design §4 manifest exception (served as `/manifest.webmanifest`).
+  - `public/brand/`: the 7 logo and app-icon PNGs from `04-design/assets/`.
+  - `components/app/`: the 11 approved composites (shells, empty-state, error-state, logo-mark, pet-avatar, pet-header, premium-lock, read-only-banner, reminder-row, reminder-type-icon, status-badge), ported unchanged. The only edits: `./x` imports became `@/components/app/x`, and the logo-mark comment now names the `--primary` token instead of the hex. `state-switcher.tsx` not ported. Both `.gitkeep` files removed.
+  - Tests: 12 new files with 173 tests (`tests/design/` tokens, no-raw-hex, no-brand-icons, fonts, ui-overrides, manifest; `tests/components/` pet-avatar, status-badge, premium-lock, read-only-banner, reminder-type-icon, app-shell).
+- **Verification:** `npm run typecheck` ✅ exit 0 · `npm run lint` ✅ exit 0 · `npm test` ✅ 17 files / 211 tests · `npx supabase test db` ✅ 32 files / 1121 tests (unchanged) · `npm run build` ✅ exit 0.
+- **Deviations / decisions:**
+  - shadcn style. CLI 4.22.1's `init -d` defaults to `base-nova`, which uses Base UI. The mockups need Radix (`asChild` on `Button`), and the prompt names the Radix packages. So init ran with `-b radix -p vega`, and `components.json` `style` was then set to `new-york` before `add`. Why `new-york`: Design §6 describes the original card as "was `rounded-xl shadow-sm`", which is the new-york card. The radix-vega components also rely on custom variants (`data-open:` …) from `shadcn/tailwind.css`, and `04-design/globals.css` does not import that file.
+  - `lib/utils.ts` is what shadcn 4.22 init generates: `export { cn } from "cn"`. `cn` is shadcn-ui's single-package replacement for clsx + tailwind-merge, so clsx and tailwind-merge are not installed. The installed primitives import `cn` from `"cn"`; the composites import it from `@/lib/utils`. Both are the same function. It merges the project's token classes correctly (checked: `bg-primary` + `bg-success-soft` → `bg-success-soft`).
+  - Packages added are exactly what shadcn init/add installed: `class-variance-authority`, `cn`, `date-fns`, `lucide-react`, `next-themes`, `radix-ui`, `react-day-picker`, `shadcn`, `sonner`, `tw-animate-css`. Two of these are no longer used: `next-themes` (the sonner override drops it) and `shadcn` (init added it for the `shadcn/tailwind.css` import, which the design `globals.css` replaces). Both were kept, because the prompt allows exactly what the CLI installs.
+  - Manifest icons carry `sizes` ("192x192", "512x512") and `type` ("image/png") alongside the Design §4 `src` values. These describe the PNG files as they are; no other field was added.
+  - `shells.tsx` is the current v1.6 mock (Šapa pomoći item with short label "Šapa", Poruke link). `ListingTypeTag`, `ListingCard` and `safety-dialogs` stay out (Steps 28b / 28c, §4 invariant 11).
+- **Follow-ups:**
+  - `next-themes` and `shadcn` could be removed from `dependencies` in a later cleanup, if the owner wants.
+  - `npm run build` downloads Nunito and Inter from Google Fonts at build time (`next/font/google`), so CI (Step 03) needs network access during the build.
+  - The Step 10 header table still reads "⬜ not started". This step may only edit its §3 row and Session log.
 
 ---
 
