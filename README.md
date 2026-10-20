@@ -20,3 +20,22 @@ Web aplikacija za zdravstveni karton ljubimca, podsetnike i deljenje sa ukućani
 | `npm run lint` | ESLint nad celim repozitorijumom |
 | `npm test` | Vitest (jedno pokretanje) |
 | `npm run e2e` | Playwright (`e2e/`) |
+
+## Deployment
+
+CI (`.github/workflows/ci.yml`) radi na svakom push-u: `npm ci`, `npm run typecheck`, `npm run lint`, `npm test`, lokalni Supabase + `npx supabase test db`, `npm run build`. Samo zelen push na `main` pokreće job `deploy-production`: prvo `supabase db push` na produkcijski Supabase projekat, pa `npm run deploy` (OpenNext adapter → Cloudflare Workers). Ako migracija ne prođe, deploy se ne izvršava. Ostale grane pokreću samo proveru; preview deployment ne postoji (TC ADR-10).
+
+Lokalno, `npm run preview` gradi aplikaciju adapterom i služi je u Workers runtime-u; `npm run cf-typegen` ponovo generiše `cloudflare-env.d.ts` posle izmene `wrangler.jsonc`.
+
+**GitHub Actions secrets** (samo imena, vrednosti postavlja vlasnik):
+
+| Ime | Namena |
+|---|---|
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | deploy aplikacije |
+| `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_REF` | `supabase db push` na `main` |
+
+**GitHub Actions variables** (produkcijske build-time vrednosti za `deploy-production`; job `check` koristi vrednosti lokalnog Supabase-a):
+
+`NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`
+
+**Worker runtime secrets** su server-side imena iz `.env.example` (sva imena bez prefiksa `NEXT_PUBLIC_`). Vlasnik ih postavlja sa `npx wrangler secret put <IME>`; ne upisuju se u `wrangler.jsonc`.

@@ -30,3 +30,8 @@ next-env.d.ts
 *.pem
 npm-debug.log*
 .vercel
+
+# OpenNext Cloudflare adapter / wrangler output
+/.open-next/
+/.wrangler/
+.dev.vars*
