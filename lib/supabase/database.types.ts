@@ -23,7 +23,39 @@ export type Database = {
           }
         },"public": {
           Tables: {
-            "app_settings": {
+            "adoption_requests": {
+                  Row: {
+                    "created_at": string,"decided_at": string | null,"decided_by": string | null,"email": string,"id": string,"message": string | null,"name": string,"pet_id": string,"phone": string,"requester_id": string,"status": Database["public"]['Enums']["request_status"],"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"email": string,"id"?: string,"message"?: string | null,"name": string,"pet_id": string,"phone": string,"requester_id": string,"status"?: Database["public"]['Enums']["request_status"],"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"email"?: string,"id"?: string,"message"?: string | null,"name"?: string,"pet_id"?: string,"phone"?: string,"requester_id"?: string,"status"?: Database["public"]['Enums']["request_status"],"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "adoption_requests_decided_by_fkey"
+      columns: ["decided_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "adoption_requests_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "adoption_requests_requester_id_fkey"
+      columns: ["requester_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"app_settings": {
                   Row: {
                     "created_at": string,"id": string,"updated_at": string,"viber_enabled": boolean
                   }
@@ -66,6 +98,38 @@ isOneToOne: false
       columns: ["vet_visit_id"]
 isOneToOne: false
       referencedRelation: "vet_visits"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"breeder_inquiries": {
+                  Row: {
+                    "created_at": string,"decided_at": string | null,"decided_by": string | null,"email": string,"id": string,"message": string | null,"name": string,"pet_id": string,"phone": string,"requester_id": string,"status": Database["public"]['Enums']["request_status"],"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"email": string,"id"?: string,"message"?: string | null,"name": string,"pet_id": string,"phone": string,"requester_id": string,"status"?: Database["public"]['Enums']["request_status"],"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"email"?: string,"id"?: string,"message"?: string | null,"name"?: string,"pet_id"?: string,"phone"?: string,"requester_id"?: string,"status"?: Database["public"]['Enums']["request_status"],"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "breeder_inquiries_decided_by_fkey"
+      columns: ["decided_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "breeder_inquiries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "breeder_inquiries_requester_id_fkey"
+      columns: ["requester_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
       referencedColumns: ["id"]
     }
                   ]
@@ -279,6 +343,64 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"intakes": {
+                  Row: {
+                    "arrival_type": Database["public"]['Enums']["arrival_type"],"created_at": string,"created_by": string | null,"id": string,"intake_on": string,"note": string | null,"pet_id": string,"place_found": string | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "arrival_type": Database["public"]['Enums']["arrival_type"],"created_at"?: string,"created_by"?: string | null,"id"?: string,"intake_on": string,"note"?: string | null,"pet_id": string,"place_found"?: string | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "arrival_type"?: Database["public"]['Enums']["arrival_type"],"created_at"?: string,"created_by"?: string | null,"id"?: string,"intake_on"?: string,"note"?: string | null,"pet_id"?: string,"place_found"?: string | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "intakes_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "intakes_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: true
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"litters": {
+                  Row: {
+                    "born_on": string,"created_at": string,"father_id": string | null,"father_name": string | null,"id": string,"mother_id": string,"offspring_count": number,"organisation_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "born_on": string,"created_at"?: string,"father_id"?: string | null,"father_name"?: string | null,"id"?: string,"mother_id": string,"offspring_count": number,"organisation_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "born_on"?: string,"created_at"?: string,"father_id"?: string | null,"father_name"?: string | null,"id"?: string,"mother_id"?: string,"offspring_count"?: number,"organisation_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "litters_father_id_fkey"
+      columns: ["father_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "litters_mother_id_fkey"
+      columns: ["mother_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "litters_organisation_id_fkey"
+      columns: ["organisation_id"]
+isOneToOne: false
+      referencedRelation: "organisations"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"memorial_records": {
                   Row: {
                     "created_at": string,"date": string,"id": string,"note": string | null,"pet_id": string,"reason": Database["public"]['Enums']["memorial_reason"] | null,"updated_at": string
@@ -443,6 +565,72 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"partner_clicks": {
+                  Row: {
+                    "action": Database["public"]['Enums']["partner_click_action"],"clicked_at": string,"created_at": string,"id": string,"partner_id": string,"updated_at": string,"user_id": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "action": Database["public"]['Enums']["partner_click_action"],"clicked_at"?: string,"created_at"?: string,"id"?: string,"partner_id": string,"updated_at"?: string,"user_id"?: string | null
+                  }
+                  Update: {
+                    "action"?: Database["public"]['Enums']["partner_click_action"],"clicked_at"?: string,"created_at"?: string,"id"?: string,"partner_id"?: string,"updated_at"?: string,"user_id"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "partner_clicks_partner_id_fkey"
+      columns: ["partner_id"]
+isOneToOne: false
+      referencedRelation: "partners"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "partner_clicks_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"partner_hours": {
+                  Row: {
+                    "closes": string,"created_at": string,"id": string,"opens": string,"partner_id": string,"updated_at": string,"weekday": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "closes": string,"created_at"?: string,"id"?: string,"opens": string,"partner_id": string,"updated_at"?: string,"weekday": number
+                  }
+                  Update: {
+                    "closes"?: string,"created_at"?: string,"id"?: string,"opens"?: string,"partner_id"?: string,"updated_at"?: string,"weekday"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "partner_hours_partner_id_fkey"
+      columns: ["partner_id"]
+isOneToOne: false
+      referencedRelation: "partners"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"partners": {
+                  Row: {
+                    "address": string,"city_id": string,"created_at": string,"description": string | null,"email": string | null,"featured": boolean,"id": string,"instagram": string | null,"latitude": number | null,"logo_r2_key": string | null,"longitude": number | null,"message_channel": Database["public"]['Enums']["partner_message_channel"],"message_number": string | null,"name": string,"paid_until": string,"phone": string,"type": Database["public"]['Enums']["partner_type"],"updated_at": string,"website": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "address": string,"city_id": string,"created_at"?: string,"description"?: string | null,"email"?: string | null,"featured"?: boolean,"id"?: string,"instagram"?: string | null,"latitude"?: number | null,"logo_r2_key"?: string | null,"longitude"?: number | null,"message_channel"?: Database["public"]['Enums']["partner_message_channel"],"message_number"?: string | null,"name": string,"paid_until": string,"phone": string,"type": Database["public"]['Enums']["partner_type"],"updated_at"?: string,"website"?: string | null
+                  }
+                  Update: {
+                    "address"?: string,"city_id"?: string,"created_at"?: string,"description"?: string | null,"email"?: string | null,"featured"?: boolean,"id"?: string,"instagram"?: string | null,"latitude"?: number | null,"logo_r2_key"?: string | null,"longitude"?: number | null,"message_channel"?: Database["public"]['Enums']["partner_message_channel"],"message_number"?: string | null,"name"?: string,"paid_until"?: string,"phone"?: string,"type"?: Database["public"]['Enums']["partner_type"],"updated_at"?: string,"website"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "partners_city_id_fkey"
+      columns: ["city_id"]
+isOneToOne: false
+      referencedRelation: "cities"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"payment_webhook_events": {
                   Row: {
                     "created_at": string,"event_id": string,"id": string,"provider": string,"received_at": string,"updated_at": string
@@ -457,6 +645,32 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"pet_status_history": {
+                  Row: {
+                    "changed_at": string,"changed_by": string | null,"created_at": string,"id": string,"pet_id": string,"status": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "changed_at"?: string,"changed_by"?: string | null,"created_at"?: string,"id"?: string,"pet_id": string,"status": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "changed_at"?: string,"changed_by"?: string | null,"created_at"?: string,"id"?: string,"pet_id"?: string,"status"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "pet_status_history_changed_by_fkey"
+      columns: ["changed_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "pet_status_history_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"pets": {
                   Row: {
                     "approx_age_text": string | null,"birth_date": string | null,"birth_year": number | null,"breed": string | null,"breeding_status": Database["public"]['Enums']["breeding_status"] | null,"colour_markings": string | null,"created_at": string,"id": string,"lifecycle": Database["public"]['Enums']["pet_lifecycle"],"litter_id": string | null,"microchip_number": string | null,"name": string,"neutered": Database["public"]['Enums']["neutered_status"],"note": string | null,"offspring_status": Database["public"]['Enums']["offspring_status"] | null,"organisation_id": string | null,"owner_id": string | null,"passport_number": string | null,"photo_r2_key": string | null,"price_minor": number | null,"public_description": string | null,"sex": Database["public"]['Enums']["pet_sex"],"shelter_status": Database["public"]['Enums']["shelter_status"] | null,"species": Database["public"]['Enums']["pet_species"],"species_other": string | null,"updated_at": string,"vet_name": string | null,"vet_phone": string | null,"weight_unit": Database["public"]['Enums']["weight_unit"]
@@ -470,6 +684,12 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
+      foreignKeyName: "pets_litter_id_fkey"
+      columns: ["litter_id"]
+isOneToOne: false
+      referencedRelation: "litters"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "pets_organisation_id_fkey"
       columns: ["organisation_id"]
 isOneToOne: false
@@ -568,6 +788,44 @@ isOneToOne: false
       columns: ["user_id"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"record_transfers": {
+                  Row: {
+                    "accepted_at": string | null,"accepted_by": string | null,"created_at": string,"expires_at": string,"from_organisation_id": string,"id": string,"new_pet_id": string | null,"pet_id": string,"recipient_email": string,"status": Database["public"]['Enums']["invitation_status"],"token_hash": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "accepted_at"?: string | null,"accepted_by"?: string | null,"created_at"?: string,"expires_at"?: string,"from_organisation_id": string,"id"?: string,"new_pet_id"?: string | null,"pet_id": string,"recipient_email": string,"status"?: Database["public"]['Enums']["invitation_status"],"token_hash": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "accepted_at"?: string | null,"accepted_by"?: string | null,"created_at"?: string,"expires_at"?: string,"from_organisation_id"?: string,"id"?: string,"new_pet_id"?: string | null,"pet_id"?: string,"recipient_email"?: string,"status"?: Database["public"]['Enums']["invitation_status"],"token_hash"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "record_transfers_accepted_by_fkey"
+      columns: ["accepted_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "record_transfers_from_organisation_id_fkey"
+      columns: ["from_organisation_id"]
+isOneToOne: false
+      referencedRelation: "organisations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "record_transfers_new_pet_id_fkey"
+      columns: ["new_pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "record_transfers_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
       referencedColumns: ["id"]
     }
                   ]
@@ -867,10 +1125,16 @@ isOneToOne: false
           Functions: {
             "is_premium":
 { Args: { "user_id": string }; Returns: boolean
+                           },
+"partners_nearby":
+{ Args: { "p_city_id"?: string,"p_lat"?: number,"p_limit"?: number,"p_lng"?: number,"p_type"?: Database["public"]['Enums']["partner_type"] }; Returns: Json
+                           },
+"record_partner_click":
+{ Args: { "p_action": Database["public"]['Enums']["partner_click_action"],"p_partner_id": string }; Returns: undefined
                            }
           }
           Enums: {
-            "account_type": "owner"|"shelter"|"breeder","app_locale": "sr-Latn"|"en","approval_status": "pending"|"approved"|"rejected","breeding_status": "active"|"retired","data_export_status": "preparing"|"ready"|"failed"|"expired","delivery_channel": "email"|"push"|"whatsapp"|"viber","delivery_status": "delivered"|"failed","feeding_type": "dry"|"wet"|"treat"|"home_made"|"other","invitation_status": "pending"|"accepted"|"declined"|"expired","memorial_reason": "passed_away"|"rehomed"|"lost","neutered_status": "yes"|"no"|"unknown","occurrence_status": "pending"|"sent"|"resent"|"done"|"missed","offspring_status": "available"|"reserved"|"sold","organisation_role": "admin"|"volunteer","organisation_type": "shelter"|"breeder","payment_kind": "initial"|"renewal","payment_result": "succeeded"|"failed","pet_lifecycle": "active"|"memorial","pet_sex": "male"|"female"|"unknown","pet_species": "dog"|"cat"|"rabbit"|"hamster"|"guinea_pig"|"chinchilla"|"ferret"|"bird"|"fish"|"turtle"|"lizard"|"snake"|"other","reminder_recurrence": "none"|"hourly_interval"|"daily"|"weekly"|"monthly"|"yearly","reminder_type": "vaccination"|"treatment_dose"|"vet_follow_up"|"meal"|"birthday"|"manual","shelter_status": "intake"|"in_care"|"available"|"reserved"|"adopted"|"deceased"|"returned_to_owner","stool_consistency": "normal"|"soft"|"diarrhoea"|"hard","subscription_plan": "premium_monthly"|"premium_yearly"|"breeder_monthly"|"breeder_yearly","subscription_status": "trialing"|"active"|"cancelled"|"expired"|"payment_failed","treatment_interval_unit": "hours"|"days","treatment_type": "medication"|"deworming"|"flea_tick"|"other","user_channel_type": "whatsapp"|"viber","weight_unit": "kg"|"g"
+            "account_type": "owner"|"shelter"|"breeder","app_locale": "sr-Latn"|"en","approval_status": "pending"|"approved"|"rejected","arrival_type": "found"|"surrendered"|"confiscated"|"other","breeding_status": "active"|"retired","data_export_status": "preparing"|"ready"|"failed"|"expired","delivery_channel": "email"|"push"|"whatsapp"|"viber","delivery_status": "delivered"|"failed","feeding_type": "dry"|"wet"|"treat"|"home_made"|"other","invitation_status": "pending"|"accepted"|"declined"|"expired","memorial_reason": "passed_away"|"rehomed"|"lost","neutered_status": "yes"|"no"|"unknown","occurrence_status": "pending"|"sent"|"resent"|"done"|"missed","offspring_status": "available"|"reserved"|"sold","organisation_role": "admin"|"volunteer","organisation_type": "shelter"|"breeder","partner_click_action": "call"|"message"|"email"|"website","partner_message_channel": "none"|"sms"|"viber"|"whatsapp","partner_type": "vet"|"pet_shop"|"grooming"|"pet_hotel","payment_kind": "initial"|"renewal","payment_result": "succeeded"|"failed","pet_lifecycle": "active"|"memorial","pet_sex": "male"|"female"|"unknown","pet_species": "dog"|"cat"|"rabbit"|"hamster"|"guinea_pig"|"chinchilla"|"ferret"|"bird"|"fish"|"turtle"|"lizard"|"snake"|"other","reminder_recurrence": "none"|"hourly_interval"|"daily"|"weekly"|"monthly"|"yearly","reminder_type": "vaccination"|"treatment_dose"|"vet_follow_up"|"meal"|"birthday"|"manual","request_status": "pending"|"accepted"|"rejected","shelter_status": "intake"|"in_care"|"available"|"reserved"|"adopted"|"deceased"|"returned_to_owner","stool_consistency": "normal"|"soft"|"diarrhoea"|"hard","subscription_plan": "premium_monthly"|"premium_yearly"|"breeder_monthly"|"breeder_yearly","subscription_status": "trialing"|"active"|"cancelled"|"expired"|"payment_failed","treatment_interval_unit": "hours"|"days","treatment_type": "medication"|"deworming"|"flea_tick"|"other","user_channel_type": "whatsapp"|"viber","weight_unit": "kg"|"g"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -990,7 +1254,7 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "account_type": ["owner", "shelter", "breeder"],"app_locale": ["sr-Latn", "en"],"approval_status": ["pending", "approved", "rejected"],"breeding_status": ["active", "retired"],"data_export_status": ["preparing", "ready", "failed", "expired"],"delivery_channel": ["email", "push", "whatsapp", "viber"],"delivery_status": ["delivered", "failed"],"feeding_type": ["dry", "wet", "treat", "home_made", "other"],"invitation_status": ["pending", "accepted", "declined", "expired"],"memorial_reason": ["passed_away", "rehomed", "lost"],"neutered_status": ["yes", "no", "unknown"],"occurrence_status": ["pending", "sent", "resent", "done", "missed"],"offspring_status": ["available", "reserved", "sold"],"organisation_role": ["admin", "volunteer"],"organisation_type": ["shelter", "breeder"],"payment_kind": ["initial", "renewal"],"payment_result": ["succeeded", "failed"],"pet_lifecycle": ["active", "memorial"],"pet_sex": ["male", "female", "unknown"],"pet_species": ["dog", "cat", "rabbit", "hamster", "guinea_pig", "chinchilla", "ferret", "bird", "fish", "turtle", "lizard", "snake", "other"],"reminder_recurrence": ["none", "hourly_interval", "daily", "weekly", "monthly", "yearly"],"reminder_type": ["vaccination", "treatment_dose", "vet_follow_up", "meal", "birthday", "manual"],"shelter_status": ["intake", "in_care", "available", "reserved", "adopted", "deceased", "returned_to_owner"],"stool_consistency": ["normal", "soft", "diarrhoea", "hard"],"subscription_plan": ["premium_monthly", "premium_yearly", "breeder_monthly", "breeder_yearly"],"subscription_status": ["trialing", "active", "cancelled", "expired", "payment_failed"],"treatment_interval_unit": ["hours", "days"],"treatment_type": ["medication", "deworming", "flea_tick", "other"],"user_channel_type": ["whatsapp", "viber"],"weight_unit": ["kg", "g"]
+            "account_type": ["owner", "shelter", "breeder"],"app_locale": ["sr-Latn", "en"],"approval_status": ["pending", "approved", "rejected"],"arrival_type": ["found", "surrendered", "confiscated", "other"],"breeding_status": ["active", "retired"],"data_export_status": ["preparing", "ready", "failed", "expired"],"delivery_channel": ["email", "push", "whatsapp", "viber"],"delivery_status": ["delivered", "failed"],"feeding_type": ["dry", "wet", "treat", "home_made", "other"],"invitation_status": ["pending", "accepted", "declined", "expired"],"memorial_reason": ["passed_away", "rehomed", "lost"],"neutered_status": ["yes", "no", "unknown"],"occurrence_status": ["pending", "sent", "resent", "done", "missed"],"offspring_status": ["available", "reserved", "sold"],"organisation_role": ["admin", "volunteer"],"organisation_type": ["shelter", "breeder"],"partner_click_action": ["call", "message", "email", "website"],"partner_message_channel": ["none", "sms", "viber", "whatsapp"],"partner_type": ["vet", "pet_shop", "grooming", "pet_hotel"],"payment_kind": ["initial", "renewal"],"payment_result": ["succeeded", "failed"],"pet_lifecycle": ["active", "memorial"],"pet_sex": ["male", "female", "unknown"],"pet_species": ["dog", "cat", "rabbit", "hamster", "guinea_pig", "chinchilla", "ferret", "bird", "fish", "turtle", "lizard", "snake", "other"],"reminder_recurrence": ["none", "hourly_interval", "daily", "weekly", "monthly", "yearly"],"reminder_type": ["vaccination", "treatment_dose", "vet_follow_up", "meal", "birthday", "manual"],"request_status": ["pending", "accepted", "rejected"],"shelter_status": ["intake", "in_care", "available", "reserved", "adopted", "deceased", "returned_to_owner"],"stool_consistency": ["normal", "soft", "diarrhoea", "hard"],"subscription_plan": ["premium_monthly", "premium_yearly", "breeder_monthly", "breeder_yearly"],"subscription_status": ["trialing", "active", "cancelled", "expired", "payment_failed"],"treatment_interval_unit": ["hours", "days"],"treatment_type": ["medication", "deworming", "flea_tick", "other"],"user_channel_type": ["whatsapp", "viber"],"weight_unit": ["kg", "g"]
           }
         }
 } as const

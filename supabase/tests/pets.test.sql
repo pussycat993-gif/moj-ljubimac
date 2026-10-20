@@ -41,13 +41,8 @@ select col_default_is('public', 'pets', 'neutered', 'unknown', 'neutered default
 select col_default_is('public', 'pets', 'weight_unit', 'kg', 'weight_unit defaults to kg');
 select col_default_is('public', 'pets', 'lifecycle', 'active', 'lifecycle defaults to active');
 select col_type_is('public', 'pets', 'litter_id', 'uuid', 'litter_id is a uuid column');
-select is(
-  (select count(*)::int from pg_constraint
-   where conrelid = 'public.pets'::regclass and contype = 'f'
-     and conkey = array[(select attnum from pg_attribute
-                         where attrelid = 'public.pets'::regclass and attname = 'litter_id')]),
-  0, 'litter_id has no FK yet (Step 09)'
-);
+select fk_ok('public', 'pets', 'litter_id', 'public', 'litters', 'id',
+  'litter_id references litters (Step 09)');
 select has_index('public', 'pets', 'pets_owner_id_lifecycle_idx', array['owner_id', 'lifecycle'],
   'index (owner_id, lifecycle)');
 select has_index('public', 'pets', 'pets_organisation_id_shelter_status_idx',

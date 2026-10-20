@@ -68,7 +68,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 06 | Schema: pets & health record | ✅ | 05 | — | 2026-10-19 |
 | 07 | Schema: care log & moments | ✅ | 06 | — | 2026-10-19 |
 | 08 | Schema: reminders & delivery | ✅ | 07 | — | 2026-10-20 |
-| 09 | Schema: organisation workflows & partners | ⬜ | 08 | — | |
+| 09 | Schema: organisation workflows & partners | ✅ | 08 | — | 2026-10-20 |
 | 10 | Design foundation | ⬜ | 01 | — | |
 | 11 | Authentication, gates & server utilities | ⬜ | 04, 10 | — | |
 | 12 | Registration, profile, legal pages & i18n | ⬜ | 11, 05, 08 | — | |
@@ -1393,7 +1393,28 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+**2026-10-20**
+- **Built:** three migrations.
+  - `20261020020000_organisation_workflows.sql`: enums `arrival_type`, `request_status`; tables `intakes`, `pet_status_history`, `adoption_requests`, `breeder_inquiries`, `litters` (father check: at most one of `father_id`, `father_name`), `record_transfers` per TC §5.6. The FK `pets.litter_id → litters` (on delete set null). Trigger `pets_record_status_history` writes { status, changed_at = now(), changed_by = auth.uid() } when `shelter_status`, `offspring_status` or `breeding_status` changes (FR-45). Client write checks: intakes/history on a pending/rejected organisation → `organisation_pending_approval`, intake on a breeder → `forbidden_role`; request/inquiry decisions by a Volunteer → `forbidden_role`, plus `organisation_pending_approval`, `breeder_plan_required`, `already_decided`. RLS per step 4 (no client insert on requests, inquiries, litters, transfers).
+  - `20261020020005_partners.sql`: enums `partner_type`, `partner_message_channel`, `partner_click_action`; tables `partners`, `partner_hours`, `partner_clicks` per TC §5.7 with index `(city_id, type, featured, paid_until)`. BR-41 trigger: a 4th featured partner per (city_id, type) raises `featured_limit_reached` (P0001). RLS: authenticated reads partners / hours only while `paid_until` ≥ today in Europe/Belgrade; no client writes; `partner_clicks` has no client access.
+  - `20261020020010_partner_rpcs.sql`: `rpc:partners_nearby` (EP-64; haversine distance in plain SQL, no extension) and `rpc:record_partner_click` (EP-66); authenticated only, anon is denied.
+
+  Seed: four partners in Novi Sad from Design §9 with hours („Dr Vet" featured, „Kod Mace" with paid_until in the past); an intake and a status change for Žuća (Milica's shelter); Marko's adoption request. `lib/supabase/database.types.ts` regenerated. pgTAP: 5 new files with 229 assertions (organisation_workflows 68, organisation_workflows_rls 54, partners 51, partners_nearby 34, partner_clicks 22).
+- **Verification:** `npx supabase db reset` ✅ (21 migrations + both seed files) · `npm run db:types` ✅ exit 0 · `npm run typecheck` ✅ exit 0 · `npm run lint` ✅ exit 0 · `npm test` ✅ 5 files / 38 tests · `npx supabase test db` ✅ 32 files / 1121 tests · `npm run build` ✅ exit 0.
+- **Deviations / decisions:**
+  - Owner-approved exception 1 (2026-10-20): Step 09 also touched `supabase/tests/pets.test.sql` (Step 06). Its test 21 asserted "litter_id has no FK yet (Step 09)"; it now expects the FK, labelled 'litter_id references litters (Step 09)'.
+  - Owner-approved exception 2 (2026-10-20): `npm run lint` failed with 3 `react-hooks/static-components` errors in `docs/product/04-design/screens/my-listings.tsx`. `TabBody` moved to module level and now receives `view`, `tab`, `suspended`, `onRetry` and `Row` as props. No change to markup, classes, copy or rendering.
+  - The previous run stopped on these two points and left everything uncommitted. The owner accepted its decisions (2026-10-20):
+    - The status-history trigger records actual changes only (an update that keeps the same status writes no row).
+    - `partners_nearby`: the city comes from `p_city_id` when given (else the nearest `cities` row to the coordinates); distance is measured from the coordinates when given, else from the city's coordinates.
+    - The delete behaviour of the new FKs (pet → its intakes, history, requests, inquiries, transfers and litters as mother cascade; authors, father, `new_pet_id` and `pets.litter_id` set null; partner → hours and clicks cascade, click user set null).
+    - The required (not null) columns as built.
+    - Partner `initials` per the mockup: first letters of the quoted name part (or of the whole name), at most two, upper case.
+    - EP-64 / EP-66 validation errors raise `validation_failed` with the offending field in the detail.
+- **Follow-ups:**
+  - `breeding_status` changes on pets: add a `forbidden_role` check (owner-accepted follow-up).
+  - Step 28: when a partner logo is replaced, queue the old logo for deletion (owner-accepted follow-up).
+  - Steps 24–28: `list_org_animals`, `list_org_requests`, `list_litters`, `get_partner`, admin statistics RPCs and the server actions (EP-55 … EP-63, EP-69); Step 24 does not need to ship the status-history trigger — it exists here.
 
 ---
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import Link from "next/link"
 import {
   CircleCheck,
@@ -140,6 +140,46 @@ function RowsSkeleton() {
             <Skeleton className="h-4 w-1/3" />
           </div>
         </Card>
+      ))}
+    </div>
+  )
+}
+
+function TabBody({
+  rows,
+  emptyTitle,
+  emptyText,
+  view,
+  tab,
+  suspended,
+  onRetry,
+  Row,
+}: {
+  rows: MyListing[]
+  emptyTitle: string
+  emptyText: string
+  view: ViewState
+  tab: TabKey
+  suspended: boolean
+  onRetry: () => void
+  Row: (props: { l: MyListing }) => ReactNode
+}) {
+  if (view === "loading") return <RowsSkeleton />
+  if (view === "error") return <ErrorState onRetry={onRetry} />
+  if (rows.length === 0)
+    return (
+      <EmptyState
+        icon={ListChecks}
+        title={emptyTitle}
+        description={emptyText}
+        action={tab === "active" && !suspended ? "Novi oglas" : undefined}
+        href="/sapa-pomoci/nova"
+      />
+    )
+  return (
+    <div className="space-y-3">
+      {rows.map((l) => (
+        <Row key={l.id} l={l} />
       ))}
     </div>
   )
@@ -303,28 +343,6 @@ export default function MyListingsScreen() {
     )
   }
 
-  function TabBody({ rows, emptyTitle, emptyText }: { rows: MyListing[]; emptyTitle: string; emptyText: string }) {
-    if (view === "loading") return <RowsSkeleton />
-    if (view === "error") return <ErrorState onRetry={() => setView("default")} />
-    if (rows.length === 0)
-      return (
-        <EmptyState
-          icon={ListChecks}
-          title={emptyTitle}
-          description={emptyText}
-          action={tab === "active" && !suspended ? "Novi oglas" : undefined}
-          href="/sapa-pomoci/nova"
-        />
-      )
-    return (
-      <div className="space-y-3">
-        {rows.map((l) => (
-          <Row key={l.id} l={l} />
-        ))}
-      </div>
-    )
-  }
-
   return (
     <AppShell active="sapa-pomoci" counts={{ podsetnici: 2, poruke: 2 }}>
       <StateSwitcher
@@ -405,6 +423,11 @@ export default function MyListingsScreen() {
           </div>
           <TabsContent value="active" className="mt-4">
             <TabBody
+              view={view}
+              tab={tab}
+              suspended={suspended}
+              onRetry={() => setView("default")}
+              Row={Row}
               rows={active}
               emptyTitle="Još nemaš aktivnih oglasa"
               emptyText="Pokloni ili prodaj nešto što tvom ljubimcu više ne treba, ili potraži ono što mu treba."
@@ -412,6 +435,11 @@ export default function MyListingsScreen() {
           </TabsContent>
           <TabsContent value="expired" className="mt-4">
             <TabBody
+              view={view}
+              tab={tab}
+              suspended={suspended}
+              onRetry={() => setView("default")}
+              Row={Row}
               rows={expired}
               emptyTitle="Nema isteklih oglasa"
               emptyText="Oglasi kojima prođe 30 dana prelaze ovde. Možeš da ih objaviš ponovo."
@@ -419,6 +447,11 @@ export default function MyListingsScreen() {
           </TabsContent>
           <TabsContent value="resolved" className="mt-4">
             <TabBody
+              view={view}
+              tab={tab}
+              suspended={suspended}
+              onRetry={() => setView("default")}
+              Row={Row}
               rows={resolved}
               emptyTitle="Nema rešenih oglasa"
               emptyText="Kad nešto pokloniš, prodaš ili pronađeš, označi oglas kao rešen."

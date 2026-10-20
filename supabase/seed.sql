@@ -207,3 +207,69 @@ insert into public.reminders (user_id, pet_id, type, title, starts_at, recurrenc
   'a1000000-0000-4000-8000-000000000001', null, 'manual', 'Kupiti hranu za Lunu',
   '2026-11-01 09:00:00+01', 'monthly'
 );
+
+-- Organisation workflows ----------------------------------------------------------------
+-- Žuća came into Milica's shelter as a found dog; Milica then made her available
+-- (the status trigger records the change with Milica as author), and Marko sent an
+-- adoption request.
+
+insert into public.intakes (pet_id, intake_on, arrival_type, place_found, note, created_by) values (
+  'c1000000-0000-4000-8000-000000000004', '2026-10-05', 'found', 'Bečej, kod pijace',
+  'Uplašena, bez čipa.', 'a1000000-0000-4000-8000-000000000004'
+);
+
+insert into public.pet_status_history (pet_id, status, changed_at, changed_by) values (
+  'c1000000-0000-4000-8000-000000000004', 'intake', '2026-10-05 10:00:00+02',
+  'a1000000-0000-4000-8000-000000000004'
+);
+
+select set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000004"}', false);
+update public.pets set shelter_status = 'available'
+where id = 'c1000000-0000-4000-8000-000000000004';
+select set_config('request.jwt.claims', '', false);
+
+insert into public.adoption_requests (pet_id, requester_id, name, phone, email, message) values (
+  'c1000000-0000-4000-8000-000000000004', 'a1000000-0000-4000-8000-000000000002',
+  'Marko Jovanović', '+381 64 123 4567', 'marko.jovanovic@mojljubimac.test',
+  'Imam dvorište i iskustva sa psima. Mogu da dođem u subotu.'
+);
+
+-- Partners ------------------------------------------------------------------------------
+-- Four partners in Novi Sad (Design §9). „Dr Vet“ is featured; „Kod Mace“ has a
+-- paid_until in the past, so it is hidden (BR-40).
+
+insert into public.partners (
+  id, type, name, address, city_id, phone, email, website, instagram, description,
+  message_channel, message_number, latitude, longitude, featured, paid_until
+)
+select p.id, p.type, p.name, p.address, c.id, p.phone, p.email, p.website, p.instagram,
+       p.description, p.message_channel, p.message_number, p.latitude, p.longitude,
+       p.featured, p.paid_until
+from (
+  values
+    ('e1000000-0000-4000-8000-000000000001'::uuid, 'vet'::public.partner_type,
+     'Veterinarska ambulanta „Dr Vet“', 'Bulevar oslobođenja 45, Novi Sad', '+381 21 455 100',
+     'kontakt@drvet.rs', 'https://drvet.rs', 'drvet.ns', 'Pregledi, vakcinacija i mala hirurgija za pse i mačke.',
+     'whatsapp'::public.partner_message_channel, '+381 64 455 1000', 45.2541, 19.8425, true, date '2027-12-31'),
+    ('e1000000-0000-4000-8000-000000000002'::uuid, 'pet_shop'::public.partner_type,
+     'Pet shop „Šapica“', 'Zmaj Jovina 20, Novi Sad', '+381 21 662 040',
+     'prodaja@sapica.rs', 'https://sapica.rs', null, null,
+     'whatsapp'::public.partner_message_channel, '+381 65 662 0400', 45.2560, 19.8452, false, date '2027-06-30'),
+    ('e1000000-0000-4000-8000-000000000003'::uuid, 'grooming'::public.partner_type,
+     'Grooming salon „Čupko“', 'Bulevar Evrope 18, Novi Sad', '+381 21 633 818',
+     'zakazivanje@cupko.rs', null, null, null,
+     'viber'::public.partner_message_channel, '+381 64 633 8180', 45.2474, 19.8130, false, date '2027-03-31'),
+    ('e1000000-0000-4000-8000-000000000004'::uuid, 'pet_hotel'::public.partner_type,
+     'Pet hotel „Kod Mace“', 'Veternička rampa bb, Novi Sad', '+381 21 820 777',
+     'rezervacije@kodmace.rs', 'https://kodmace.rs', null, null,
+     'whatsapp'::public.partner_message_channel, '+381 60 820 7770', 45.2470, 19.7710, false, date '2026-09-30')
+) as p (id, type, name, address, phone, email, website, instagram, description,
+        message_channel, message_number, latitude, longitude, featured, paid_until)
+join public.cities c on c.name_sr = 'Novi Sad';
+
+insert into public.partner_hours (partner_id, weekday, opens, closes)
+select 'e1000000-0000-4000-8000-000000000001'::uuid, d, time '08:00', time '20:00' from generate_series(1, 5) d
+union all select 'e1000000-0000-4000-8000-000000000001', 6, time '09:00', time '14:00'
+union all select 'e1000000-0000-4000-8000-000000000002', d, time '09:00', time '20:00' from generate_series(1, 6) d
+union all select 'e1000000-0000-4000-8000-000000000003', d, time '10:00', time '18:00' from generate_series(2, 6) d
+union all select 'e1000000-0000-4000-8000-000000000004', d, time '00:00', time '24:00' from generate_series(1, 7) d;
