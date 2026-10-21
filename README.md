@@ -39,3 +39,12 @@ Lokalno, `npm run preview` gradi aplikaciju adapterom i služi je u Workers runt
 `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`
 
 **Worker runtime secrets** su server-side imena iz `.env.example` (sva imena bez prefiksa `NEXT_PUBLIC_`). Vlasnik ih postavlja sa `npx wrangler secret put <IME>`; ne upisuju se u `wrangler.jsonc`.
+
+## Production auth setup
+
+Prijava ide preko Supabase Auth (TC ADR-06); sesija je u httpOnly kolačićima, a sve Auth operacije rade na serveru (`lib/actions/auth.ts`, `app/(auth)/auth/callback/route.ts`). Lokalno, `supabase/config.toml` traži potvrdu mejla, a mejlovi idu u lokalni mail catcher (Mailpit, `http://127.0.0.1:54324`). Za produkciju vlasnik u Supabase dashboard-u (Authentication) podešava (samo imena, bez vrednosti):
+
+1. **Emails → SMTP Settings:** custom SMTP preko Resend-a (TC ADR-08) — host, port, korisnik i lozinka (Resend API ključ) i pošiljalac `EMAIL_FROM`.
+2. **Sign In / Providers → Email:** uključena potvrda mejla (BR-29), minimalna dužina lozinke 8.
+3. **Sign In / Providers → Google:** uključen, sa Client ID i Client Secret vlasnikovog Google OAuth klijenta. U Google Cloud konzoli je authorized redirect URI Supabase-ov callback (`https://<SUPABASE_PROJECT_REF>.supabase.co/auth/v1/callback`). TC §8.1 nema promenljivu aplikacije za Google — podešava se samo ovde.
+4. **URL Configuration:** Site URL = `NEXT_PUBLIC_SITE_URL`; Redirect URLs sadrži `<NEXT_PUBLIC_SITE_URL>/auth/callback`.
