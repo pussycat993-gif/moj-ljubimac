@@ -6,10 +6,10 @@ import { fail, fromDatabaseError, ok, type ActionResult } from "@/lib/server/res
 import { r2 } from "@/lib/integrations/r2";
 
 // EP-15 get_file_urls — presigned R2 GET URLs (10 minutes, API §10 step 5). Step 13 serves kind
-// `pet_photo`, Step 15 `attachment`; the other kinds arrive with their screens (Steps 21, 24, 27,
-// 28b) and answer url = null until then. Visibility is the caller's relation to the pet (RLS on
-// pets and attachments): an item the caller may not see, or one without a file, gets url = null —
-// the batch never fails.
+// `pet_photo`, Step 15 `attachment`, Step 21 `moment_photo`; the other kinds arrive with their
+// screens (Steps 24, 27, 28b) and answer url = null until then. Visibility is the caller's relation
+// to the pet (RLS on pets, attachments and moment_photos): an item the caller may not see, or one
+// without a file, gets url = null — the batch never fails.
 
 export type FileKind = "attachment" | "pet_photo" | "moment_photo" | "organisation_logo" | "partner_logo" | "listing_photo";
 
@@ -61,6 +61,15 @@ export async function getFileUrls(input: { items: { kind: FileKind; id: string }
         fileName: row.file_name ?? row.r2_key.split("/").pop() ?? null,
         mimeType: row.mime_type,
       });
+    }
+  }
+
+  const momentPhotoIds = idsOf("moment_photo");
+  if (momentPhotoIds.length > 0) {
+    const { data, error } = await supabase.from("moment_photos").select("id, r2_key").in("id", momentPhotoIds);
+    if (error) return { ok: false, error: fromDatabaseError(error) };
+    for (const row of data ?? []) {
+      files.set(`moment_photo:${row.id}`, { key: row.r2_key, fileName: row.r2_key.split("/").pop() ?? null, mimeType: null });
     }
   }
 

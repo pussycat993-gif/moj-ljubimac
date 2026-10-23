@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import {
   Archive,
   CalendarDays,
+  Camera,
   ClipboardList,
   FileDown,
   FileText,
@@ -1351,7 +1352,7 @@ export function PetRecordClient({
             </Card>
           )}
 
-          {/* The care log is personal: organisation animals have none (EP-17). */}
+          {/* The care log and moments are personal: organisation animals have none (EP-17, EP-20). */}
           {(record.access.role === "owner" || record.access.role === "member") && (
             <Card className="gap-2 p-4 md:p-6">
               <h2 className="font-heading text-lg font-bold">{t.moreAbout}</h2>
@@ -1359,6 +1360,12 @@ export function PetRecordClient({
                 <Link href={`/ljubimci/${pet.id}/dnevnik`}>
                   <Utensils className="size-4" aria-hidden />
                   {t.careLogLink}
+                </Link>
+              </Button>
+              <Button asChild variant="ghost" className="h-11 justify-start md:h-9">
+                <Link href={`/ljubimci/${pet.id}/trenuci`}>
+                  <Camera className="size-4" aria-hidden />
+                  {t.momentsLink}
                 </Link>
               </Button>
             </Card>

@@ -547,6 +547,12 @@ isOneToOne: true
 isOneToOne: false
       referencedRelation: "moments"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "moment_photos_moment_id_fkey"
+      columns: ["moment_id"]
+isOneToOne: false
+      referencedRelation: "moments_api"
+      referencedColumns: ["id"]
     }
                   ]
                 },"moment_public_links": {
@@ -566,6 +572,12 @@ isOneToOne: false
       columns: ["moment_id"]
 isOneToOne: true
       referencedRelation: "moments"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "moment_public_links_moment_id_fkey"
+      columns: ["moment_id"]
+isOneToOne: true
+      referencedRelation: "moments_api"
       referencedColumns: ["id"]
     }
                   ]
@@ -1394,6 +1406,44 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"moments_api": {
+                  Row: {
+                    "access": Json | null,"created_at": string | null,"created_by": string | null,"created_by_name": string | null,"id": string | null,"moment_date": string | null,"pet_id": string | null,"photo_count": number | null,"photos": Json | null,"public_link": Json | null,"text": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "access"?: never,"created_at"?: string | null,"created_by"?: string | null,"created_by_name"?: never,"id"?: string | null,"moment_date"?: string | null,"pet_id"?: string | null,"photo_count"?: never,"photos"?: never,"public_link"?: never,"text"?: string | null
+                         }
+                        Update: {
+                           "access"?: never,"created_at"?: string | null,"created_by"?: string | null,"created_by_name"?: never,"id"?: string | null,"moment_date"?: string | null,"pet_id"?: string | null,"photo_count"?: never,"photos"?: never,"public_link"?: never,"text"?: string | null
+                         }
+                        Relationships: [
+                    {
+      foreignKeyName: "moments_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "moments_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
+      foreignKeyName: "moments_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "moments_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"pet_summaries_api": {
                   Row: {
                     "access": Json | null,"attachment_count": number | null,"birth_date": string | null,"birth_year": number | null,"breed": string | null,"can_log": boolean | null,"has_photo": boolean | null,"id": string | null,"lifecycle": Database["public"]['Enums']["pet_lifecycle"] | null,"memorial": Json | null,"moment_count": number | null,"name": string | null,"next_reminder": Json | null,"organisation_id": string | null,"owner_name": string | null,"sex": Database["public"]['Enums']["pet_sex"] | null,"species": Database["public"]['Enums']["pet_species"] | null,"species_other": string | null,"vet_name": string | null
@@ -1492,6 +1542,9 @@ isOneToOne: false
                            },
 "claim_resend_occurrences":
 { Args: { "p_limit"?: number }; Returns: Json
+                           },
+"confirm_moment":
+{ Args: { "p_moment_date": string,"p_moment_id": string,"p_pet_id": string,"p_photos": Json,"p_text": string }; Returns: Json
                            },
 "dispatch_watchdog_due":
 { Args: Record<PropertyKey, never>; Returns: boolean
