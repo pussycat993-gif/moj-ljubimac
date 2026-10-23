@@ -79,7 +79,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 17 | Reminder lists & manual reminders | ✅ | 14 | — | 2026-10-23 |
 | 18 | Reminder settings, email & push channels | ✅ | 17 | — | 2026-10-23 |
 | 19 | Reminder dispatch job & message actions | ✅ | 18 | — | 2026-10-23 |
-| 20 | Care log & meal reminders | ⬜ | 19 | — | |
+| 20 | Care log & meal reminders | ✅ | 19 | — | 2026-10-23 |
 | 21 | Moments & public links | ⬜ | 15 | — | |
 | 22 | Household sharing | ⬜ | 19 | — | |
 | 23 | Subscription status, Premium page & account data control | ⬜ | 12, 15, 19 | — | |
@@ -3229,7 +3229,52 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-23** — Step 20 built (unattended overnight run).
+  - **Built:**
+    - Migration `20261023124529_care_log_api.sql`:
+      - `view:feeding_entries_api` and `view:stool_entries_api` (`security_invoker`). They carry the §6 FeedingEntry / StoolEntry fields, `created_by_name` (`private.pet_person_name`) and the per-entry `access` (`private.entry_access`, the same rule as `weight_entries_api`: creator or owner, member entries locked while the household is read-only).
+      - `view:meal_schedules_api` (`security_invoker` over `pets`, so RLS on pets decides which pets are visible) with the §6 MealSchedule fields. The meal reminder row comes from the security-definer helper `private.pet_meal_schedule(pet_id)`, limited to `private.can_access_pet_care`, because reminders RLS would hide it from a member who has not switched reminders on, while EP-19 get is Member 👁. `meal_times` are `HH:MM` ascending, `meal_weekdays` ascending, `every_day` when all of 1…7 are chosen.
+      - `rpc:set_meal_schedule(p_pet_id uuid, p_meal_times time[], p_meal_weekdays smallint[] default null) → MealSchedule` (security definer, granted to authenticated only). No relation (organisation animals included) → `not_found`; member → `forbidden_role`; memorial pet → `validation_failed` `p_pet_id:invalid_state`; `p_meal_times` required, at most 6 (`out_of_range`), distinct whole minutes (`invalid`); `p_meal_weekdays` required with times, distinct values in 1…7 (`invalid`). Non-empty times upsert the single `meal` reminder (`on conflict (pet_id) where type = 'meal'`, `user_id` = owner, active), and the existing reminders trigger regenerates its future occurrences at the exact times on the chosen days. Empty times delete the reminder and, by cascade, its occurrences, and return `reminder_id = null` with empty arrays. Field codes travel in the error DETAIL as in the memorial RPCs.
+      - EP-18 check constraints on existing columns: `feeding_entries.brand ≤ 100`, `feeding_entries.note ≤ 500`, `stool_entries.note ≤ 500`.
+      - `npm run db:types` regenerated `lib/supabase/database.types.ts`.
+    - `app/(app)/ljubimci/[id]/dnevnik/page.tsx`: EP-01 header (`pet_summaries_api`, id filter), the first EP-17 page of each tab (20, `count: 'exact'`, `fed_at` / `observed_at` desc), EP-19 get, EP-43 locale and the EP-15 pet photo on the server. The loading state is the Suspense fallback. No pet, any read error, or a pet without a care log (organisation roles) → `ErrorState`. The inline `"use server"` actions `listEntries`, `createFeeding`, `updateFeeding`, `createStool`, `updateStool`, `deleteEntry` and `setMealSchedule` check the §4.1 gates and the EP-17 / EP-18 / EP-19 request rules: timestamps not more than 5 min in the future (`out_of_range`), enums, brand ≤ 100, note ≤ 500, `amount_g` > 0 with ≤ 1 decimal, `limit` 1–50. Each write is returned through the matching `*_api` view, and an RLS-rejected insert → `not_found`.
+    - `app/(app)/ljubimci/[id]/dnevnik/care-log-client.tsx`: port of `care-log.tsx` without the StateSwitcher.
+      - Header with the back link "Karton: {name}", avatar, name · species · breed.
+      - Ishrana / Stolica tabs with day groups in Europe/Belgrade ("Danas, …" / "Juče, …"), Belgrade times, grams in the locale number format, "upisao/la {name}", "Krv ili sluz: da", and "Učitaj još" from the current offset.
+      - Quick-add / edit Dialogs. `fed_at` / `observed_at` are built from the date + `HH:MM` on the Belgrade wall clock (DST-aware). Inline errors come from the mockup, and 422 field codes map back to them.
+      - Row menu and AlertDialog on rows with `access.can_edit`. "Dodaj obrok" / "Dodaj stolicu" (header and empty state) are gated on `can_log`.
+      - "Podsetnici za obroke" card: times with remove buttons, "Dodaj vreme obroka" (at most 6), the "Svaki dan" Switch, weekday chips (`aria-pressed`, full-name aria-label), "Izaberi bar jedan dan.", "Sačuvaj podsetnike", and `role="status"` "Podsetnici za obroke su sačuvani.". The owner of an active pet edits it. Members (and the owner of a memorial pet) see the times plus either "Svaki dan" or outline weekday chips, with no controls.
+    - `app/(app)/ljubimci/[id]/pet-record-client.tsx`: the mockup's aside card "Još o ljubimcu" with the "Dnevnik ishrane i stolice" link (`Utensils`), shown for owner and member (care log is personal). The Trenuci link is left for Step 21.
+    - `lib/i18n/sr.ts` / `en.ts`: the new `careLog` section (every S07 string) and `petRecord.moreAbout` / `petRecord.careLogLink`, with English translations.
+    - Tests:
+      - `supabase/tests/care_log_api.test.sql` (47): view shape and grants. A Free owner adds 60 feeding and 60 stool entries, and a Premium owner adds 30 more. Created_by_name and access are checked. No relation / organisation admin → 42501. A member adds entries and edits / deletes only their own (`forbidden_role` otherwise). A read-only household → `household_read_only` on every member write, with every entry read-only. The brand / note / amount checks are covered.
+      - `supabase/tests/set_meal_schedule.test.sql` (33): 08:00 + 18:00 on Mon/Wed/Fri gives one owner meal reminder whose occurrences equal the expected Belgrade due times in the 60-day window, with `notify_at = due_at`. Saving again keeps the same reminder and regenerates. The member sees the schedule but gets `forbidden_role`. No relation / organisation animal → `not_found`. The request rules are covered. Empty times remove the reminder and its occurrences. Memorial → `invalid_state`.
+      - `tests/care-log/care-log-screen.test.tsx` (15): Belgrade day grouping (a 22:30 UTC entry sits under "Danas") and en-GB labels; "Učitaj još"; empty and loading states. Feeding quick-add with validation, Belgrade `fed_at`, toast and the new row. A future time is rejected. 422 / other errors; edit prefill and update; delete via AlertDialog. Member row menus only on own entries; `can_log = false` hides add buttons. Stolica tab list, quick-add (consistency, blood/mucus) and edit.
+      - `tests/care-log/meal-schedule-card.test.tsx` (11): times and chips; add/toggle/save through EP-19; "Svaki dan" → 1…7; no day → error and Save disabled; removing all times sends empty arrays; error toast; English; member and memorial pets see no controls.
+  - **Owner decisions applied (2026-10-23):**
+    - Gendered dialog description by `pets.sex`: "Šta je {pet} jela / jeo / jeo/la i koliko." / "What {pet} ate and how much."
+    - Edit/delete: "Izmeni obrok" / "Edit meal", "Izmeni unos stolice" / "Edit stool entry"; AlertDialog "Obrisati unos?" / "Delete this entry?", "Ovo ne može da se poništi." / "This can't be undone.", "Da, obriši" / "Yes, delete", "Odustani" / "Cancel"; row menu "Još opcija" / "More options" with "Izmeni" / "Obriši" (the Step 14 pattern); toasts "Unos sačuvan" / "Entry saved" (create and edit) and "Unos obrisan" / "Entry deleted".
+    - Future time: "Vreme ne može biti u budućnosti." / "The time can't be in the future." Length limits via `maxLength` 100 (brand) and 500 (notes). The date picker disables future days.
+    - A meal schedule can be removed: Save is enabled with zero times when a schedule exists and sends empty arrays.
+    - From Steps 13–17: server writes on the server because of the httpOnly session; 5xx / unmapped errors → toast "Nešto nije u redu. Pokušaj ponovo."; sr-Latn / en-GB date formats and Intl number format.
+  - **Verification:**
+    - `npm run typecheck` ✅ exit 0
+    - `npm run lint` ✅ exit 0. 0 errors and 2 warnings, both the unused eslint-disable directives in the generated `cloudflare-env.d.ts` that were already there.
+    - `npm test` ✅ `Test Files 68 passed (68)`, `Tests 760 passed (760)`
+    - `npx supabase test db` ✅ `All tests successful. Files=54, Tests=1757`, `Result: PASS`. This was run after `npx supabase db reset`, which applied all migrations and the seed cleanly.
+    - `npm run build` ✅ exit 0. The routes include `ƒ /ljubimci/[id]/dnevnik`.
+    - Extra live check through PostgREST as seeded Ivana: `rpc/set_meal_schedule` with `["18:00","08:00"]`, `[1,3,5]` → `{"meal_times": ["08:00", "18:00"], "meal_weekdays": [1, 3, 5], "every_day": false, "active": true, …}`. `meal_schedules_api` returns the same row. Empty weekdays → `{"code":"P0001","details":"p_meal_weekdays:required","message":"validation_failed"}`. `feeding_entries_api` with `count=exact` works. Empty times → removed (`reminder_id: null`), which put the local DB back to the seed state.
+  - **Deviations / decisions:**
+    - Server actions are inline `"use server"` functions in `dnevnik/page.tsx`, passed to the client as `actions`. No `lib/actions` file is on the Step 20 list, so this follows the Step 18 precedent (`podesavanja/podsetnici/page.tsx`).
+    - `meal_schedules_api` reads the reminder through the security-definer helper (see Built), because a security_invoker view over `reminders` alone would return `[]` to a member who has not opted into reminders. Visibility still comes from RLS on `pets` plus `can_access_pet_care`.
+    - `set_meal_schedule` treats organisation animals as "no relation" (`not_found`), as EP-17 / EP-19 list organisation roles as "—". After removal it returns `active: false` (there is no reminder).
+    - S07 has no ReadOnlyBanner copy, so in a read-only household (`can_log = false`) the add buttons and row menus are hidden without a banner (Design §8: controls hidden, not disabled).
+    - Pets without a care log (organisation roles) get `ErrorState` on S07, and S03 hides the "Još o ljubimcu" card for them.
+    - The member's read-only meal card shows the selected days as outline Badges, or "Svaki dan". Both are existing copy and components.
+    - `amount_g` with more than 1 decimal, or ≤ 0, shows the mockup's "Količina mora biti broj veći od nule." (no separate copy).
+  - **Follow-ups:**
+    - Step 21: add the Trenuci link to the S03 "Još o ljubimcu" card (Utensils / Camera as in the mockup).
+    - The DropdownMenu trigger is labelled "Još opcija" without row context. The Step 14 weight rows append the date. A contextual label could be added once copy exists.
 
 ---
 

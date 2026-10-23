@@ -20,6 +20,7 @@ import {
   Stethoscope,
   Syringe,
   Trash2,
+  Utensils,
   X,
 } from "lucide-react"
 import {
@@ -89,8 +90,9 @@ import { format, getDictionary, type Dictionary, type Locale } from "@/lib/i18n"
 // ("Doza data"), EP-12 (visit edit/delete), EP-14 (attachment chip delete), EP-15 (photo, attachment
 // URLs), EP-16 ("Izvezi PDF" → pdf-export-client, loaded on click). Renders the header, Pregled
 // (the next 3 reminders from PetRecord.upcoming_reminders with "Urađeno" → EP-26 and "Svi podsetnici",
-// Step 17; last weight, last visit), Vakcine, Terapije, Pregledi and Težina; the Dnevnik/Trenuci links
-// arrive in Steps 20–21. States: loading (PetRecordLoading) / default /
+// Step 17; last weight, last visit), Vakcine, Terapije, Pregledi and Težina; the aside's "Još o ljubimcu"
+// card links to the Dnevnik (S07, Step 20) for personal pets (owner and members); Trenuci arrives in
+// Step 21. States: loading (PetRecordLoading) / default /
 // per-tab empty / read_only (banner by read_only_reason, every edit control hidden; members keep
 // "Doza data" and their own weights, FR-28) / premium_locked ("Izvezi PDF" on Free; the memorial
 // dialog on premium_required) / error (PetRecordError on 404 / 5xx).
@@ -1346,6 +1348,19 @@ export function PetRecordClient({
                   </a>
                 </Button>
               )}
+            </Card>
+          )}
+
+          {/* The care log is personal: organisation animals have none (EP-17). */}
+          {(record.access.role === "owner" || record.access.role === "member") && (
+            <Card className="gap-2 p-4 md:p-6">
+              <h2 className="font-heading text-lg font-bold">{t.moreAbout}</h2>
+              <Button asChild variant="ghost" className="h-11 justify-start md:h-9">
+                <Link href={`/ljubimci/${pet.id}/dnevnik`}>
+                  <Utensils className="size-4" aria-hidden />
+                  {t.careLogLink}
+                </Link>
+              </Button>
             </Card>
           )}
         </aside>

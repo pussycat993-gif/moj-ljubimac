@@ -45,6 +45,12 @@ isOneToOne: false
       foreignKeyName: "adoption_requests_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
+      foreignKeyName: "adoption_requests_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
@@ -97,6 +103,12 @@ isOneToOne: false
       foreignKeyName: "attachments_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
+      foreignKeyName: "attachments_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
@@ -131,6 +143,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "breeder_inquiries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
     },{
       foreignKeyName: "breeder_inquiries_pet_id_fkey"
       columns: ["pet_id"]
@@ -239,6 +257,12 @@ isOneToOne: false
       foreignKeyName: "feeding_entries_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
+      foreignKeyName: "feeding_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
@@ -323,6 +347,12 @@ isOneToOne: false
       foreignKeyName: "household_pets_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
+      foreignKeyName: "household_pets_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
@@ -395,6 +425,12 @@ isOneToOne: false
       foreignKeyName: "intakes_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: true
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
+      foreignKeyName: "intakes_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: true
       referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
@@ -421,6 +457,12 @@ isOneToOne: true
       foreignKeyName: "litters_father_id_fkey"
       columns: ["father_id"]
 isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
+      foreignKeyName: "litters_father_id_fkey"
+      columns: ["father_id"]
+isOneToOne: false
       referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
@@ -429,6 +471,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "pets"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "litters_mother_id_fkey"
+      columns: ["mother_id"]
+isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
     },{
       foreignKeyName: "litters_mother_id_fkey"
       columns: ["mother_id"]
@@ -462,6 +510,12 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
+      foreignKeyName: "memorial_records_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: true
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
       foreignKeyName: "memorial_records_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: true
@@ -533,6 +587,12 @@ isOneToOne: true
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "moments_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
     },{
       foreignKeyName: "moments_pet_id_fkey"
       columns: ["pet_id"]
@@ -727,6 +787,12 @@ isOneToOne: false
       foreignKeyName: "pet_status_history_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
+      foreignKeyName: "pet_status_history_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
@@ -885,6 +951,12 @@ isOneToOne: false
       foreignKeyName: "record_transfers_new_pet_id_fkey"
       columns: ["new_pet_id"]
 isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
+      foreignKeyName: "record_transfers_new_pet_id_fkey"
+      columns: ["new_pet_id"]
+isOneToOne: false
       referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
@@ -893,6 +965,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "pets"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "record_transfers_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
     },{
       foreignKeyName: "record_transfers_pet_id_fkey"
       columns: ["pet_id"]
@@ -995,6 +1073,12 @@ isOneToOne: false
       foreignKeyName: "reminders_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
+      foreignKeyName: "reminders_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
@@ -1029,6 +1113,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "stool_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
     },{
       foreignKeyName: "stool_entries_pet_id_fkey"
       columns: ["pet_id"]
@@ -1105,6 +1195,12 @@ isOneToOne: false
       foreignKeyName: "treatments_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
+      foreignKeyName: "treatments_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
@@ -1157,6 +1253,12 @@ isOneToOne: false
       foreignKeyName: "vaccinations_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
+      foreignKeyName: "vaccinations_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
@@ -1185,6 +1287,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "vet_visits_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
     },{
       foreignKeyName: "vet_visits_pet_id_fkey"
       columns: ["pet_id"]
@@ -1221,6 +1329,12 @@ isOneToOne: false
       foreignKeyName: "weight_entries_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
+      foreignKeyName: "weight_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
@@ -1234,7 +1348,53 @@ isOneToOne: false
                 }
           }
           Views: {
-            "pet_summaries_api": {
+            "feeding_entries_api": {
+                  Row: {
+                    "access": Json | null,"amount_g": number | null,"brand": string | null,"created_at": string | null,"created_by": string | null,"created_by_name": string | null,"fed_at": string | null,"id": string | null,"note": string | null,"pet_id": string | null,"type": Database["public"]['Enums']["feeding_type"] | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "access"?: never,"amount_g"?: number | null,"brand"?: string | null,"created_at"?: string | null,"created_by"?: string | null,"created_by_name"?: never,"fed_at"?: string | null,"id"?: string | null,"note"?: string | null,"pet_id"?: string | null,"type"?: Database["public"]['Enums']["feeding_type"] | null
+                         }
+                        Update: {
+                           "access"?: never,"amount_g"?: number | null,"brand"?: string | null,"created_at"?: string | null,"created_by"?: string | null,"created_by_name"?: never,"fed_at"?: string | null,"id"?: string | null,"note"?: string | null,"pet_id"?: string | null,"type"?: Database["public"]['Enums']["feeding_type"] | null
+                         }
+                        Relationships: [
+                    {
+      foreignKeyName: "feeding_entries_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "feeding_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
+      foreignKeyName: "feeding_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "feeding_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"meal_schedules_api": {
+                  Row: {
+                    "active": boolean | null,"every_day": boolean | null,"meal_times": (string)[] | null,"meal_weekdays": (number)[] | null,"pet_id": string | null,"reminder_id": string | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    
+                  ]
+                },"pet_summaries_api": {
                   Row: {
                     "access": Json | null,"attachment_count": number | null,"birth_date": string | null,"birth_year": number | null,"breed": string | null,"can_log": boolean | null,"has_photo": boolean | null,"id": string | null,"lifecycle": Database["public"]['Enums']["pet_lifecycle"] | null,"memorial": Json | null,"moment_count": number | null,"name": string | null,"next_reminder": Json | null,"organisation_id": string | null,"owner_name": string | null,"sex": Database["public"]['Enums']["pet_sex"] | null,"species": Database["public"]['Enums']["pet_species"] | null,"species_other": string | null,"vet_name": string | null
                   }
@@ -1254,6 +1414,44 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"stool_entries_api": {
+                  Row: {
+                    "access": Json | null,"blood_or_mucus": boolean | null,"consistency": Database["public"]['Enums']["stool_consistency"] | null,"created_at": string | null,"created_by": string | null,"created_by_name": string | null,"id": string | null,"note": string | null,"observed_at": string | null,"pet_id": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "access"?: never,"blood_or_mucus"?: boolean | null,"consistency"?: Database["public"]['Enums']["stool_consistency"] | null,"created_at"?: string | null,"created_by"?: string | null,"created_by_name"?: never,"id"?: string | null,"note"?: string | null,"observed_at"?: string | null,"pet_id"?: string | null
+                         }
+                        Update: {
+                           "access"?: never,"blood_or_mucus"?: boolean | null,"consistency"?: Database["public"]['Enums']["stool_consistency"] | null,"created_at"?: string | null,"created_by"?: string | null,"created_by_name"?: never,"id"?: string | null,"note"?: string | null,"observed_at"?: string | null,"pet_id"?: string | null
+                         }
+                        Relationships: [
+                    {
+      foreignKeyName: "stool_entries_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "stool_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
+    },{
+      foreignKeyName: "stool_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "stool_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"weight_entries_api": {
                   Row: {
                     "access": Json | null,"created_at": string | null,"created_by": string | null,"created_by_name": string | null,"id": string | null,"measured_on": string | null,"note": string | null,"pet_id": string | null,"value": number | null,"weight_unit": Database["public"]['Enums']["weight_unit"] | null
@@ -1266,6 +1464,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "weight_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "meal_schedules_api"
+      referencedColumns: ["pet_id"]
     },{
       foreignKeyName: "weight_entries_pet_id_fkey"
       columns: ["pet_id"]
@@ -1336,6 +1540,9 @@ isOneToOne: false
                            },
 "restore_pet_from_memorial":
 { Args: { "p_pet_id": string,"p_reenable_reminders"?: boolean }; Returns: Json
+                           },
+"set_meal_schedule":
+{ Args: { "p_meal_times": (string)[],"p_meal_weekdays"?: (number)[],"p_pet_id": string }; Returns: Json
                            }
           }
           Enums: {
