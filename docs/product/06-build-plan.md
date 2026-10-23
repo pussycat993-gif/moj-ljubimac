@@ -76,7 +76,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 14 | Pet record: view, weight, vaccinations | ✅ | 13, 08 | — | 2026-10-23 |
 | 15 | Treatments, doses, vet visits & attachments | ✅ | 14 | — | 2026-10-23 |
 | 16 | Memorial, restore & PDF export | ✅ | 15 | — | 2026-10-23 |
-| 17 | Reminder lists & manual reminders | ⬜ | 14 | — | |
+| 17 | Reminder lists & manual reminders | ✅ | 14 | — | 2026-10-23 |
 | 18 | Reminder settings, email & push channels | ⬜ | 17 | — | |
 | 19 | Reminder dispatch job & message actions | ⬜ | 18 | — | |
 | 20 | Care log & meal reminders | ⬜ | 19 | — | |
@@ -2753,7 +2753,26 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-23** — Step 17 built (unattended overnight run; the first run stopped before committing, and the owner approved both fixes and accepted all of its decisions, exceptions and deviations. This resumed run applied the fixes, re-ran all six commands and committed).
+  - **Built:**
+    - Migration `20261023083039_reminder_occurrence_rpcs.sql`: `rpc:list_reminder_occurrences` (EP-25 filters today / upcoming / missed / done / next, `pet_id`, paging, sorting, `total` and per-tab `counts`, the instance rule, Europe/Belgrade day boundary, member visibility only when `reminders_enabled`, memorial pets and inactive reminders excluded) and `rpc:mark_occurrence_done` (EP-26: every row of the instance done with `done_at` / `done_by`, idempotent, a `treatment_dose` inserts one dose log, read-only household → `household_read_only`). `npm run db:types` regenerated `lib/supabase/database.types.ts`.
+    - S10 `/podsetnici` (`page.tsx`, `reminders-client.tsx`): tabs Danas / Uskoro / Propušteno / Urađeno on EP-25, "Učitaj još" paging, "Urađeno" → EP-26, manual rows link to `/podsetnici/[id]` and generated rows have no link, loading / default / empty / error states. The StateSwitcher was removed.
+    - S11 `/podsetnici/novi` and the edit variant `/podsetnici/[id]` (shared `reminder-form-client.tsx`): pet picker from EP-01 plus "Samo za mene", Belgrade date + HH:MM → UTC, EP-27 create / get / update / delete with the "Obriši podsetnik" AlertDialog, field codes shown inline.
+    - S01 "Danas" strip from EP-25 `filter=today` (first 3, "Urađeno" → EP-26, "Pogledaj sve" → `/podsetnici`). S03 Pregled shows the next 3 reminders from `PetRecord.upcoming_reminders` and the "Svi podsetnici" link.
+    - `app/(app)/layout.tsx` passes `counts.podsetnici` = EP-25 `total` for `filter=today` (0 → no badge). `lib/actions/reminders.ts` holds the EP-25/26/27 server actions. New keys in `lib/i18n/sr.ts` and `en.ts`.
+    - Tests: the three pgTAP files, the four `tests/reminders/*` files, `tests/components/reminder-row.test.tsx`, `e2e/vaccination-reminder.spec.ts` and `e2e/mark-done.spec.ts`.
+  - **Owner decisions applied (2026-10-23):** server actions in `lib/actions/reminders.ts`. `/podsetnici/[id]` is keyed by `ReminderOccurrence.reminder_id`. Copy: `in_past` → "Izaberi datum i vreme u budućnosti." / "Pick a date and time in the future."; `pet_memorial` → "Ovaj ljubimac je u Uspomenama." / "This pet is in Memorials."; "Učitaj još" / "Load more"; meal with null title → "Obrok — {pet}" / "Meal — {pet}"; birthday with null title → "Rođendan — {pet}" / "Birthday — {pet}". S03 uses `PetRecord.upcoming_reminders`. S01 "Danas" loads through `lib/actions/reminders.ts`. The S01 and S03 `page.tsx` files changed only to pass the reminder copy and data. "Pogledaj sve" → `/podsetnici` is shown now. "Podešavanja" links to S12 before Step 18 builds it. `components/app/reminder-row.tsx` gets an optional `labels` prop (Serbian defaults) and a `canMarkDone` prop. Dates and times use Intl (sr-Latn / en-GB). Unmapped field codes show the form-level error, and date pickers disable invalid dates.
+  - **Owner-approved fixes in this resumed run:** (1) `components/app/signed-in-shell.tsx` passes `counts?: Record<string, number>` through to `AppShell`. This is a 3-line change, needed because the layout renders `SignedInShell`, not `AppShell`, so the count badge could not reach the shell without it. (2) `playwright.config.ts` sets `workers: 2`, because `next dev` on this machine cannot serve 4 browsers at once.
+  - **Owner-approved exceptions (pre-approved exception 3):** `tests/design/ui-overrides.test.ts` now strips ReminderRow's `labels` and `canMarkDone` before comparing it with the mockup, and still checks the rest of the file. `tests/pets/pets-home.test.tsx` now mocks `next/navigation` and expects "Pogledaj sve" → `/podsetnici`, because S01 now marks reminders done and refreshes the badge. `tests/components/reminder-row.test.tsx` covers the new props.
+  - **Verification** (env vars for `npm run e2e` came from `npx supabase status -o env` as in Steps 12–13. There is no `.env.local`, and without these vars the first e2e attempt failed in `lib/supabase/middleware.ts` "URL and Key are required"):
+    - `npm run typecheck` ✅ exit 0
+    - `npm run lint` ✅ exit 0. 0 errors and 2 warnings, both unused eslint-disable directives in the generated `cloudflare-env.d.ts` that were already there.
+    - `npm test` ✅ `Test Files 58 passed (58)`, `Tests 631 passed (631)`
+    - `npx supabase test db` ✅ `All tests successful. Files=48, Tests=1569`, `Result: PASS`
+    - `npm run build` ✅ exit 0. The routes include `/podsetnici`, `/podsetnici/[id]` and `/podsetnici/novi`.
+    - `npm run e2e` ✅ `4 passed (18.3s)` with 2 workers: mark-done, add-pet, registration and vaccination-reminder.
+  - **Deviations:** the out-of-list files listed above (`signed-in-shell.tsx`, `playwright.config.ts`, `lib/actions/reminders.ts`, S01/S03 `page.tsx`, `reminder-row.tsx` and its test, the two guarded tests). All are owner-approved.
+  - **Follow-ups:** `ReminderTypeIcon` still has Serbian-only sr-only type labels (`reminderTypeLabel`), so these are not translated in English. A later step should add labels to it.
 
 ---
 

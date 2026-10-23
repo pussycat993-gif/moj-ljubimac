@@ -67,31 +67,38 @@ import type { PetSpecies } from "@/components/app/pet-avatar"
 import { PetHeader } from "@/components/app/pet-header"
 import { PremiumLock } from "@/components/app/premium-lock"
 import { ReadOnlyBanner } from "@/components/app/read-only-banner"
+import { ReminderRow } from "@/components/app/reminder-row"
 import { StatusBadge } from "@/components/app/status-badge"
 import { deleteAttachment } from "@/lib/actions/attachments"
 import { getFileUrls, type FileUrl } from "@/lib/actions/files"
 import { movePetToMemorial, type MemorialReason } from "@/lib/actions/memorial"
 import { getPdfExportBundle } from "@/lib/actions/pdf-export"
+import { markOccurrenceDone } from "@/lib/actions/reminders"
+import { reminderRowLabels, toReminderRow } from "@/app/(app)/podsetnici/reminders-client"
 import { deletePet, type PetRecord, type WeightUnit } from "@/lib/actions/pets"
 import { deleteTreatment, logDose, type Treatment } from "@/lib/actions/treatments"
 import { deleteVaccination, type Vaccination } from "@/lib/actions/vaccinations"
 import { deleteVetVisit, type Attachment, type VetVisit } from "@/lib/actions/vet-visits"
 import { createWeightEntry, deleteWeightEntry, updateWeightEntry, type WeightEntry } from "@/lib/actions/weights"
 import type { Me } from "@/lib/actions/registration"
-import { format, type Dictionary, type Locale } from "@/lib/i18n"
+import { format, getDictionary, type Dictionary, type Locale } from "@/lib/i18n"
 
 // S03 — Karton ljubimca · /ljubimci/[id] · FR-03 (display), FR-04, FR-05, FR-06, FR-07, FR-08, FR-13,
 // FR-10, FR-11, FR-28 · EP-02 (rpc:get_pet_record), EP-05 (delete_pet), EP-06 ("Premesti u
 // Uspomene"), EP-08 (weights), EP-09 (vaccination edit/delete), EP-10 (treatment edit/delete), EP-11
 // ("Doza data"), EP-12 (visit edit/delete), EP-14 (attachment chip delete), EP-15 (photo, attachment
 // URLs), EP-16 ("Izvezi PDF" → pdf-export-client, loaded on click). Renders the header, Pregled
-// (last weight, last visit), Vakcine, Terapije, Pregledi and Težina; the next-reminders block and the
-// Dnevnik/Trenuci links arrive in Steps 17–21. States: loading (PetRecordLoading) / default /
+// (the next 3 reminders from PetRecord.upcoming_reminders with "Urađeno" → EP-26 and "Svi podsetnici",
+// Step 17; last weight, last visit), Vakcine, Terapije, Pregledi and Težina; the Dnevnik/Trenuci links
+// arrive in Steps 20–21. States: loading (PetRecordLoading) / default /
 // per-tab empty / read_only (banner by read_only_reason, every edit control hidden; members keep
 // "Doza data" and their own weights, FR-28) / premium_locked ("Izvezi PDF" on Free; the memorial
 // dialog on premium_required) / error (PetRecordError on 404 / 5xx).
 
-export type PetRecordCopy = Pick<Dictionary, "petRecord" | "pet" | "petForm" | "common">
+// `reminders` (the Pregled reminder rows) is optional so callers without reminder rows keep their copy; it
+// falls back to the locale's dictionary.
+export type PetRecordCopy = Pick<Dictionary, "petRecord" | "pet" | "petForm" | "common"> &
+  Partial<Pick<Dictionary, "reminders">>
 
 type TabKey = "pregled" | "vakcine" | "terapije" | "pregledi" | "tezina"
 
@@ -587,6 +594,17 @@ export function PetRecordClient({
   const [wNote, setWNote] = useState("")
   const [wError, setWError] = useState("")
 
+  const rowCopy = { pet: copy.pet, reminders: copy.reminders ?? getDictionary(locale).reminders }
+  const upcoming = record.upcoming_reminders.slice(0, 3)
+
+  // EP-26 from the Pregled reminders (FR-24, FR-28); the record reloads with the next instances.
+  async function markReminderDone(id: string) {
+    const result = await markOccurrenceDone(id).catch(() => null)
+    if (result?.ok) toast(t.reminderDone)
+    else if (result?.error.code !== "household_read_only") toast.error(copy.common.error)
+    router.refresh()
+  }
+
   const canEdit = record.access.can_edit
   const canDelete = record.access.can_delete
   const canLog = record.can_log
@@ -936,42 +954,65 @@ export function PetRecordClient({
                   onAction={() => setTab("vakcine")}
                 />
               ) : (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {lastWeight && (
-                    <Card className="gap-2 p-4 md:p-6">
-                      <p className="text-xs font-medium text-muted-foreground">{t.lastWeight}</p>
-                      <p className="font-heading text-[22px] leading-7 font-bold text-pet-accent">
-                        {formatWeight(lastWeight.value, unit, locale)}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {formatDate(parseIsoDate(lastWeight.measured_on), locale)}
-                        {prevWeight &&
-                          ` · ${format(t.sinceLast, {
-                            change: `${lastWeight.value >= prevWeight.value ? "+" : "−"}${formatWeight(
-                              Math.abs(lastWeight.value - prevWeight.value),
-                              unit,
-                              locale,
-                            )}`,
-                          })}`}
-                      </p>
-                      <Button variant="link" size="sm" className="self-start px-0" onClick={() => setTab("tezina")}>
-                        {t.viewTrend}
-                      </Button>
+                <>
+                  {upcoming.length > 0 && (
+                    <Card className="gap-3 p-4 md:p-6">
+                      <div className="flex items-center justify-between gap-2">
+                        <h2 className="font-heading text-lg font-bold">{t.nextReminders}</h2>
+                        <Button asChild variant="link" size="sm">
+                          <Link href="/podsetnici">{t.allReminders}</Link>
+                        </Button>
+                      </div>
+                      <div className="space-y-2">
+                        {upcoming.map((r) => (
+                          <ReminderRow
+                            key={r.id}
+                            reminder={toReminderRow(r, rowCopy, locale)}
+                            onDone={markReminderDone}
+                            canMarkDone={r.can_mark_done}
+                            labels={reminderRowLabels(rowCopy.reminders)}
+                          />
+                        ))}
+                      </div>
                     </Card>
                   )}
-                  {lastVisit && (
-                    <Card className="gap-2 p-4 md:p-6">
-                      <p className="text-xs font-medium text-muted-foreground">{t.lastVisit}</p>
-                      <p className="truncate font-heading text-lg font-bold">{lastVisit.reason}</p>
-                      <p className="truncate text-sm text-muted-foreground">
-                        {[formatDate(parseIsoDate(lastVisit.visited_on), locale), lastVisit.clinic].filter(Boolean).join(" · ")}
-                      </p>
-                      <Button variant="link" size="sm" className="self-start px-0" onClick={() => setTab("pregledi")}>
-                        {t.allVisits}
-                      </Button>
-                    </Card>
-                  )}
-                </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {lastWeight && (
+                      <Card className="gap-2 p-4 md:p-6">
+                        <p className="text-xs font-medium text-muted-foreground">{t.lastWeight}</p>
+                        <p className="font-heading text-[22px] leading-7 font-bold text-pet-accent">
+                          {formatWeight(lastWeight.value, unit, locale)}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {formatDate(parseIsoDate(lastWeight.measured_on), locale)}
+                          {prevWeight &&
+                            ` · ${format(t.sinceLast, {
+                              change: `${lastWeight.value >= prevWeight.value ? "+" : "−"}${formatWeight(
+                                Math.abs(lastWeight.value - prevWeight.value),
+                                unit,
+                                locale,
+                              )}`,
+                            })}`}
+                        </p>
+                        <Button variant="link" size="sm" className="self-start px-0" onClick={() => setTab("tezina")}>
+                          {t.viewTrend}
+                        </Button>
+                      </Card>
+                    )}
+                    {lastVisit && (
+                      <Card className="gap-2 p-4 md:p-6">
+                        <p className="text-xs font-medium text-muted-foreground">{t.lastVisit}</p>
+                        <p className="truncate font-heading text-lg font-bold">{lastVisit.reason}</p>
+                        <p className="truncate text-sm text-muted-foreground">
+                          {[formatDate(parseIsoDate(lastVisit.visited_on), locale), lastVisit.clinic].filter(Boolean).join(" · ")}
+                        </p>
+                        <Button variant="link" size="sm" className="self-start px-0" onClick={() => setTab("pregledi")}>
+                          {t.allVisits}
+                        </Button>
+                      </Card>
+                    )}
+                  </div>
+                </>
               )}
             </TabsContent>
 

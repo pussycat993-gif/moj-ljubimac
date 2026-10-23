@@ -12,7 +12,7 @@ import { PetRecordClient, PetRecordError, PetRecordLoading, type PetRecordCopy }
 
 function copyFor(locale: Locale): PetRecordCopy {
   const dict = getDictionary(locale)
-  return { petRecord: dict.petRecord, pet: dict.pet, petForm: dict.petForm, common: dict.common }
+  return { petRecord: dict.petRecord, pet: dict.pet, petForm: dict.petForm, common: dict.common, reminders: dict.reminders }
 }
 
 async function PetRecordView({ id, me, locale }: { id: string; me: Me | null; locale: Locale }) {

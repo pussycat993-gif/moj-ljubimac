@@ -1292,8 +1292,14 @@ isOneToOne: false
 "is_premium":
 { Args: { "user_id": string }; Returns: boolean
                            },
+"list_reminder_occurrences":
+{ Args: { "p_filter": string,"p_limit"?: number,"p_offset"?: number,"p_pet_id"?: string }; Returns: Json
+                           },
 "log_dose":
 { Args: { "p_given_at"?: string,"p_occurrence_id"?: string,"p_treatment_id": string }; Returns: Json
+                           },
+"mark_occurrence_done":
+{ Args: { "p_occurrence_id": string }; Returns: Json
                            },
 "move_pet_to_memorial":
 { Args: { "p_date": string,"p_note"?: string,"p_pet_id": string,"p_reason"?: Database["public"]['Enums']["memorial_reason"] }; Returns: Json

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Archive, ArrowRight, PawPrint, Plus, Search } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,19 +13,24 @@ import { EmptyState } from "@/components/app/empty-state"
 import { ErrorState } from "@/components/app/error-state"
 import { PetAvatar, type PetSpecies } from "@/components/app/pet-avatar"
 import { PremiumLock } from "@/components/app/premium-lock"
+import { ReminderRow, type ReminderRowData, type ReminderRowLabels } from "@/components/app/reminder-row"
 import { ReminderTypeIcon } from "@/components/app/reminder-type-icon"
 import { StatusBadge } from "@/components/app/status-badge"
 import { getFileUrls } from "@/lib/actions/files"
 import type { PetSummary, ReminderOccurrence } from "@/lib/actions/pets"
-import { format, type Dictionary, type Locale } from "@/lib/i18n"
+import { markOccurrenceDone } from "@/lib/actions/reminders"
+import { reminderRowLabels, toReminderRow } from "@/app/(app)/podsetnici/reminders-client"
+import { format, getDictionary, type Dictionary, type Locale } from "@/lib/i18n"
 
-// S01 — Moji ljubimci · /ljubimci · FR-01, FR-36, FR-59 · EP-01 (view:pet_summaries_api, active
-// rows), EP-15 (pet photos), EP-43 (Entitlements). The "Danas" strip renders empty until Step 17
-// (EP-25); the header links to S06 Uspomene (Step 16). States: loading (PetsHomeLoading, while EP-01
+// S01 — Moji ljubimci · /ljubimci · FR-01, FR-24, FR-36, FR-59 · EP-01 (view:pet_summaries_api, active
+// rows), EP-15 (pet photos), EP-43 (Entitlements), EP-25 (the "Danas" strip: filter=today, first 3,
+// loaded through lib/actions/reminders.ts) and EP-26 ("Urađeno"); the header links to S06 Uspomene. States: loading (PetsHomeLoading, while EP-01
 // is in flight) / default / empty (no active pet) / premium_locked (Free and own active count ≥
 // the limit when pressing "Dodaj ljubimca").
 
-export type PetsHomeCopy = Pick<Dictionary, "petsHome" | "pet" | "common">
+// `reminders` (the Danas rows) is optional so callers without reminder rows keep their copy; it falls back to the
+// locale's dictionary.
+export type PetsHomeCopy = Pick<Dictionary, "petsHome" | "pet" | "common"> & Partial<Pick<Dictionary, "reminders">>
 
 const AVATAR_SPECIES: Partial<Record<PetSummary["species"], PetSpecies>> = {
   cat: "cat",
@@ -48,10 +54,10 @@ function normalize(value: string) {
 }
 
 /** `{base}_one|_few|_other` by Intl.PluralRules (owner decision, Step 13). */
-function plural(t: PetsHomeCopy["pet"], base: "years" | "months", n: number, locale: Locale) {
+function plural(t: Record<string, unknown>, base: string, n: number, locale: Locale) {
   const rule = new Intl.PluralRules(intlLocale(locale)).select(n)
-  const key = `${base}_${rule === "one" || rule === "few" ? rule : "other"}` as const
-  return format(t[key], { n })
+  const key = `${base}_${rule === "one" || rule === "few" ? rule : "other"}`
+  return format(String(t[key]), { n })
 }
 
 /** Calendar date (YYYY-MM-DD) in Europe/Belgrade. */
@@ -100,6 +106,49 @@ function reminderWhen(reminder: ReminderOccurrence, copy: PetsHomeCopy, locale: 
   return reminder.type === "vaccination" || reminder.type === "birthday" || reminder.type === "vet_follow_up"
     ? date
     : `${date} · ${time}`
+}
+
+function TodayCard({
+  reminder,
+  onDone,
+  canMarkDone,
+  labels,
+}: {
+  reminder: ReminderRowData
+  onDone: (id: string) => void
+  canMarkDone: boolean
+  labels: ReminderRowLabels
+}) {
+  return (
+    <Card className="min-w-0 gap-3 p-4">
+      <div className="flex min-w-0 items-start gap-3">
+        <ReminderTypeIcon type={reminder.type} sex={reminder.pet?.sex} forMe={!reminder.pet} size="md" />
+        <div className="min-w-0 flex-1">
+          {reminder.href ? (
+            <Link
+              href={reminder.href}
+              className="block truncate rounded-sm text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+              {reminder.title}
+            </Link>
+          ) : (
+            <p className="truncate text-sm font-medium">{reminder.title}</p>
+          )}
+          <p className="truncate text-xs font-medium text-muted-foreground">
+            {reminder.pet ? reminder.pet.name : labels.forMe} · {reminder.when}
+          </p>
+        </div>
+      </div>
+      <div className="mt-auto flex items-center justify-between gap-2">
+        <StatusBadge status={reminder.status} label={labels.status?.[reminder.status]} />
+        {reminder.status !== "done" && canMarkDone && (
+          <Button size="sm" variant="outline" onClick={() => onDone(reminder.id)}>
+            {labels.done}
+          </Button>
+        )}
+      </div>
+    </Card>
+  )
 }
 
 function PetCard({
@@ -291,6 +340,7 @@ export function PetsHomeLoading({ copy }: { copy: PetsHomeCopy }) {
 
 export function PetsHomeClient({
   pets,
+  today: todayList,
   activePetLimit,
   now,
   locale,
@@ -298,6 +348,8 @@ export function PetsHomeClient({
 }: {
   /** EP-01 active rows (lifecycle = active), or null when the read failed. */
   pets: PetSummary[] | null
+  /** EP-25 filter=today (items and total), or null when the read failed (the strip shows its empty form). */
+  today?: { items: ReminderOccurrence[]; total: number } | null
   /** Entitlements.limits.active_pets (EP-43): 1 on Free, null = unlimited. */
   activePetLimit: number | null
   /** Server time (ISO) the page was rendered at — "Danas" and ages. */
@@ -308,6 +360,25 @@ export function PetsHomeClient({
   const t = copy.petsHome
   const [query, setQuery] = useState("")
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
+  const router = useRouter()
+  const [todayItems, setTodayItems] = useState<ReminderOccurrence[]>(todayList?.items ?? [])
+  const [statusMessage, setStatusMessage] = useState("")
+  const rowCopy = { pet: copy.pet, reminders: copy.reminders ?? getDictionary(locale).reminders }
+  const rowLabels = reminderRowLabels(rowCopy.reminders)
+
+  // EP-26: the card switches to the done badge; the status line names the reminder (FR-24).
+  async function markDone(id: string) {
+    const result = await markOccurrenceDone(id).catch(() => null)
+    if (!result?.ok) {
+      // 403 household_read_only → read_only: the control disappears on the next render (EP-26 States).
+      setStatusMessage(result?.error.code === "household_read_only" ? "" : copy.common.error)
+      router.refresh()
+      return
+    }
+    setTodayItems((list) => list.map((r) => (r.id === id ? result.data : r)))
+    setStatusMessage(format(t.markedDone, { title: toReminderRow(result.data, rowCopy, locale).title }))
+    router.refresh()
+  }
 
   // EP-15: pet photos render when their URLs arrive; until then the avatar shows the species icon.
   useEffect(() => {
@@ -347,6 +418,8 @@ export function PetsHomeClient({
     timeZone: "Europe/Belgrade",
   }).format(new Date(now))
   const weekdayLabel = weekday.charAt(0).toLocaleUpperCase(intlLocale(locale)) + weekday.slice(1)
+  const visibleToday = todayItems.slice(0, 3)
+  const todayTotal = todayList?.total ?? 0
 
   if (pets.length === 0) {
     return (
@@ -369,12 +442,56 @@ export function PetsHomeClient({
             </h2>
             <span className="text-sm text-muted-foreground">· {weekdayLabel}</span>
           </div>
+          {/* Owner decisions: no count when nothing is due today (Step 13); "Pogledaj sve" → S10 from Step 17. */}
+          <p className="flex items-center gap-1 text-sm text-muted-foreground">
+            {todayTotal > 0 && <span>{plural(copy.petsHome, "todayCount", todayTotal, locale)}</span>}
+            <Link
+              href="/podsetnici"
+              className="inline-flex items-center gap-1 rounded-sm font-medium text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+              {t.viewAll}
+              <ArrowRight className="size-4" aria-hidden />
+            </Link>
+          </p>
         </div>
 
-        {/* No reminder data until Step 17 (EP-25): the strip renders its empty form. */}
-        <Card className="gap-2 p-4">
-          <p className="text-sm text-muted-foreground">{t.todayEmpty}</p>
-        </Card>
+        {visibleToday.length > 0 ? (
+          <>
+            {/* Computers: up to 3 cards in a row */}
+            <div className="hidden grid-cols-1 gap-4 md:grid md:grid-cols-3">
+              {visibleToday.map((r) => (
+                <TodayCard
+                  key={r.id}
+                  reminder={toReminderRow(r, rowCopy, locale)}
+                  onDone={markDone}
+                  canMarkDone={r.can_mark_done}
+                  labels={rowLabels}
+                />
+              ))}
+            </div>
+
+            {/* Phones: stacked list */}
+            <Card className="gap-2 p-4 md:hidden">
+              {visibleToday.map((r) => (
+                <ReminderRow
+                  key={r.id}
+                  reminder={toReminderRow(r, rowCopy, locale)}
+                  onDone={markDone}
+                  canMarkDone={r.can_mark_done}
+                  labels={rowLabels}
+                />
+              ))}
+            </Card>
+          </>
+        ) : (
+          <Card className="gap-2 p-4">
+            <p className="text-sm text-muted-foreground">{t.todayEmpty}</p>
+          </Card>
+        )}
+
+        <p role="status" className="text-sm text-muted-foreground empty:hidden">
+          {statusMessage}
+        </p>
       </section>
 
       <section aria-labelledby="aktivni-naslov" className="space-y-4">

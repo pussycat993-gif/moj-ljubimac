@@ -12,6 +12,18 @@ export type Channel = "email" | "push" | "whatsapp"
 const channelIcon = { email: Mail, push: Smartphone, whatsapp: MessageCircle } as const
 const channelLabel = { email: "Mejl", push: "Push", whatsapp: "WhatsApp" } as const
 
+// labels:start — FR-35: "Za mene", the "Urađeno" button, the channel icon labels and the status pill labels,
+// defaulting to today's Serbian copy; the app passes the dictionary's labels.
+export type ReminderRowLabels = {
+  forMe: string
+  done: string
+  channels: Record<Channel, string>
+  status?: Partial<Record<Status, string>>
+}
+
+export const defaultReminderRowLabels: ReminderRowLabels = { forMe: "Za mene", done: "Urađeno", channels: channelLabel }
+// labels:end
+
 export type ReminderRowData = {
   id: string
   title: string
@@ -24,7 +36,17 @@ export type ReminderRowData = {
   href?: string
 }
 
-export function ReminderRow({ reminder, onDone }: { reminder: ReminderRowData; onDone?: (id: string) => void }) {
+export function ReminderRow({
+  reminder,
+  onDone,
+  canMarkDone = true,
+  labels = defaultReminderRowLabels,
+}: {
+  reminder: ReminderRowData
+  onDone?: (id: string) => void
+  canMarkDone?: boolean
+  labels?: ReminderRowLabels
+}) {
   return (
     <div className="flex items-center gap-3 rounded-sm bg-foreground/5 p-3">
       <ReminderTypeIcon type={reminder.type} sex={reminder.pet?.sex} forMe={!reminder.pet} />
@@ -40,22 +62,22 @@ export function ReminderRow({ reminder, onDone }: { reminder: ReminderRowData; o
           <p className="truncate text-sm font-medium">{reminder.title}</p>
         )}
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>{reminder.pet ? reminder.pet.name : "Za mene"}</span>
+          <span>{reminder.pet ? reminder.pet.name : labels.forMe}</span>
           <span aria-hidden>·</span>
           <span>{reminder.when}</span>
           <span className="flex items-center gap-1">
             {reminder.channels.map((c) => {
               const Icon = channelIcon[c]
-              return <Icon key={c} className="size-3.5" aria-label={channelLabel[c]} />
+              return <Icon key={c} className="size-3.5" aria-label={labels.channels[c]} />
             })}
           </span>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <StatusBadge status={reminder.status} className="hidden sm:inline-flex" />
-        {reminder.status !== "done" && (
+        <StatusBadge status={reminder.status} label={labels.status?.[reminder.status]} className="hidden sm:inline-flex" />
+        {reminder.status !== "done" && canMarkDone && (
           <Button size="sm" variant="outline" onClick={() => onDone?.(reminder.id)}>
-            Urađeno
+            {labels.done}
           </Button>
         )}
       </div>

@@ -25,17 +25,19 @@ export function SignedInShell({
   orgType,
   user,
   labels,
+  counts,
   children,
 }: {
   variant: "owner" | "organisation"
   orgType?: "shelter" | "breeder"
   user: { name: string }
   labels: AppShellLabels
+  counts?: Record<string, number>
   children: ReactNode
 }) {
   const pathname = usePathname() ?? ""
   return (
-    <AppShell variant={variant} orgType={orgType} active={activeKey(pathname)} user={user} labels={labels}>
+    <AppShell variant={variant} orgType={orgType} active={activeKey(pathname)} user={user} labels={labels} counts={counts}>
       {children}
     </AppShell>
   )

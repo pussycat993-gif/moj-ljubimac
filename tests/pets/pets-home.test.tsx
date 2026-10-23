@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("server-only", () => ({}))
+// Step 17: S01 marks reminders done and refreshes the shell badge (owner-approved exception 3).
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }))
 
 // S01 Moji ljubimci (FR-01, FR-36, FR-59): the Free limit opens PremiumLock, search filters the
 // EP-01 list case- and diacritic-insensitively, no match shows the term, and the states.
@@ -149,12 +151,12 @@ describe("S01 — states and cards", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Nešto nije u redu. Pokušaj ponovo.")
   })
 
-  it("'Danas' renders empty until Step 17, with the weekday; the Uspomene link opens S06 (Step 16)", () => {
+  it("'Danas' with nothing due renders empty, with the weekday and 'Pogledaj sve' (Step 17); the Uspomene link opens S06 (Step 16)", () => {
     renderHome({ pets: [luna] })
     expect(screen.getByRole("heading", { name: "Danas" })).toBeInTheDocument()
     expect(screen.getByText("· Ponedeljak, 19. oktobar")).toBeInTheDocument()
     expect(screen.getByText("Danas nema podsetnika.")).toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: /Pogledaj sve/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /Pogledaj sve/ })).toHaveAttribute("href", "/podsetnici")
     expect(screen.getByRole("link", { name: /Uspomene/ })).toHaveAttribute("href", "/uspomene")
   })
 

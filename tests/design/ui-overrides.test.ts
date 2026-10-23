@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { defaultErrorStateLabels } from "@/components/app/error-state";
 import { defaultPetHeaderLabels } from "@/components/app/pet-header";
+import { defaultReminderRowLabels } from "@/components/app/reminder-row";
 import { defaultAppShellLabels, defaultPublicShellLabels } from "@/components/app/shells";
 
 const path = (p: string) => join(process.cwd(), p);
@@ -28,6 +29,7 @@ function unport(name: string, source: string) {
   if (name === "shells") s = stripShellLabels(s);
   if (name === "error-state") s = stripErrorStateLabels(s);
   if (name === "pet-header") s = stripPetHeaderLabels(s);
+  if (name === "reminder-row") s = stripReminderRowLabels(s);
   return s;
 }
 
@@ -79,6 +81,24 @@ function stripPetHeaderLabels(source: string) {
     .replace("  actions,\n  labels = defaultPetHeaderLabels,\n", "  actions,\n")
     .replace("  actions?: ReactNode\n  labels?: PetHeaderLabels\n", "  actions?: ReactNode\n")
     .replace("aria-label={labels.chips}", `aria-label="${defaultPetHeaderLabels.chips}"`);
+}
+
+// Owner decision (Step 17, FR-35): ReminderRow takes an optional `labels` prop ("Za mene", "Urađeno", the channel
+// and status labels) whose defaults are the mockup's Serbian strings, and an optional `canMarkDone` prop (default
+// true) that hides "Urađeno" when the caller may not mark the instance (EP-25 can_mark_done). Those two props are the
+// only allowed changes and are ignored here; everything else must still equal the docs mockup.
+function stripReminderRowLabels(source: string) {
+  return source
+    .replace(/\n\/\/ labels:start[\s\S]*?\/\/ labels:end\n/, "")
+    .replace(
+      "export function ReminderRow({\n  reminder,\n  onDone,\n  canMarkDone = true,\n  labels = defaultReminderRowLabels,\n}: {\n  reminder: ReminderRowData\n  onDone?: (id: string) => void\n  canMarkDone?: boolean\n  labels?: ReminderRowLabels\n}) {",
+      "export function ReminderRow({ reminder, onDone }: { reminder: ReminderRowData; onDone?: (id: string) => void }) {",
+    )
+    .replace("{reminder.pet ? reminder.pet.name : labels.forMe}", `{reminder.pet ? reminder.pet.name : "${defaultReminderRowLabels.forMe}"}`)
+    .replace("aria-label={labels.channels[c]}", "aria-label={channelLabel[c]}")
+    .replace(" label={labels.status?.[reminder.status]}", "")
+    .replace('{reminder.status !== "done" && canMarkDone && (', '{reminder.status !== "done" && (')
+    .replace("{labels.done}", defaultReminderRowLabels.done);
 }
 
 describe("shadcn primitives (Design §6, ADR-14)", () => {

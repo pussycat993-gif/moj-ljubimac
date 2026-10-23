@@ -7,7 +7,8 @@ import { SignedInShell } from "@/components/app/signed-in-shell"
 import { Toaster } from "@/components/ui/sonner"
 
 // App shell (Design §5.1). User, role and language come from EP-43 (profiles.locale, FR-35).
-// No profile yet → the S15 completion step. Count badges are wired in Step 17 (EP-25).
+// No profile yet → the S15 completion step. The Podsetnici count badge = EP-25 `total` for
+// filter=today (today's pending reminders); zero → no badge (Step 17).
 // Confirmations are Sonner toasts at bottom centre, 4 s (Design §8; owner decision, Step 13).
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient()
@@ -16,10 +17,15 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   } = await supabase.auth.getUser()
   if (!user) redirect("/prijava")
 
-  const { data, error } = await supabase.rpc("get_me")
+  const [{ data, error }, today] = await Promise.all([
+    supabase.rpc("get_me"),
+    supabase.rpc("list_reminder_occurrences", { p_filter: "today" }),
+  ])
   if (error) console.error("[(app)/layout] get_me:", error.message)
+  if (today.error) console.error("[(app)/layout] list_reminder_occurrences:", today.error.message)
   const me = (data ?? null) as Me | null
   if (!error && !me) redirect("/registracija")
+  const todayTotal = today.error ? 0 : Number((today.data as { total?: number } | null)?.total ?? 0)
 
   const dict = getDictionary(fromProfileLocale(me?.locale))
   return (
@@ -28,6 +34,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       orgType={me?.organisation?.type}
       user={{ name: me?.full_name || me?.email || user.email || "" }}
       labels={dict.shell.app}
+      counts={{ podsetnici: todayTotal }}
     >
       {children}
       <Toaster position="bottom-center" duration={4000} />
