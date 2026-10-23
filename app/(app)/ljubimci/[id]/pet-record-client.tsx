@@ -1,9 +1,24 @@
 "use client"
 
-import { useState, type ReactNode } from "react"
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { CalendarDays, ClipboardList, MoreVertical, Pencil, Phone, Plus, Scale, Syringe, Trash2 } from "lucide-react"
+import {
+  CalendarDays,
+  ClipboardList,
+  FileText,
+  ImageIcon,
+  MoreVertical,
+  Pencil,
+  Phone,
+  Pill,
+  Plus,
+  Scale,
+  Stethoscope,
+  Syringe,
+  Trash2,
+  X,
+} from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,25 +56,28 @@ import type { PetSpecies } from "@/components/app/pet-avatar"
 import { PetHeader } from "@/components/app/pet-header"
 import { ReadOnlyBanner } from "@/components/app/read-only-banner"
 import { StatusBadge } from "@/components/app/status-badge"
+import { deleteAttachment } from "@/lib/actions/attachments"
+import { getFileUrls, type FileUrl } from "@/lib/actions/files"
 import { deletePet, type PetRecord, type WeightUnit } from "@/lib/actions/pets"
+import { deleteTreatment, logDose, type Treatment } from "@/lib/actions/treatments"
 import { deleteVaccination, type Vaccination } from "@/lib/actions/vaccinations"
+import { deleteVetVisit, type Attachment, type VetVisit } from "@/lib/actions/vet-visits"
 import { createWeightEntry, deleteWeightEntry, updateWeightEntry, type WeightEntry } from "@/lib/actions/weights"
 import type { Me } from "@/lib/actions/registration"
 import { format, type Dictionary, type Locale } from "@/lib/i18n"
 
-// S03 — Karton ljubimca · /ljubimci/[id] · FR-03 (display), FR-04, FR-05, FR-13, FR-28 · EP-02
-// (rpc:get_pet_record), EP-05 (delete_pet), EP-08 (weights), EP-09 (vaccination edit/delete), EP-15
-// (photo). Step 14 renders the header, Pregled (last weight, last visit), Vakcine and Težina; the
-// Terapije/Pregledi tabs, memorial, PDF, next-reminders block and Dnevnik/Trenuci links arrive in
-// Steps 15–21. States: loading (PetRecordLoading) / default / per-tab empty / read_only (banner by
-// read_only_reason, every edit control hidden) / error (PetRecordError on 404 / 5xx).
+// S03 — Karton ljubimca · /ljubimci/[id] · FR-03 (display), FR-04, FR-05, FR-06, FR-07, FR-08, FR-13,
+// FR-28 · EP-02 (rpc:get_pet_record), EP-05 (delete_pet), EP-08 (weights), EP-09 (vaccination
+// edit/delete), EP-10 (treatment edit/delete), EP-11 ("Doza data"), EP-12 (visit edit/delete), EP-14
+// (attachment chip delete), EP-15 (photo, attachment URLs). Renders the header, Pregled (last weight,
+// last visit), Vakcine, Terapije, Pregledi and Težina; memorial, PDF, the next-reminders block and
+// the Dnevnik/Trenuci links arrive in Steps 16–21. States: loading (PetRecordLoading) / default /
+// per-tab empty / read_only (banner by read_only_reason, every edit control hidden; members keep
+// "Doza data" and their own weights, FR-28) / error (PetRecordError on 404 / 5xx).
 
 export type PetRecordCopy = Pick<Dictionary, "petRecord" | "pet" | "petForm" | "common">
 
-type TabKey = "pregled" | "vakcine" | "tezina"
-
-/** API §6 VetVisit — only the fields the Pregled tab shows in Step 14. */
-type VetVisitSummary = { id: string; visited_on: string; clinic: string | null; reason: string | null }
+type TabKey = "pregled" | "vakcine" | "terapije" | "pregledi" | "tezina"
 
 const AVATAR_SPECIES: Partial<Record<PetRecord["pet"]["species"], PetSpecies>> = {
   cat: "cat",
@@ -147,6 +165,117 @@ function vaccineBadge(v: Vaccination, t: PetRecordCopy["petRecord"], locale: Loc
   if (days > 0) return <StatusBadge status="soon" label={format(plural(t, "nextDoseIn", days, locale), { date, n: days })} />
   const overdue = Math.abs(days)
   return <StatusBadge status="missed" label={format(plural(t, "nextDoseOverdue", overdue, locale), { date, n: overdue })} />
+}
+
+/** A timestamp in Europe/Belgrade: "19. 10. 2026. 08:00" · "19 Oct 2026 08:00"; today → "Danas 08:00". */
+function formatDateTime(iso: string, now: string, t: PetRecordCopy["petRecord"], locale: Locale) {
+  const d = new Date(iso)
+  const time = new Intl.DateTimeFormat(intlLocale(locale), {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: "Europe/Belgrade",
+  }).format(d)
+  if (belgradeDate(d) === belgradeDate(new Date(now))) return format(t.todayAt, { time })
+  const date = new Intl.DateTimeFormat(intlLocale(locale), {
+    day: "numeric",
+    month: locale === "en" ? "short" : "numeric",
+    year: "numeric",
+    timeZone: "Europe/Belgrade",
+  }).format(d)
+  return format(t.dateTime, { date, time })
+}
+
+/** "Svakih 12 sati" · "Svaki dan" · "Svakih 30 dana" · "Jednokratno". */
+function frequencyLabel(tr: Treatment, t: PetRecordCopy["petRecord"], locale: Locale) {
+  const n = tr.interval_value
+  if (!n || !tr.interval_unit) return t.oneTime
+  if (tr.interval_unit === "hours") return format(plural(t, "everyHours", n, locale), { n })
+  return n === 1 ? t.everyDay : format(plural(t, "everyDays", n, locale), { n })
+}
+
+/** "15. 10. 2026. – 25. 10. 2026." · "Od 1. 4. 2026." · one dose: the start date. */
+function periodLabel(tr: Treatment, t: PetRecordCopy["petRecord"], locale: Locale) {
+  const start = formatDate(parseIsoDate(tr.starts_on), locale)
+  if (tr.ends_on && tr.ends_on !== tr.starts_on) {
+    return format(t.periodRange, { start, end: formatDate(parseIsoDate(tr.ends_on), locale) })
+  }
+  if (!tr.ends_on && tr.interval_value) return format(t.periodFrom, { start })
+  return start
+}
+
+/** "2.990 RSD" · "2,990 RSD" (Design §9). */
+function formatMoney(amountMinor: number, locale: Locale) {
+  const fractional = amountMinor % 100 !== 0
+  const amount = new Intl.NumberFormat(intlLocale(locale), {
+    minimumFractionDigits: fractional ? 2 : 0,
+    maximumFractionDigits: 2,
+  }).format(amountMinor / 100)
+  return `${amount} RSD`
+}
+
+/** Attachment chip size: "0,8 MB" · "0.8 MB" (Design §7). */
+function formatSize(bytes: number, locale: Locale) {
+  const mb = new Intl.NumberFormat(intlLocale(locale), { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(
+    bytes / (1024 * 1024),
+  )
+  return `${mb} MB`
+}
+
+/**
+ * Attachment chip (Design §7; the mockup's markup — AttachmentChip is not an approved composite,
+ * OQ-10). Opens the EP-15 view URL; a missing or expired URL is fetched again on click, and
+ * url = null shows "Fajl nije dostupan." The X button (owner decision, Step 15) opens the delete dialog.
+ */
+function AttachmentChip({
+  file,
+  url,
+  onOpenFresh,
+  onRemove,
+  locale,
+  t,
+}: {
+  file: Attachment
+  url?: FileUrl
+  onOpenFresh: (file: Attachment) => void
+  onRemove?: () => void
+  locale: Locale
+  t: PetRecordCopy["petRecord"]
+}) {
+  const Icon = file.mime_type === "application/pdf" ? FileText : ImageIcon
+  const name = file.file_name ?? ""
+  function open(ev: MouseEvent<HTMLAnchorElement>) {
+    if (url?.url && url.expires_at && Date.parse(url.expires_at) > Date.now() + 5_000) return
+    ev.preventDefault()
+    onOpenFresh(file)
+  }
+  return (
+    <div className="flex max-w-full min-w-0 items-center gap-1">
+      <a
+        href={url?.url ?? "#"}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={open}
+        className="flex max-w-full min-w-0 items-center gap-2 rounded-sm bg-foreground/5 px-3 py-2 text-sm hover:bg-foreground/10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      >
+        <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="min-w-0 truncate">{name}</span>
+        <span className="shrink-0 text-xs font-medium text-muted-foreground">{formatSize(file.size_bytes, locale)}</span>
+      </a>
+      {onRemove && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-11 shrink-0 md:size-9"
+          aria-label={format(t.removeFile, { file: name })}
+          onClick={onRemove}
+        >
+          <X className="size-4" aria-hidden />
+        </Button>
+      )}
+    </div>
+  )
 }
 
 function DateField({
@@ -362,12 +491,13 @@ export function PetRecordError({ copy }: { copy: PetRecordCopy }) {
   return <ErrorState message={copy.common.error} labels={{ retry: copy.common.retry }} onRetry={() => router.refresh()} />
 }
 
-type PendingDelete = { kind: "weight" | "vaccination"; id: string }
+type PendingDelete = { kind: "weight" | "vaccination" | "treatment" | "visit" | "attachment"; id: string }
 
 export function PetRecordClient({
   record,
   photoUrl,
   now,
+  entitlements,
   locale,
   copy,
 }: {
@@ -375,7 +505,7 @@ export function PetRecordClient({
   photoUrl?: string
   /** Server time (ISO), so the age is the same on server and client. */
   now: string
-  /** Me.entitlements — consumed by the Pregledi counter and the PDF lock (Steps 15–16). */
+  /** Me.entitlements — the Pregledi counter "n / 10" (Step 15) and the PDF lock (Step 16). */
   entitlements?: Me["entitlements"]
   locale: Locale
   copy: PetRecordCopy
@@ -384,7 +514,8 @@ export function PetRecordClient({
   const router = useRouter()
   const pet = record.pet
   const vaccines = record.vaccinations as unknown as Vaccination[]
-  const visits = record.vet_visits as unknown as VetVisitSummary[]
+  const treatments = record.treatments as unknown as Treatment[]
+  const visits = record.vet_visits as unknown as VetVisit[]
   // EP-02 returns measured_on desc; the trend reads oldest → newest (FR-04).
   const weightsDesc = record.weights as unknown as WeightEntry[]
   const weights = [...weightsDesc].sort(
@@ -397,6 +528,32 @@ export function PetRecordClient({
   const [weightOpen, setWeightOpen] = useState(false)
   const [editingWeight, setEditingWeight] = useState<WeightEntry | null>(null)
   const [busy, setBusy] = useState(false)
+  const [dosing, setDosing] = useState<string | null>(null)
+  const [fileUrls, setFileUrls] = useState<Record<string, FileUrl>>({})
+
+  // EP-15: view URLs for every attachment chip (batches of 50), signed when the record renders.
+  const attachmentIds = visits.flatMap((v) => v.attachments.map((a) => a.id))
+  const attachmentKey = attachmentIds.join(",")
+  useEffect(() => {
+    if (!attachmentKey) return
+    let cancelled = false
+    const ids = attachmentKey.split(",")
+    const batches: string[][] = []
+    for (let i = 0; i < ids.length; i += 50) batches.push(ids.slice(i, i + 50))
+    Promise.all(
+      batches.map((batch) =>
+        getFileUrls({ items: batch.map((id) => ({ kind: "attachment" as const, id })) }).catch(() => null),
+      ),
+    ).then((results) => {
+      if (cancelled) return
+      const next: Record<string, FileUrl> = {}
+      for (const result of results) if (result?.ok) for (const u of result.data) next[u.id] = u
+      setFileUrls(next)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [attachmentKey])
 
   // weight form
   const [wDate, setWDate] = useState<Date | undefined>(undefined)
@@ -468,9 +625,44 @@ export function PetRecordClient({
     if (!pendingDelete) return
     const target = pendingDelete
     setPendingDelete(null)
-    const result = target.kind === "weight" ? await deleteWeightEntry(target.id) : await deleteVaccination(target.id)
+    const result =
+      target.kind === "weight"
+        ? await deleteWeightEntry(target.id)
+        : target.kind === "vaccination"
+          ? await deleteVaccination(target.id)
+          : target.kind === "treatment"
+            ? await deleteTreatment(target.id)
+            : target.kind === "visit"
+              ? await deleteVetVisit(target.id)
+              : await deleteAttachment({ attachment_id: target.id })
     if (!result.ok) toast.error(copy.common.error)
     router.refresh()
+  }
+
+  /** EP-11 "Doza data": logs the dose and completes its next open occurrence (FR-06, FR-28). */
+  async function giveDose(tr: Treatment) {
+    setDosing(tr.id)
+    const result = await logDose({ treatment_id: tr.id, occurrence_id: tr.next_dose_occurrence_id })
+    setDosing(null)
+    if (!result.ok) {
+      toast.error(copy.common.error)
+      router.refresh()
+      return
+    }
+    toast(t.doseLogged)
+    router.refresh()
+  }
+
+  /** EP-15 for one chip whose URL is missing or expired; url = null → "Fajl nije dostupan." */
+  async function openAttachment(file: Attachment) {
+    const result = await getFileUrls({ items: [{ kind: "attachment", id: file.id }] }).catch(() => null)
+    const fresh = result?.ok ? result.data[0] : undefined
+    if (!fresh?.url) {
+      toast.error(t.fileUnavailable)
+      return
+    }
+    setFileUrls((urls) => ({ ...urls, [file.id]: fresh }))
+    window.open(fresh.url, "_blank", "noopener,noreferrer")
   }
 
   async function confirmDelete() {
@@ -484,6 +676,11 @@ export function PetRecordClient({
     router.push("/ljubimci")
     router.refresh()
   }
+
+  const today = belgradeDate(new Date(now))
+  // Free counter "n / 10" on the owner's own pet (EP-02 States, BR-01); hidden on Premium.
+  const attachmentLimit =
+    record.access.role === "owner" ? (entitlements?.limits.attachments_per_pet ?? null) : null
 
   const lastWeight = weights[weights.length - 1]
   const prevWeight = weights[weights.length - 2]
@@ -574,6 +771,14 @@ export function PetRecordClient({
                   <Syringe aria-hidden />
                   {t.tabVaccines}
                 </TabsTrigger>
+                <TabsTrigger value="terapije" className={tabTrigger}>
+                  <Pill aria-hidden />
+                  {t.tabTreatments}
+                </TabsTrigger>
+                <TabsTrigger value="pregledi" className={tabTrigger}>
+                  <Stethoscope aria-hidden />
+                  {t.tabVisits}
+                </TabsTrigger>
                 <TabsTrigger value="tezina" className={tabTrigger}>
                   <Scale aria-hidden />
                   {t.tabWeight}
@@ -618,10 +823,13 @@ export function PetRecordClient({
                   {lastVisit && (
                     <Card className="gap-2 p-4 md:p-6">
                       <p className="text-xs font-medium text-muted-foreground">{t.lastVisit}</p>
-                      {lastVisit.reason && <p className="truncate font-heading text-lg font-bold">{lastVisit.reason}</p>}
+                      <p className="truncate font-heading text-lg font-bold">{lastVisit.reason}</p>
                       <p className="truncate text-sm text-muted-foreground">
                         {[formatDate(parseIsoDate(lastVisit.visited_on), locale), lastVisit.clinic].filter(Boolean).join(" · ")}
                       </p>
+                      <Button variant="link" size="sm" className="self-start px-0" onClick={() => setTab("pregledi")}>
+                        {t.allVisits}
+                      </Button>
                     </Card>
                   )}
                 </div>
@@ -683,6 +891,182 @@ export function PetRecordClient({
                     ))}
                   </ul>
                 </Card>
+              )}
+            </TabsContent>
+
+            {/* Terapije */}
+            <TabsContent value="terapije" className="space-y-4">
+              <SectionHeader
+                title={t.tabTreatments}
+                action={
+                  canEdit && treatments.length > 0 ? (
+                    <Button asChild className="h-11 md:h-9">
+                      <Link href={`/ljubimci/${pet.id}/terapije/nova`}>
+                        <Plus className="size-4" aria-hidden />
+                        {t.addTreatment}
+                      </Link>
+                    </Button>
+                  ) : undefined
+                }
+              />
+              {treatments.length === 0 ? (
+                <EmptyState
+                  icon={Pill}
+                  title={t.treatmentsEmptyTitle}
+                  description={t.treatmentsEmptyDescription}
+                  action={canEdit ? t.addTreatment : undefined}
+                  href={`/ljubimci/${pet.id}/terapije/nova`}
+                />
+              ) : (
+                treatments.map((tr) => (
+                  <Card key={tr.id} className="gap-3 p-4 md:p-6" data-testid="treatment">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="min-w-0 truncate font-heading text-lg font-bold">{tr.name}</h3>
+                          <Badge variant="secondary">{copy.pet.treatmentType[tr.type]}</Badge>
+                          {!tr.is_active && <StatusBadge status="done" label={t.finished} />}
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {[tr.dose, frequencyLabel(tr, t, locale), periodLabel(tr, t, locale)].filter(Boolean).join(" · ")}
+                        </p>
+                        {tr.is_active && tr.next_dose_at && (
+                          <p className="text-sm">
+                            <span className="text-muted-foreground">{t.nextDoseAt} </span>
+                            <span className="font-medium text-pet-accent">{formatDateTime(tr.next_dose_at, now, t, locale)}</span>
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {tr.is_active && canLog && (
+                          <Button className="h-11 shrink-0 md:h-9" onClick={() => giveDose(tr)} disabled={dosing === tr.id}>
+                            {t.giveDose}
+                          </Button>
+                        )}
+                        {canEdit && (
+                          <RowMenu
+                            label={tr.name}
+                            editHref={`/ljubimci/${pet.id}/terapije/${tr.id}`}
+                            onDelete={() => setPendingDelete({ kind: "treatment", id: tr.id })}
+                            t={t}
+                          />
+                        )}
+                      </div>
+                    </div>
+                    {tr.recent_doses.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">{t.doseLog}</p>
+                        <ul className="space-y-1">
+                          {tr.recent_doses.slice(0, 4).map((l) => (
+                            <li
+                              key={l.id}
+                              className="flex min-w-0 justify-between gap-2 rounded-sm bg-foreground/5 px-3 py-2 text-sm"
+                            >
+                              <span className="min-w-0 truncate">{formatDateTime(l.given_at, now, t, locale)}</span>
+                              <span className="shrink-0 text-muted-foreground">{l.created_by_name}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </Card>
+                ))
+              )}
+            </TabsContent>
+
+            {/* Pregledi */}
+            <TabsContent value="pregledi" className="space-y-4">
+              <SectionHeader
+                title={t.tabVisits}
+                action={
+                  <div className="flex flex-wrap items-center gap-2">
+                    {attachmentLimit !== null && (
+                      <Badge variant="secondary">
+                        {format(t.attachmentsCounter, { n: record.attachment_count, limit: attachmentLimit })}
+                      </Badge>
+                    )}
+                    {canEdit && visits.length > 0 && (
+                      <Button asChild className="h-11 md:h-9">
+                        <Link href={`/ljubimci/${pet.id}/pregledi/novi`}>
+                          <Plus className="size-4" aria-hidden />
+                          {t.newVisit}
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
+                }
+              />
+              {visits.length === 0 ? (
+                <EmptyState
+                  icon={Stethoscope}
+                  title={t.visitsEmptyTitle}
+                  description={t.visitsEmptyDescription}
+                  action={canEdit ? t.newVisit : undefined}
+                  href={`/ljubimci/${pet.id}/pregledi/novi`}
+                />
+              ) : (
+                visits.map((v) => (
+                  <Card key={v.id} className="gap-3 p-4 md:p-6" data-testid="vet-visit">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 className="font-heading text-lg font-bold">{v.reason}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {[formatDate(parseIsoDate(v.visited_on), locale), v.clinic].filter(Boolean).join(" · ")}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {v.cost && <p className="shrink-0 text-sm font-medium">{formatMoney(v.cost.amount_minor, locale)}</p>}
+                        {canEdit && (
+                          <RowMenu
+                            label={v.reason}
+                            editHref={`/ljubimci/${pet.id}/pregledi/${v.id}`}
+                            onDelete={() => setPendingDelete({ kind: "visit", id: v.id })}
+                            t={t}
+                          />
+                        )}
+                      </div>
+                    </div>
+                    {(v.findings || v.recommendations) && (
+                      <dl className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        {v.findings && (
+                          <div className="min-w-0">
+                            <dt className="text-xs font-medium text-muted-foreground">{t.findings}</dt>
+                            <dd className="text-sm">{v.findings}</dd>
+                          </div>
+                        )}
+                        {v.recommendations && (
+                          <div className="min-w-0">
+                            <dt className="text-xs font-medium text-muted-foreground">{t.recommendations}</dt>
+                            <dd className="text-sm">{v.recommendations}</dd>
+                          </div>
+                        )}
+                      </dl>
+                    )}
+                    {v.follow_up_on && (
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <CalendarDays className="size-4 text-muted-foreground" aria-hidden />
+                        <span className="text-muted-foreground">{t.followUp}</span>
+                        <span className="font-medium">{formatDate(parseIsoDate(v.follow_up_on), locale)}</span>
+                        {v.follow_up_on >= today && <StatusBadge status="soon" label={t.soon} />}
+                      </div>
+                    )}
+                    {v.attachments.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {v.attachments.map((a) => (
+                          <AttachmentChip
+                            key={a.id}
+                            file={a}
+                            url={fileUrls[a.id]}
+                            onOpenFresh={openAttachment}
+                            onRemove={canEdit ? () => setPendingDelete({ kind: "attachment", id: a.id }) : undefined}
+                            locale={locale}
+                            t={t}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+                ))
               )}
             </TabsContent>
 

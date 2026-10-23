@@ -182,9 +182,9 @@ describe("EP-13 request_upload (pet_photo)", () => {
     expect(result).toMatchObject({ ok: false, error: { code: "file_type_not_allowed" } });
   });
 
-  it("other purposes are not handled yet → validation_failed (purpose)", async () => {
+  it("purpose attachment is handled since Step 15: a pet id is not a vet visit → not_found", async () => {
     const result = await requestUpload({ ...request, purpose: "attachment" });
-    expect(result).toMatchObject({ ok: false, error: { code: "validation_failed", fields: { purpose: "invalid" } } });
+    expect(result).toMatchObject({ ok: false, error: { code: "not_found" } });
   });
 
   it("a household member → forbidden_role", async () => {

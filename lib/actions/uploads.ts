@@ -6,12 +6,13 @@ import { checkGates, type Caller } from "@/lib/server/gates";
 import { fail, fromDatabaseError, ok, type ActionResult } from "@/lib/server/result";
 import { r2, safeFileName } from "@/lib/integrations/r2";
 import type { Pet } from "@/lib/actions/pets";
+import type { Attachment } from "@/lib/actions/vet-visits";
 
-// EP-13 request_upload / confirm_upload (API §10). Step 13 handles purpose `pet_photo` only;
-// `attachment` (Step 15), `listing_photo` (Step 28b) and `organisation_logo` (Step 24) follow.
-// The upload_token is stateless: HMAC-SHA256 over purpose, target, r2_key, mime, size and
-// expiry, signed with ACTION_TOKEN_SECRET (TC §8.1, the app's token signing key). No row is
-// written until confirm.
+// EP-13 request_upload / confirm_upload (API §10). Step 13 handles purpose `pet_photo`, Step 15
+// `attachment` (vet visit files, FR-08); `listing_photo` (Step 28b) and `organisation_logo`
+// (Step 24) follow. The upload_token is stateless: HMAC-SHA256 over purpose, target, r2_key,
+// mime, size and expiry, signed with ACTION_TOKEN_SECRET (TC §8.1, the app's token signing key).
+// No row is written until confirm.
 
 /** API §6 UploadTicket. */
 export type UploadTicket = {
@@ -32,12 +33,23 @@ export type UploadRequest = {
   size_bytes: number;
 };
 
+type HandledPurpose = "pet_photo" | "attachment";
+
 const MAX_BYTES = 10_485_760; // BR-05
 const PET_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"];
+const FREE_ATTACHMENTS_PER_PET = 10; // BR-01
 const TOKEN_PREFIX = "up_";
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 
-type TokenPayload = { p: "pet_photo"; t: string; k: string; m: string; s: number; e: number };
+/** p purpose, t target id, k r2 key, m mime, s size, e expiry, n file name (attachment). */
+type TokenPayload = { p: HandledPurpose; t: string; k: string; m: string; s: number; e: number; n?: string };
+
+/** EP-13 Request mime_type: images or PDF for attachments; JPEG/PNG/WebP/HEIC for pet photos (BR-05). */
+function typeAllowed(purpose: HandledPurpose, mime: unknown): mime is string {
+  if (typeof mime !== "string") return false;
+  if (purpose === "pet_photo") return PET_PHOTO_TYPES.includes(mime);
+  return /^image\/[a-z0-9.+-]+$/.test(mime) || mime === "application/pdf";
+}
 
 function base64url(bytes: Uint8Array): string {
   let binary = "";
@@ -76,7 +88,8 @@ async function readToken(token: unknown): Promise<TokenPayload | null> {
   if (diff !== 0) return null;
   try {
     const payload = JSON.parse(new TextDecoder().decode(fromBase64url(body))) as TokenPayload;
-    if (payload.p !== "pet_photo" || typeof payload.e !== "number" || payload.e < Date.now()) return null;
+    if (payload.p !== "pet_photo" && payload.p !== "attachment") return null;
+    if (typeof payload.e !== "number" || payload.e < Date.now()) return null;
     return payload;
   } catch {
     return null;
@@ -85,9 +98,10 @@ async function readToken(token: unknown): Promise<TokenPayload | null> {
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 type PhotoTarget = { id: string; owner_id: string | null; organisation_id: string | null; photo_r2_key: string | null };
+type VisitTarget = { visit_id: string; pet: PhotoTarget };
 
 /**
- * The pet a photo is for, as the caller may write it (EP-13 Authorization): owner or the
+ * The pet a file is for, as the caller may write it (EP-13 Authorization): owner or the
  * organisation's team ✅; a household member ❌ forbidden_role; no relation → not_found.
  */
 async function photoTarget(supabase: Supabase, caller: Caller, petId: string): Promise<ActionResult<PhotoTarget>> {
@@ -105,10 +119,41 @@ async function photoTarget(supabase: Supabase, caller: Caller, petId: string): P
   return ok(data);
 }
 
-/** API §10 step 6: u/<owner_id>/pets/<pet_id>/photo/… or o/<org_id>/pets/<pet_id>/photo/…. */
-function petPhotoKey(pet: PhotoTarget, fileName: string): string {
+/** The vet visit an attachment is for (EP-13 target_id = vet_visits.id) and its pet, as above. */
+async function visitTarget(supabase: Supabase, caller: Caller, visitId: string): Promise<ActionResult<VisitTarget>> {
+  const { data, error } = await supabase.from("vet_visits").select("id, pet_id").eq("id", visitId).maybeSingle();
+  if (error) return { ok: false, error: fromDatabaseError(error) };
+  if (!data) return fail("not_found");
+  const pet = await photoTarget(supabase, caller, data.pet_id);
+  if (!pet.ok) return pet;
+  return ok({ visit_id: data.id, pet: pet.data });
+}
+
+/**
+ * BR-01 / E-04 at ticket time: a Free owner's pet holds at most 10 attachments (the insert
+ * trigger checks again at confirm). Organisation animals have no limit, as in the trigger.
+ */
+async function attachmentSlotFree(supabase: Supabase, pet: PhotoTarget): Promise<ActionResult<true>> {
+  if (!pet.owner_id) return ok(true);
+  const { data: premium, error: premiumError } = await supabase.rpc("is_premium", { user_id: pet.owner_id });
+  if (premiumError) return { ok: false, error: fromDatabaseError(premiumError) };
+  if (premium) return ok(true);
+  const { count, error } = await supabase
+    .from("attachments")
+    .select("id", { count: "exact", head: true })
+    .eq("pet_id", pet.id);
+  if (error) return { ok: false, error: fromDatabaseError(error) };
+  if ((count ?? 0) >= FREE_ATTACHMENTS_PER_PET) return fail("premium_required", { details: { limit: "attachments" } });
+  return ok(true);
+}
+
+/**
+ * API §10 step 6: u/<owner_id>/pets/<pet_id>/<kind>/… or o/<org_id>/pets/<pet_id>/<kind>/…, with
+ * <kind> = photo (pet photo) or visits/<vet_visit_id> (attachment).
+ */
+function fileKey(pet: PhotoTarget, kind: string, fileName: string): string {
   const prefix = pet.owner_id ? `u/${pet.owner_id}` : `o/${pet.organisation_id}`;
-  return `${prefix}/pets/${pet.id}/photo/${crypto.randomUUID()}-${safeFileName(fileName)}`;
+  return `${prefix}/pets/${pet.id}/${kind}/${crypto.randomUUID()}-${safeFileName(fileName)}`;
 }
 
 /** EP-13 request_upload — the presigned PUT for one file. */
@@ -118,30 +163,45 @@ export async function requestUpload(input: UploadRequest): Promise<ActionResult<
   if (!caller.ok) return caller;
 
   const fields: Record<string, string> = {};
-  if (input?.purpose !== "pet_photo") fields.purpose = "invalid";
+  const purpose = input?.purpose;
+  if (purpose !== "pet_photo" && purpose !== "attachment") fields.purpose = "invalid";
   if (typeof input?.target_id !== "string" || input.target_id === "") fields.target_id = "required";
   const fileName = typeof input?.file_name === "string" ? input.file_name.trim() : "";
   if (!fileName) fields.file_name = "required";
   else if (fileName.length > 200) fields.file_name = "too_long";
   if (!Number.isInteger(input?.size_bytes)) fields.size_bytes = "invalid";
   if (Object.keys(fields).length > 0) return fail("validation_failed", { fields });
+  const handled = purpose as HandledPurpose;
 
-  if (!PET_PHOTO_TYPES.includes(input.mime_type)) return fail("file_type_not_allowed");
+  if (!typeAllowed(handled, input.mime_type)) return fail("file_type_not_allowed");
   if (input.size_bytes > MAX_BYTES) return fail("file_too_large");
   if (input.size_bytes < 1) return fail("validation_failed", { fields: { size_bytes: "out_of_range" } });
 
-  const target = await photoTarget(supabase, caller.data, input.target_id);
-  if (!target.ok) return target;
+  let key: string;
+  let targetId: string;
+  if (handled === "pet_photo") {
+    const target = await photoTarget(supabase, caller.data, input.target_id);
+    if (!target.ok) return target;
+    key = fileKey(target.data, "photo", fileName);
+    targetId = target.data.id;
+  } else {
+    const target = await visitTarget(supabase, caller.data, input.target_id);
+    if (!target.ok) return target;
+    const slot = await attachmentSlotFree(supabase, target.data.pet);
+    if (!slot.ok) return slot;
+    key = fileKey(target.data.pet, `visits/${target.data.visit_id}`, fileName);
+    targetId = target.data.visit_id;
+  }
 
-  const key = petPhotoKey(target.data, fileName);
   const presigned = await r2().presignPut(key, { contentType: input.mime_type, contentLength: input.size_bytes });
   const upload_token = await signToken({
-    p: "pet_photo",
-    t: target.data.id,
+    p: handled,
+    t: targetId,
     k: key,
     m: input.mime_type,
     s: input.size_bytes,
     e: Date.now() + TOKEN_TTL_MS,
+    ...(handled === "attachment" ? { n: fileName } : {}),
   });
 
   return ok({
@@ -157,9 +217,11 @@ export async function requestUpload(input: UploadRequest): Promise<ActionResult<
 
 /**
  * EP-13 confirm_upload — HEAD the object (size and type must match the ticket; a mismatch
- * deletes it), then set pets.photo_r2_key and queue the old key for the nightly R2 cleanup.
+ * deletes it), then for `pet_photo` set pets.photo_r2_key and queue the old key for the nightly
+ * R2 cleanup, or for `attachment` insert the attachments row (pet_id from the visit; the Free
+ * limit trigger answers premium_required:attachments).
  */
-export async function confirmUpload(input: { upload_token: string }): Promise<ActionResult<Pet>> {
+export async function confirmUpload(input: { upload_token: string }): Promise<ActionResult<Pet | Attachment>> {
   const supabase = await createClient();
   const caller = await checkGates(supabase, { access: "write" });
   if (!caller.ok) return caller;
@@ -167,7 +229,10 @@ export async function confirmUpload(input: { upload_token: string }): Promise<Ac
   const token = await readToken(input?.upload_token);
   if (!token) return fail("validation_failed", { fields: { upload_token: "invalid" } });
 
-  const target = await photoTarget(supabase, caller.data, token.t);
+  const target =
+    token.p === "pet_photo"
+      ? await photoTarget(supabase, caller.data, token.t)
+      : await visitTarget(supabase, caller.data, token.t);
   if (!target.ok) return target;
 
   const storage = r2();
@@ -177,12 +242,33 @@ export async function confirmUpload(input: { upload_token: string }): Promise<Ac
     await storage.remove(token.k);
     return fail("file_too_large");
   }
-  if ((head.content_type ?? "").split(";")[0].trim().toLowerCase() !== token.m) {
+  if ((head.content_type ?? "").split(";")[0].trim().toLowerCase() !== token.m.toLowerCase()) {
     await storage.remove(token.k);
     return fail("file_type_not_allowed");
   }
 
-  const oldKey = target.data.photo_r2_key;
+  if (token.p === "attachment") {
+    const visit = target.data as VisitTarget;
+    const { data, error } = await supabase
+      .from("attachments")
+      .insert({
+        vet_visit_id: visit.visit_id,
+        pet_id: visit.pet.id,
+        r2_key: token.k,
+        file_name: token.n ?? null,
+        mime_type: token.m,
+        size_bytes: token.s,
+      })
+      .select("id, vet_visit_id, pet_id, file_name, mime_type, size_bytes, created_by, created_at")
+      .single();
+    if (error) {
+      if (error.code === "42501") return fail("not_found");
+      return { ok: false, error: fromDatabaseError(error) };
+    }
+    return ok(data as unknown as Attachment);
+  }
+
+  const oldKey = (target.data as PhotoTarget).photo_r2_key;
   const { data, error } = await supabase
     .from("pets")
     .update({ photo_r2_key: token.k })

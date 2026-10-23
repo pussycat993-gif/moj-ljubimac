@@ -1292,6 +1292,9 @@ isOneToOne: false
 "is_premium":
 { Args: { "user_id": string }; Returns: boolean
                            },
+"log_dose":
+{ Args: { "p_given_at"?: string,"p_occurrence_id"?: string,"p_treatment_id": string }; Returns: Json
+                           },
 "partners_nearby":
 { Args: { "p_city_id"?: string,"p_lat"?: number,"p_limit"?: number,"p_lng"?: number,"p_type"?: Database["public"]['Enums']["partner_type"] }; Returns: Json
                            },
