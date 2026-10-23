@@ -30,7 +30,7 @@ select is((select count(*)::int from public.organisation_invitations), 2,
 select lives_ok(
   $$update public.organisations
     set description = 'Opis', phone = '+381 11 123 4567', email = 'info@odgajivacnica.test',
-        website = 'https://odgajivacnica.test', logo_r2_key = 'org/logo.png'
+        website = 'https://odgajivacnica.test', logo_r2_key = 'o/b2000000-0000-4000-8000-000000000002/logo-1.png'
     where id = 'b2000000-0000-4000-8000-000000000002'$$,
   'an admin updates the EP-72 public-profile columns'
 );

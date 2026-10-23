@@ -5,8 +5,9 @@ import { decideHouseholdInvitation, getHouseholdInvitation } from "@/lib/actions
 import { fromProfileLocale, getDictionary, type Locale } from "@/lib/i18n"
 import { InvitationLoading, InviteAcceptScreen } from "./invite-accept-screen"
 
-// S14 Prihvati poziv · /poziv/[token] · household variant (Step 22) · auth-free route in the AuthShell.
-// EP-39 (lib/actions/invitations.ts getHouseholdInvitation) runs on the server with or without a session;
+// S14 Prihvati poziv · /poziv/[token] · household (Step 22) and team-invitation (Step 24, og_) variants ·
+// auth-free route in the AuthShell.
+// EP-39 (lib/actions/invitations.ts getHouseholdInvitation, hh_ and og_) runs on the server with or without a session;
 // the signed-in user and their language come from EP-43, a Visitor's language from the ml_locale cookie.
 // "Prihvati poziv" / "Odbij" call EP-40. The loading variant is the Suspense fallback.
 

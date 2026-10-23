@@ -46,11 +46,25 @@ export type AccountDeletionScheduledEmailVariables = {
   url: string;
 };
 
+export type TeamInvitationEmailVariables = {
+  /** profiles.full_name of the inviting Admin. */
+  inviter: string;
+  /** organisations.name. */
+  organisation: string;
+  /** organisation_invitations.role, shown as Admin / Volonter (Volunteer) in the recipient's language. */
+  role: "admin" | "volunteer";
+  /** organisation_invitations.expires_at in the recipient's date format. */
+  date: string;
+  /** /poziv/<token> (EP-56). */
+  url: string;
+};
+
 /** Template ids of Design §9.1 this adapter renders. Later steps add theirs here. */
 export type EmailTemplate =
   | { id: "reminder_email"; variables: ReminderEmailVariables }
   | { id: "household_invitation"; variables: HouseholdInvitationEmailVariables }
-  | { id: "account_deletion_scheduled"; variables: AccountDeletionScheduledEmailVariables };
+  | { id: "account_deletion_scheduled"; variables: AccountDeletionScheduledEmailVariables }
+  | { id: "team_invitation"; variables: TeamInvitationEmailVariables };
 
 export type RenderedEmail = { subject: string; html: string; text: string };
 
@@ -144,6 +158,23 @@ const RENDERERS: { [K in EmailTemplate["id"]]: (t: Dictionary, v: Extract<EmailT
       subject: format(copy.subject, { date: v.date }),
       bodyHtml: format(escapeHtml(copy.body), { date: escapeHtml(v.date) }),
       bodyText: format(copy.body, { date: v.date }),
+      buttons: [{ label: copy.button, url: v.url, primary: true }],
+      note: null,
+    };
+  },
+  team_invitation(t, v) {
+    const copy = t.messages.team_invitation;
+    const values = {
+      inviter: v.inviter,
+      organisation: v.organisation,
+      role: v.role === "admin" ? copy.roleAdmin : copy.roleVolunteer,
+      date: v.date,
+    };
+    const escaped = Object.fromEntries(Object.entries(values).map(([k, value]) => [k, escapeHtml(value)]));
+    return {
+      subject: format(copy.subject, { organisation: v.organisation }),
+      bodyHtml: format(escapeHtml(copy.body), escaped),
+      bodyText: format(copy.body, values),
       buttons: [{ label: copy.button, url: v.url, primary: true }],
       note: null,
     };

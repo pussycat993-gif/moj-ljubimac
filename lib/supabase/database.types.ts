@@ -1560,7 +1560,16 @@ isOneToOne: false
 "create_household_invitation":
 { Args: { "p_email"?: string,"p_household_name"?: string,"p_invitation_id": string,"p_token_hash": string }; Returns: Json
                            },
+"create_intake":
+{ Args: { "p_approx_age_text": string,"p_arrival_type": string,"p_breed": string,"p_intake_on": string,"p_name": string,"p_note": string,"p_place_found": string,"p_sex": string,"p_species": string,"p_species_other": string }; Returns: Json
+                           },
+"create_organisation_invitation":
+{ Args: { "p_email": string,"p_invitation_id": string,"p_role": string,"p_token_hash": string }; Returns: Json
+                           },
 "decide_household_invitation":
+{ Args: { "p_decision": string,"p_token_hash": string }; Returns: Json
+                           },
+"decide_organisation_invitation":
 { Args: { "p_decision": string,"p_token_hash": string }; Returns: Json
                            },
 "dispatch_watchdog_due":
@@ -1581,8 +1590,14 @@ isOneToOne: false
 "get_my_data_overview_base":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
+"get_my_organisation":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
 "get_my_subscription":
 { Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"get_organisation_invitation":
+{ Args: { "p_token_hash": string }; Returns: Json
                            },
 "get_pet_record":
 { Args: { "p_pet_id": string }; Returns: Json
@@ -1592,6 +1607,9 @@ isOneToOne: false
                            },
 "is_premium":
 { Args: { "user_id": string }; Returns: boolean
+                           },
+"list_org_animals":
+{ Args: { "p_limit"?: number,"p_offset"?: number,"p_q"?: string,"p_status"?: string }; Returns: Json
                            },
 "list_reminder_occurrences":
 { Args: { "p_filter": string,"p_limit"?: number,"p_offset"?: number,"p_pet_id"?: string }; Returns: Json

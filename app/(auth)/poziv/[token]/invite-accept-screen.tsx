@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Bell, CalendarClock, Check, CircleX, Eye, Home, SearchX } from "lucide-react"
+import { Bell, CalendarClock, Check, CircleX, Eye, Home, SearchX, UserRound, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -13,11 +13,12 @@ import type { InvitationDecision, InvitationView } from "@/lib/actions/invitatio
 import type { ActionResult } from "@/lib/server/result"
 import { format, type Dictionary, type Locale } from "@/lib/i18n"
 
-// S14 — Prihvati poziv · /poziv/[token] · FR-26 — household variant (port of
-// docs/product/04-design/screens/invite-accept.tsx without the StateSwitcher). Variants from EP-39 /
-// EP-40 (API §7.3): household (pending), accepted, declined (invitation_declined), sign-in prompt
-// (is_signed_in = false), expired (410 invitation_expired), error (404 / 5xx, and og_ / tr_ tokens until
-// Steps 24–25), loading (the page's Suspense fallback). EP-40 409 / 403 answers are inline messages.
+// S14 — Prihvati poziv · /poziv/[token] · FR-26, FR-43 — household variant (Step 22) and team-invitation
+// variant (Step 24, CR-18; the team / teamAdmin views) of docs/product/04-design/screens/invite-accept.tsx
+// without the StateSwitcher. Variants from EP-39 / EP-40 (API §7.3): household or team (pending, chosen by
+// InvitationView.kind), accepted, declined (invitation_declined), sign-in prompt (is_signed_in = false),
+// expired (410 invitation_expired), error (404 / 5xx, and tr_ tokens until Step 25), loading (the page's
+// Suspense fallback). EP-40 409 / 403 answers are inline messages.
 
 export type InvitationCopy = {
   invitation: Dictionary["invitation"]
@@ -32,7 +33,7 @@ export type InvitationActions = {
   }) => Promise<ActionResult<InvitationDecision>>
 }
 
-type Variant = "household" | "accepted" | "declined" | "signin" | "expired" | "error"
+type Variant = "household" | "team" | "accepted" | "declined" | "signin" | "expired" | "error"
 
 const SPECIES: PetSpecies[] = ["cat", "dog", "rabbit", "bird", "fish", "turtle", "other"]
 
@@ -91,7 +92,7 @@ function initialVariant(initial: ActionResult<InvitationView>): Variant {
   if (!v.is_signed_in) return "signin"
   if (v.status === "declined") return "declined"
   if (v.status === "accepted" && v.already_member) return "accepted"
-  return "household"
+  return v.kind === "organisation" ? "team" : "household"
 }
 
 export function InviteAcceptScreen({
@@ -114,12 +115,18 @@ export function InviteAcceptScreen({
   const [variant, setVariant] = useState<Variant>(() => initialVariant(initial))
   const [busy, setBusy] = useState(false)
   const view = initial.ok ? initial.data : null
+  // Team invitations (og_, Step 24): the kind comes from EP-39, or from the token prefix when EP-39 answered 410.
+  const isTeam = view ? view.kind === "organisation" : token.startsWith("og_")
   const [inline, setInline] = useState<string | null>(() => {
     if (!view || !view.is_signed_in) return null
     if (view.status === "accepted" && !view.already_member) return t.used
-    if (view.status === "pending" && view.already_member) return t.alreadyMember
+    if (view.status === "pending" && view.already_member && view.kind !== "organisation") return t.alreadyMember
     return null
   })
+  // A current team member opening a pending team invitation (or EP-40 already_member): no buttons, a link to S20.
+  const [teamMember, setTeamMember] = useState<boolean>(
+    () => !!view && view.kind === "organisation" && view.status === "pending" && view.already_member === true,
+  )
 
   const householdName = view?.household_name ?? ""
   const pets = view?.shared_pets ?? []
@@ -149,10 +156,18 @@ export function InviteAcceptScreen({
         setInline(t.used)
         return
       case "already_member":
-        setInline(t.alreadyMember)
+        if (isTeam) {
+          setInline(null)
+          setTeamMember(true)
+        } else {
+          setInline(t.alreadyMember)
+        }
         return
       case "household_full":
         setInline(t.full)
+        return
+      case "team_full":
+        setInline(copy.common.error)
         return
       case "household_read_only":
         setInline(t.readOnly)
@@ -161,6 +176,30 @@ export function InviteAcceptScreen({
         setInline(copy.common.error)
     }
   }
+
+  const organisationName = view?.organisation_name ?? ""
+  const roleLabel = view?.role === "admin" ? t.roleAdmin : t.roleVolunteer
+  const cityName = view?.inviter_city
+    ? locale === "en"
+      ? view.inviter_city.name_en || view.inviter_city.name_sr
+      : view.inviter_city.name_sr
+    : null
+  const teamDetails = [
+    view?.organisation_type === "breeder" ? t.orgTypeBreeder : view?.organisation_type === "shelter" ? t.orgTypeShelter : null,
+    cityName,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+  const validUntil = view
+    ? new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "sr-Latn", {
+        day: "numeric",
+        month: locale === "en" ? "short" : "numeric",
+        year: "numeric",
+        timeZone: "Europe/Belgrade",
+      }).format(new Date(view.expires_at))
+    : ""
+  const teamCan =
+    view?.role === "admin" ? [t.adminCan1, t.adminCan2, t.adminCan3] : [t.volunteerCan1, t.volunteerCan2, t.volunteerCan3]
 
   function acceptedBody() {
     if (pets.length === 0) return t.acceptedBodyNoPets
@@ -256,8 +295,117 @@ export function InviteAcceptScreen({
         </Card>
       )}
 
+      {/* Organisation team invitation (CR-18) — the invitee keeps their own account type (BR-53) */}
+      {variant === "team" && view && (
+        <Card className="gap-6 p-4 md:p-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Users className="size-4" aria-hidden />
+              <span>{t.teamKicker}</span>
+            </div>
+            <h1 className="font-heading text-[28px] leading-9 font-bold">{organisationName}</h1>
+            {view.inviter_name ? (
+              <p className="text-sm text-muted-foreground">
+                {teamDetails
+                  ? format(t.teamSubtitle, { details: teamDetails, name: view.inviter_name })
+                  : format(t.invitedBy, { name: view.inviter_name })}
+              </p>
+            ) : (
+              teamDetails && <p className="text-sm text-muted-foreground">{teamDetails}</p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 rounded-sm bg-foreground/5 p-3">
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-card">
+              <UserRound className="size-5 text-primary" aria-hidden />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-muted-foreground">{t.yourRole}</p>
+              <p className="truncate font-heading text-lg font-bold">{roleLabel}</p>
+            </div>
+            {view.member_count !== null && view.member_limit !== null && (
+              <p className="shrink-0 text-xs font-medium text-muted-foreground">
+                {format(t.members, { n: view.member_count, limit: view.member_limit })}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">
+              {view.role === "admin" ? t.teamCanAdmin : t.teamCanVolunteer}
+            </p>
+            <ul className="space-y-2 text-sm">
+              {teamCan.map((line) => (
+                <li key={line} className="flex items-start gap-2">
+                  <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                  <span className="min-w-0">{line}</span>
+                </li>
+              ))}
+              <li className="flex items-start gap-2 text-muted-foreground">
+                <Eye className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <span className="min-w-0">{view.role === "admin" ? t.adminCannot : t.volunteerCannot}</span>
+              </li>
+              <li className="flex items-start gap-2 text-muted-foreground">
+                <Home className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <span className="min-w-0">{t.keepAccount}</span>
+              </li>
+              <li className="flex items-start gap-2 text-muted-foreground">
+                <CalendarClock className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <span className="min-w-0">{format(t.validUntil, { date: validUntil })}</span>
+              </li>
+            </ul>
+          </div>
+
+          {user && <SignedInAs user={user} label={t.notYou} />}
+
+          {inline && (
+            <p role="alert" className="text-sm text-destructive">
+              {inline}
+            </p>
+          )}
+
+          {teamMember ? (
+            <Button className="h-11 w-full md:h-9" asChild>
+              <Link href="/organizacija">{t.goToOrganisation}</Link>
+            </Button>
+          ) : (
+            view.status === "pending" && (
+              <div className="flex flex-col gap-2 md:flex-row-reverse">
+                <Button className="h-11 md:h-9 md:flex-1" disabled={busy} onClick={() => void decide("accept")}>
+                  {t.joinTeam}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-11 md:h-9 md:flex-1"
+                  disabled={busy}
+                  onClick={() => void decide("decline")}
+                >
+                  {t.decline}
+                </Button>
+              </div>
+            )
+          )}
+        </Card>
+      )}
+
+      {/* Accepted confirmation — team */}
+      {variant === "accepted" && isTeam && (
+        <Card className="items-center gap-4 p-6 text-center md:p-8">
+          <span className="flex size-12 items-center justify-center rounded-full bg-foreground/5">
+            <Check className="size-6 text-primary" aria-hidden />
+          </span>
+          <h1 className="font-heading text-[28px] leading-9 font-bold">
+            {format(t.teamAcceptedTitle, { organisation: organisationName })}
+          </h1>
+          <p className="text-sm text-muted-foreground">{format(t.teamAcceptedBody, { role: roleLabel })}</p>
+          <Button className="h-11 w-full md:h-9" asChild>
+            <Link href="/organizacija">{t.goToOrganisation}</Link>
+          </Button>
+        </Card>
+      )}
+
       {/* Accepted confirmation */}
-      {variant === "accepted" && (
+      {variant === "accepted" && !isTeam && (
         <Card className="items-center gap-4 p-6 text-center md:p-8">
           <span className="flex size-12 items-center justify-center rounded-full bg-foreground/5">
             <Check className="size-6 text-primary" aria-hidden />
@@ -279,7 +427,11 @@ export function InviteAcceptScreen({
             <CircleX className="size-6 text-muted-foreground" aria-hidden />
           </span>
           <h1 className="font-heading text-[28px] leading-9 font-bold">{t.declinedTitle}</h1>
-          <p className="text-sm text-muted-foreground">{format(t.declinedBody, { household: householdName })}</p>
+          <p className="text-sm text-muted-foreground">
+            {isTeam
+              ? format(t.teamDeclinedBody, { organisation: organisationName })
+              : format(t.declinedBody, { household: householdName })}
+          </p>
           <Separator />
           <Button variant="outline" className="h-11 w-full md:h-9" asChild>
             <Link href="/ljubimci">{t.goHome}</Link>
@@ -292,11 +444,13 @@ export function InviteAcceptScreen({
         <Card className="gap-6 p-4 md:p-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Home className="size-4" aria-hidden />
-              <span>{t.householdKicker}</span>
+              {isTeam ? <Users className="size-4" aria-hidden /> : <Home className="size-4" aria-hidden />}
+              <span>{isTeam ? t.teamKicker : t.householdKicker}</span>
             </div>
             <h1 className="font-heading text-[28px] leading-9 font-bold">
-              {format(t.signInTitle, { household: householdName })}
+              {isTeam
+                ? format(t.teamSignInTitle, { organisation: organisationName })
+                : format(t.signInTitle, { household: householdName })}
             </h1>
             <p className="text-sm text-muted-foreground">{t.signInBody}</p>
           </div>
@@ -323,7 +477,7 @@ export function InviteAcceptScreen({
             <CalendarClock className="size-6 text-muted-foreground" aria-hidden />
           </span>
           <h1 className="font-heading text-[28px] leading-9 font-bold">{t.expiredTitle}</h1>
-          <p className="text-sm text-muted-foreground">{t.expiredBody}</p>
+          <p className="text-sm text-muted-foreground">{isTeam ? t.linkExpiredBody : t.expiredBody}</p>
           <Separator />
           <Button variant="outline" className="h-11 w-full md:h-9" asChild>
             <Link href="/ljubimci">{t.goHome}</Link>
@@ -331,7 +485,7 @@ export function InviteAcceptScreen({
         </Card>
       )}
 
-      {/* Error — unknown token, 5xx, or an og_ / tr_ token before Steps 24–25 */}
+      {/* Error — unknown token, 5xx, or a tr_ token before Step 25 */}
       {variant === "error" && (
         <Card role="alert" className="items-center gap-4 p-6 text-center md:p-8">
           <span className="flex size-12 items-center justify-center rounded-full bg-foreground/5">

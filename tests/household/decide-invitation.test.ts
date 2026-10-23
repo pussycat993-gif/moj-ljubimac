@@ -7,7 +7,7 @@ vi.mock("server-only", () => ({}));
 // (lib/actions/invitations.ts) over a fake server client that models the database functions of the
 // household_sharing migration: a different signed-in user accepts a Premium owner's invitation and becomes
 // a member (joined_at set, reminders_enabled = false); a Visitor viewing gets is_signed_in = false and
-// deciding gets 401 unauthenticated; og_ / tr_ tokens are not handled yet (not_found, the S14 error state);
+// deciding gets 401 unauthenticated; tr_ tokens are not handled yet (not_found, the S14 error state; og_ is Step 24);
 // the EP-40 error codes pass through. Only the SHA-256 hash of the token reaches the database.
 
 type Row = Record<string, unknown>;
@@ -142,8 +142,9 @@ describe("EP-39 get_household_invitation", () => {
     expect(await getHouseholdInvitation({ token: "hh_drugi.token" })).toMatchObject({ ok: false, error: { code: "not_found" } });
   });
 
-  it("og_ and tr_ tokens (Steps 24–25) and malformed tokens → not_found without a database call", async () => {
-    for (const token of ["og_abc.def", "tr_abc.def", "", "hh_bez-potpisa"]) {
+  // Step 24 handles og_ tokens (tests/organisation/team-invitation-accept.test.ts); tr_ comes in Step 25.
+  it("tr_ tokens (Step 25) and malformed tokens → not_found without a database call", async () => {
+    for (const token of ["tr_abc.def", "", "hh_bez-potpisa", "og_bez-potpisa"]) {
       expect(await getHouseholdInvitation({ token })).toMatchObject({ ok: false, error: { code: "not_found" } });
     }
     expect(state.rpcCalls).toHaveLength(0);
@@ -214,12 +215,12 @@ describe("EP-40 decide_household_invitation", () => {
     });
   });
 
-  it("an unknown decision → validation_failed; an og_ token → not_found", async () => {
+  it("an unknown decision → validation_failed; a tr_ token (Step 25) → not_found", async () => {
     expect(await decideHouseholdInvitation({ token: TOKEN, decision: "maybe" as "accept" })).toMatchObject({
       ok: false,
       error: { code: "validation_failed", fields: { decision: "invalid" } },
     });
-    expect(await decideHouseholdInvitation({ token: "og_abc.def", decision: "accept" })).toMatchObject({
+    expect(await decideHouseholdInvitation({ token: "tr_abc.def", decision: "accept" })).toMatchObject({
       ok: false,
       error: { code: "not_found" },
     });

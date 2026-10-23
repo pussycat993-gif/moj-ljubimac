@@ -160,6 +160,9 @@ select is(
   now(), 'FR-45: … and the time of the change'
 );
 
+-- Step 24: offspring status changes need an active breeder plan (BR-11, owner decision) — fixture.
+insert into public.subscriptions (user_id, plan, status, current_period_end, auto_renew)
+values ('a1000000-0000-4000-8000-000000000005', 'breeder_monthly', 'active', now() + interval '1 month', true);
 select set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000005","role":"authenticated"}', true);
 set local role authenticated;
 update public.pets set offspring_status = 'reserved' where id = 'f9000000-0000-4000-8000-000000000003';

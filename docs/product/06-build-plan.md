@@ -83,7 +83,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 21 | Moments & public links | ✅ | 15 | — | 2026-10-23 |
 | 22 | Household sharing | ✅ | 19 | — | 2026-10-23 |
 | 23 | Subscription status, Premium page & account data control | ✅ | 12, 15, 19 | — | 2026-10-23 |
-| 24 | Organisations: animals, team, public profile | ⬜ | 09, 15, 19, 22 | — | |
+| 24 | Organisations: animals, team, public profile | ✅ | 09, 15, 19, 22 | — | 2026-10-23 |
 | 25 | Requests, inquiries & record transfers | ⬜ | 24, 22 | — | |
 | 26 | Litters & public organisation pages | ⬜ | 25 | — | |
 | 27 | Partners directory & vet suggestion | ⬜ | 09, 12, 14 | — | |
@@ -4074,7 +4074,98 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-23** — Step 24 built (unattended overnight run).
+  - **Built:**
+    - Migration `20261023220000_organisation_workspace.sql`. It changes no table, column, enum or constraint. The Step 09 trigger `pets_record_status_history` already records EP-55 status changes, so no history trigger is added.
+      - Helpers in `private`: `search_text` (immutable `translate(lower(x), …)`), `my_organisation_membership` (the caller's earliest membership), `organisation_invitation_json` (OrganisationInvitation; pending past `expires_at` → `expired`) and `organisation_other_admin_exists` (locks the organisation row).
+      - `rpc:get_my_organisation()` (EP-53): security definer with an explicit membership check (`not_found` without one). It returns Organisation (`public_path`, `city`, `member_count`, `member_limit` 20, `donation` null until Step 28b, and the internal `logo_r2_key`, which the action turns into `logo_url`), `team` (admin first, then `created_at`, names and emails from `profiles`), `pending_invitations` (Admins only; Volunteers `[]`), `breeder_plan_active` (`private.breeder_plan_active`, Step 09) and `access` (`can_edit` = approved and, for breeders, the plan; `can_delete` = `can_edit` and admin).
+      - `rpc:list_org_animals(p_q, p_status, p_limit, p_offset)` (EP-54): security definer with the same membership check. It returns `{ items: OrgAnimalRow[], total, status_counts }`. `p_q` is a case- and diacritic-insensitive substring search. `p_status` is a shelter status, or an offspring status / `breeding_active` / `breeding_retired` for breeders. `status_counts` covers every key and ignores `p_status`. Shelters sort by `intake_on` desc, breeders by `created_at` desc. Errors: `validation_failed` (`p_status`, `p_limit` 1–50, `p_offset`) and `not_found`.
+      - `rpc:create_intake(…)` (EP-55): security invoker, one transaction. It validates the Request with `DETAIL '<field>:<code>'`, then inserts `pets` (`shelter_status = intake`), `intakes` and the first `pet_status_history` row (the Step 09 trigger fires on updates only). RLS and the Step 06 / 09 triggers answer `organisation_pending_approval`; a breeder gets `forbidden_role`.
+      - `rpc:create_organisation_invitation(p_invitation_id, p_token_hash, p_email, p_role)` (EP-56 invite): security definer. It checks, in order: membership (`not_found`), admin (`forbidden_role`), approval, then the token hash, email and role (`validation_failed`). A member's address → `already_member`. It expires an earlier pending invitation to the same address and inserts the new one (`expires_at = now() + 7 days`). It returns the invitation plus the organisation name, inviter name and locale, and the address's account locale.
+      - `rpc:get_organisation_invitation(p_token_hash)` (EP-39 og_, `anon` + `authenticated`): InvitationView with `kind = organisation`. Session fields (`inviter_city` = `organisations.city_id`, `member_count`, `member_limit`, `already_member`) are null for a Visitor. `inviter_name` is `organisations.created_by`. Errors: `invitation_expired`, `not_found`.
+      - `rpc:decide_organisation_invitation(p_token_hash, p_decision)` (EP-40 og_, `authenticated`): it locks the row. Errors: `validation_failed`, `not_found`, `invitation_used`, `invitation_expired`, `already_member`; the Step 05 size trigger raises `team_full`. Accept inserts `organisation_memberships` with the invited role and sets `accepted` + `accepted_by`. It does not touch `profiles.account_type` (BR-53). Decline sets `declined`.
+      - Guards:
+        - `organisation_guard_write` (organisations update; memberships and invitations insert / update / delete): a pending / rejected organisation → `organisation_pending_approval` (rejected: `organisation_pending_approval:rejected`). For organisations it also runs the EP-72 checks: description ≤ 1000, phone ≤ 30, email shape, website `https://…`, and a new `logo_r2_key` must start with `o/<org_id>/logo-`.
+        - `organisation_invitations_check_team_size`: members + live pending invitations ≥ 20 → `team_full`.
+        - `organisation_memberships_check_last_admin`: a role change or delete that leaves no admin → `validation_failed:last_admin` (DETAIL `user_id:last_admin`).
+        - `pets_check_breeder_write`: a breeder's `offspring_status` / `price_minor` change without an active plan → `breeder_plan_required`; `breeding_status` on a shelter animal → `forbidden_role` (EP-55).
+        - `organisations_queue_logo_key`: a replaced or removed logo key goes to `r2_deletion_queue`.
+        - All guards except the team-size trigger run for client sessions only (`current_user = 'authenticated'`), like the Step 05 / 09 triggers.
+      - The EP-55 / EP-72 column grants are re-stated (Steps 05 / 06 had granted them).
+      - `npm run db:types` regenerated `lib/supabase/database.types.ts`.
+    - `lib/actions/organisation.ts` (new): `getMyOrganisation` (EP-53, presigned `logo_url` through `r2().presignGet`; on presign failure `url = null`), `listOrgAnimals` (EP-54), `createIntake` (EP-55, Request checked with field codes, then one `create_intake` call), `changeAnimalStatus` (EP-55 Data API `pets` update of `shelter_status` / `breeding_status`) and `updateOrganisationProfile` (EP-72 Data API `organisations` update; `logo_r2_key` may only be null here, a new key comes from EP-13 confirm). It also has the §6 types Organisation, OrganisationMember, OrganisationInvitation, OrgAnimalRow and Intake.
+    - `lib/actions/team.ts` (new): `inviteTeamMember` (EP-56). It checks the gates and the Request, then runs `withIdempotency` (operation `organisation_invitation`) and `checkRateLimit` (`organisation_invitations.create`, 20 per day). The token is `signActionToken("og", [invitation_id], now + 7 days)` and only `hashToken` is stored. The §9.1 `team_invitation` email goes to the address's account locale (else the inviter's), with `{date}` from `formatBelgradeDate` and the link `NEXT_PUBLIC_SITE_URL/poziv/<token>`. A failed email → `internal_error`. Also `revokeInvitation` (delete of a pending row), `removeMember`, and `changeMemberRole` (returns the OrganisationMember from EP-53). `validation_failed:last_admin` → `fields.user_id = "last_admin"`.
+    - `lib/actions/invitations.ts`: the og_ path of EP-39 / EP-40. The token prefix picks `get_` / `decide_organisation_invitation`; tr_ still answers `not_found` (Step 25).
+    - `lib/actions/uploads.ts`: EP-13 purpose `organisation_logo`. The target is the organisation id: its Admin ✅, a Volunteer → `forbidden_role`, anyone else → `not_found`. Types are image/jpeg, png and webp, up to 10 MB. The key is `o/<org_id>/logo-<uuid>.<ext>`. Confirm HEAD-checks the object, sets `organisations.logo_r2_key` (the trigger queues the old key) and returns the Organisation.
+    - `lib/integrations/resend.ts`: the `team_invitation` template only (role shown as Admin / Volonter).
+    - `app/(org)/layout.tsx`: the organisation type comes from EP-53. EP-53 `not_found` → `/ljubimci`. The Sonner Toaster is mounted.
+    - S20 `app/(org)/organizacija/page.tsx` + `org-animals-screen.tsx`: port of `org-animals.tsx` without the StateSwitcher. The loading variant is the Suspense fallback; `?tab=tim` opens Tim.
+      - Animals: table on lg, cards below. Status chips come with `status_counts`. Search (250 ms) and chips go through EP-54. "Učitaj još" pages by 50. The no-match empty state shows the term; "Nema životinja sa statusom …" covers an empty filter.
+      - Row menu: "Otvori karton" → `/ljubimci/[id]`, the "Promeni status" radio submenu (shelters, `can_edit`, not transferred) and "Obriši životinju" (`can_delete`; AlertDialog → EP-05 `deletePet`, toast).
+      - Intake Dialog (EP-55). Tim: members, pending invitations, the invite Dialog (EP-56) and the member / invitation menus.
+      - States: pending banner, breeder-plan banner, empty (no animals), error (retry → `router.refresh()`).
+    - S29 `app/(org)/organizacija/profil/page.tsx` + `org-profile-screen.tsx`: port of `org-profile.tsx` without the StateSwitcher.
+      - Admin form: EP-72 save with inline errors, the "Sačuvano" status and "Poništi izmene". The logo goes through EP-13 (ticket → PUT → confirm); "X" removes it on save.
+      - `access.can_edit = false` → the read-only card. Volunteers get the volunteer banner; a pending or plan-less Admin gets the S20 banner.
+    - S14 `invite-accept-screen.tsx` / `page.tsx`: the team variant only (team / teamAdmin views). It shows kicker, organisation, "{type} · {city} · Poziva te", the role tile with counter, can / cannot lines, the account note and validity, then "Pridruži se timu" / "Odbij". Also: accepted → "Idi u organizaciju" (`/organizacija`), declined (team copy), the sign-in variant "Poziv u tim: {organisation}", and expired for og_ tokens. The household variant is unchanged.
+    - `lib/i18n/sr.ts` / `en.ts`: new sections `orgAnimals` and `orgProfile`, team keys in `invitation`, and `messages.team_invitation`, with English translations.
+    - Tests:
+      - pgTAP: `organisation_access.test.sql` (36), `org_animals.test.sql` (37), `org_team.test.sql` (56), `org_profile.test.sql` (20).
+      - Vitest: `tests/organisation/create-intake.test.ts` (8), `invite-team-member.test.ts` (12), `team-invitation-accept.test.ts` (14), `org-animals-screen.test.tsx` (19), `org-profile-screen.test.tsx` (6).
+  - **Owner decisions applied (2026-10-23):**
+    - Database functions `create_intake` (invoker, one transaction; the history row is inserted because the Step 09 trigger covers updates only), `get_organisation_invitation` / `decide_organisation_invitation` (definer, `invitation_expired` / `invitation_used` / `already_member` / `team_full`), and `get_my_organisation` / `list_org_animals` (definer with an explicit membership check; names from `profiles`). The og_ action uses `randomUUID` + `signActionToken('og', [id], now + 7 days)` and stores `hashToken`.
+    - Guards: `breeder_plan_active` is the existing Step 09 `private.breeder_plan_active(organisation_id)` (definer, stable), reused rather than duplicated. The team_full invitation trigger, the last-admin trigger, the pending / rejected organisation guard on organisations / memberships / invitations, and `breeder_plan_required` on pets `offspring_status` / `price_minor` (breeder_inquiries updates already had it, Step 09). `lib/actions/team.ts` has `revokeInvitation`, `removeMember` and `changeMemberRole`, and maps `last_admin` to `fields.user_id`.
+    - Diacritic-insensitive search with `translate(lower(x), …)` — see the deviation below on the target string.
+    - EP-13 `organisation_logo`: `target_id` = organisation id, image/jpeg|png|webp, 10 MB, confirm returns Organisation, a trigger queues the old key. Hint "PNG ili JPG, najviše 10 MB. Najbolje kvadratna slika."
+    - S29: description max 1000, website must start with `https://`, the volunteer banner "…menjaju samo admini — javi im se ako nešto treba ispraviti."
+    - S20:
+      - The intake Dialog uses the S02 species list and the "Ostalo" field keys (`petForm.speciesOther*`, `errSpeciesOther`). There is no weight and no "Karton ažuriran".
+      - "Promeni status" is a submenu of status radios (shelters only). The labels "Uginuo" / "Vraćen vlasniku" and their chips show only when the count > 0.
+      - The "Za sada si sam" empty state is removed.
+      - Pending invitation rows read "{email} · Čeka odgovor · važi do {date}", with the menu "Opozovi poziv".
+      - The breeder-without-plan banner.
+    - S14 team variant: the sign-in title "Poziv u tim: {organisation}" and, for og_ tokens, the expired body "Link više ne važi. Zamoli pošiljaoca da ti pošalje novi poziv." hh_ keeps its Step 22 expired copy, because this step's prompt forbids changing the household variant ("expired for all kinds" read as every non-household kind).
+    - `app/(org)/layout.tsx` admits anyone EP-53 returns an organisation for.
+    - Applied from earlier decisions: server actions (httpOnly session); the Sonner Toaster and the 5xx toast "Nešto nije u redu. Pokušaj ponovo."; sr-Latn / en-GB dates on the Belgrade calendar; age plurals from Step 13; English written in this step; unmapped codes show the existing generic error.
+  - **Owner-approved exceptions:**
+    - **Exception 1:** `tests/household/decide-invitation.test.ts` (Step 22) asserted that og_ tokens answer `not_found` "(Steps 24–25)". This step adds og_, so only those two assertions changed: they now use a `tr_` token (and an unsigned `og_` string stays malformed). The header comment was updated to match.
+    - **Exception 3:**
+      - `supabase/tests/organisation_workflows.test.sql` (Step 09) changes offspring statuses as a plan-less breeder. The new `breeder_plan_required` guard (owner decision) now refuses that, so the test gets an active `breeder_monthly` subscription fixture before that block.
+      - `supabase/tests/organisation_rls.test.sql` (Step 05) saved `logo_r2_key = 'org/logo.png'`. The organisations guard (owner decision) rejects keys that are not `o/<org_id>/logo-…` (EP-72 "must come from a confirmed EP-13 ticket for this organisation"), so the test now uses an EP-13-shaped key.
+  - **Database functions (pre-approved exception 6):** `create_organisation_invitation` (security definer, `set search_path`, `auth.uid()` membership + admin checks, revoked from public / anon, granted to `authenticated`). It is needed because the invitation id is not client-insertable, the expire-and-insert must be one transaction, and `already_member` reads other members' emails. **Follow-up:** add it to `docs/product/05-api-integration-contract.md` (EP-56). Also add the owner-decided `rpc:create_intake`, `rpc:get_organisation_invitation` and `rpc:decide_organisation_invitation` there (EP-55, EP-39, EP-40).
+  - **Verification** (in order; all on the same code):
+    - `npm run typecheck` ✅ exit 0
+    - `npm run lint` ✅ exit 0 (0 errors; the 2 known warnings in the generated `cloudflare-env.d.ts`)
+    - `npm test` ✅ `Test Files 91 passed (91)`, `Tests 985 passed (985)`
+    - `npx supabase test db` ✅ `Files=67, Tests=2170`, `All tests successful.`, `Result: PASS` (after `npx supabase db reset`)
+    - `npm run build` ✅ exit 0. Routes include `ƒ /organizacija`, `ƒ /organizacija/profil` and `ƒ /poziv/[token]`.
+  - **Deviations / decisions:**
+    - **Search translate string:** the owner-given target `'ccszdaaaeeeiioooouuu'` has one `o` too many, so `ú` mapped to `o` and "luna" did not match "Lúna" (FR-59 #1 failed). The migration uses `'ccszdaaaeeeiiooouuu'` (19 → 19 characters).
+    - **Last-admin trigger** is security invoker (a definer trigger sees `current_user = postgres` and skipped the client-only check). The row lock lives in the definer helper `private.organisation_other_admin_exists`.
+    - **Rate limit:** team invitations have their own counter `organisation_invitations.create` (20 per user per day), separate from `household_invitations.create`. Step 22 left this to Step 24. The idempotency operation is `organisation_invitation`.
+    - **Copy with no mockup text** uses existing copy and no new strings:
+      - The S20 invite Dialog keeps "Pošalji poziv" disabled until the email looks valid. Any EP-56 error (`team_full`, `already_member`, `rate_limited`, …) shows the generic error inline.
+      - S14 team `team_full` → the generic error inline. `invitation_used` → "Ovaj poziv je već iskorišćen.".
+      - A current member opening a pending team invitation (or EP-40 `already_member`) sees no buttons and "Idi u organizaciju" instead of a message.
+      - S29 logo type / size or upload failures → the generic toast; the file input accepts PNG / JPG / WebP only.
+      - Breeding animals (`status_kind = breeding`) show no status badge (no breeding-status copy). A mother shows "Majka" in the Poreklo column.
+    - **S20 "Obriši životinju"** (in the mockup menu) is wired to EP-05 `deletePet` with an AlertDialog ("Trajno obriši karton — {name}?", "Ovo ne može da se poništi.", "Da, obriši" / "Odustani"; the S03 / Step 14 wording, without the memorial sentence) and the S03 deleted toast. `deletePet` is the existing Step 13 action.
+    - **S29 Donacije card** (FR-72, EP-88) is not built: its columns arrive in Step 28a/28b, and EP-53 returns `donation: null` until Step 28b replaces `get_my_organisation`.
+    - **S29 saved logo name:** Organisation has only `logo_url`, so a saved logo's chip shows the last part of its key (`logo-<uuid>.<ext>`) without a size. A file uploaded in this session shows its own name and size.
+    - **Owner shell "Organizacija" item:** not added. `app/(app)/layout.tsx` already renders the organisation shell (with "Životinje" → `/organizacija`) for any user with a membership, so a pet owner who volunteers already reaches S20. Adding an item to the owner nav would need a change in `components/app/shells.tsx`, which is more than a pass-through. The step is complete without it.
+    - **FR-43 #2 "care entries":** the care log (EP-17 / EP-18) is not available to organisation roles (API §4.4 "—"), so the pgTAP test covers vaccinations, weight entries and treatments (health and care entries, BR-34), plus status changes and intake. EP-58 is asserted at the RLS / trigger level (`adoption_requests` update by a Volunteer → `forbidden_role`); its function arrives in Step 25.
+    - **`team-invitation-accept.test.ts`** is a `.ts` file, as the table names it, so it renders S14 with `createElement` instead of JSX.
+    - **Rejected organisations** get no banner (no copy). They are read-only through `access.can_edit = false`, and writes answer `organisation_pending_approval` (rejected).
+  - **Follow-ups:**
+    - Add `rpc:create_organisation_invitation`, `rpc:create_intake`, `rpc:get_organisation_invitation` and `rpc:decide_organisation_invitation` to `docs/product/05-api-integration-contract.md` (EP-55, EP-56, EP-39, EP-40).
+    - Design copy is needed for:
+      - the S20 invite Dialog errors (`team_full`, `already_member`, `rate_limited`, invalid email);
+      - S14 team `already_member` / `team_full`;
+      - S29 logo type / size errors;
+      - breeding-status labels;
+      - a rejected-organisation banner.
+    - The owner-shell "Organizacija" nav item needs a `components/app/shells.tsx` change if it is still wanted; today the (app) layout switches members to the organisation shell.
+    - Step 26: EP-62 reads the EP-72 values saved here. Step 28b replaces `get_my_organisation` with `donation`. Step 30: BR-46 succession (the last-admin trigger skips System sessions).
 
 ---
 
