@@ -1283,11 +1283,17 @@ isOneToOne: false
                 }
           }
           Functions: {
-            "get_me":
+            "get_channel_usage":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"get_me":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
 "get_pet_record":
 { Args: { "p_pet_id": string }; Returns: Json
+                           },
+"get_reminder_settings":
+{ Args: Record<PropertyKey, never>; Returns: Json
                            },
 "is_premium":
 { Args: { "user_id": string }; Returns: boolean
@@ -1309,6 +1315,9 @@ isOneToOne: false
                            },
 "record_partner_click":
 { Args: { "p_action": Database["public"]['Enums']["partner_click_action"],"p_partner_id": string }; Returns: undefined
+                           },
+"register_push_subscription":
+{ Args: { "p_auth": string,"p_endpoint": string,"p_p256dh": string,"p_user_agent"?: string }; Returns: Json
                            },
 "restore_pet_from_memorial":
 { Args: { "p_pet_id": string,"p_reenable_reminders"?: boolean }; Returns: Json

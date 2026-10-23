@@ -77,7 +77,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 15 | Treatments, doses, vet visits & attachments | ✅ | 14 | — | 2026-10-23 |
 | 16 | Memorial, restore & PDF export | ✅ | 15 | — | 2026-10-23 |
 | 17 | Reminder lists & manual reminders | ✅ | 14 | — | 2026-10-23 |
-| 18 | Reminder settings, email & push channels | ⬜ | 17 | — | |
+| 18 | Reminder settings, email & push channels | ✅ | 17 | — | 2026-10-23 |
 | 19 | Reminder dispatch job & message actions | ⬜ | 18 | — | |
 | 20 | Care log & meal reminders | ⬜ | 19 | — | |
 | 21 | Moments & public links | ⬜ | 15 | — | |
@@ -2896,7 +2896,38 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-23** — Step 18 built (unattended overnight run).
+  - **Built:**
+    - Migration `20261023120736_reminder_settings_rpcs.sql`: `rpc:get_reminder_settings` (EP-28 get). It is security definer so it can read `app_settings.viber_enabled`, and is scoped to `auth.uid()`. It returns one `ReminderPreference` per reminder type in enum order (always 6), and defaults with `is_default = true` when a row is missing. It also returns `viber_enabled` and `whatsapp` (`WhatsAppConnection`). `rpc:register_push_subscription` (EP-29 register) is security definer: an endpoint stored for another user is re-assigned to the caller with the new keys. It checks `endpoint:invalid`, `p256dh` / `auth` `required` | `invalid` (base64url), cuts `user_agent` to 300 characters and never returns the keys. `rpc:get_channel_usage` (EP-31 `ChannelUsage`, Europe/Belgrade month, cap 30) is security invoker over the caller's own `reminder_deliveries`. `anon` cannot execute any of the three. The EP-28 update stays the Data API upsert on `reminder_preferences` (`onConflict: "user_id,type"`). Its validation and its regeneration of future pending occurrences are the Step 08 check constraints and triggers, which this step reuses unchanged. `npm run db:types` regenerated `lib/supabase/database.types.ts`.
+    - S12 `/podesavanja/podsetnici` (`page.tsx`, `reminder-settings-client.tsx`), ported from `reminder-settings.tsx` with the StateSwitcher removed. The page shows the Kanali card (Push and WhatsApp), the iPhone hint card, and the six type cards: lead-time chips 0/1/3/7/14/30 days ↔ `lead_minutes`, delivery time, and channel checkboxes. Doses and meals show "Stižu tačno u zadato vreme." with no chips and no time. "Sačuvaj podešavanja" upserts each changed card. The states come from real responses: `Me.entitlements.premium = false` or `403 premium_required` on save → G state (the WhatsApp form inside PremiumLock, WhatsApp checkboxes disabled with the Premium badge and sr-only "Dostupno u Premiumu"); Premium → "WhatsApp uskoro" (badge and line instead of the number form, WhatsApp checkboxes disabled and unchecked with "Uskoro dostupno", no counter card); Viber is shown only when `viber_enabled`. The push row has five states: checking, isključeno, uključeno, blokirano (`Notification.permission = denied`, no call) and not supported. Register / check / unregister go through EP-29. A failed EP-28 read shows the error state.
+    - `public/sw.js`: on `push` it shows a notification from the §9.4 payload `{ title, body, url, done_url }`, and on click it opens `url` (default `/podsetnici`). `done_url` is stored in the notification data for Step 19. Also skipWaiting / clients.claim.
+    - The `reminderSettings` section in `lib/i18n/sr.ts` and `en.ts`.
+    - Tests: `supabase/tests/reminder_preferences.test.sql` grows from 16 to 34 assertions. They cover an upsert of `{10080, 0}` at 09:00 that regenerates the pending occurrences with one `notify_at` per lead time at 09:00 Europe/Belgrade while done and missed rows stay untouched, doses and meals stored as `{0}` / null through the upsert, `{email, push}` stored and returned by `get_reminder_settings`, the defaults with `is_default`, `get_channel_usage`, and anon denied. The existing `premium_required` / `channel_disabled` checks stay. New: `supabase/tests/push_subscriptions.test.sql` (17), `tests/reminder-settings/reminder-settings.test.tsx` (15) and `tests/reminder-settings/push-toggle.test.tsx` (13).
+  - **Owner decisions applied (2026-10-23):**
+    - Test wording: the Kanali WhatsApp form is asserted inside PremiumLock, and each type's WhatsApp checkbox is asserted disabled with StatusBadge premium and sr-only "Dostupno u Premiumu" / "Available with Premium".
+    - The mockup's single "Sačuvaj podešavanja" button upserts each changed card through EP-28. Success shows "Podešavanja su sačuvana." / "Settings saved." (role=status).
+    - An empty delivery time shows "Upiši vreme slanja." / "Enter a delivery time."
+    - With no push support or an empty `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, the push button is hidden and the screen shows "Ovaj pregledač ne podržava push obaveštenja." / "This browser doesn't support push notifications."
+    - The iPhone hint card shows only on iOS when the app is not running from the home screen (`navigator.standalone !== true` and not `display-mode: standalone`).
+    - From the Steps 13–17 decisions: the 5xx toast "Nešto nije u redu. Pokušaj ponovo." / "Something went wrong. Try again."; English is a faithful translation; the PremiumLock CTA stays inert until Step 23.
+  - **Verification:**
+    - `npm run typecheck` ✅ exit 0
+    - `npm run lint` ✅ exit 0. 0 errors and 2 warnings, both the unused eslint-disable directives in the generated `cloudflare-env.d.ts` that were already there.
+    - `npm test` ✅ `Test Files 60 passed (60)`, `Tests 659 passed (659)`
+    - `npx supabase test db` ✅ `All tests successful. Files=49, Tests=1604`, `Result: PASS`
+    - `npm run build` ✅ exit 0. The routes include `ƒ /podesavanja/podsetnici`.
+    - Extra live check against the local stack as seeded Marko (Free): the upsert with `onConflict: "user_id,type"` returned the row; `whatsapp` gave `P0001 premium_required:whatsapp`; lead `{60}` gave `23514`; the three RPCs, the check and the unregister all answered as specified. The local DB was reset afterwards.
+  - **Deviations:**
+    - The four server calls (EP-28 update, EP-29 register / check / unregister) are inline `"use server"` functions in `app/(app)/podesavanja/podsetnici/page.tsx`, passed to the client as an `actions` prop. The session lives in httpOnly cookies, so the browser Supabase client is anonymous, and Step 18's file list has no `lib/actions/*` file. No file outside the list was touched.
+    - The EP-28 check-constraint violations (`23514`) are mapped in that server action to `validation_failed` with `fields.lead_minutes: invalid`, `delivery_time: required` or `channels: required`. The Step 08 trigger and constraints were not changed (out of bounds: no schema change other than the three RPCs). The server action also refuses duplicate lead values, which the database check does not.
+    - WhatsApp and Viber are sent only when they can be used now. While WhatsApp is locked (Free) or "uskoro" (Premium), saving a changed card drops a stored `whatsapp` choice from that card, so the save does not fail with `premium_required` / `whatsapp_not_connected`. Cards that were not changed keep their stored choice (EP-28: stored choices survive Premium expiry).
+    - With the WhatsApp counter card hidden (uskoro and G states), S12 does not call EP-31 yet. The RPC exists and is covered by pgTAP, and Step 29 shows the counter.
+    - The Šapa pomoći "Poruke" card and the seventh (`message`) row are left to Step 28c (§4 invariant 11).
+  - **Follow-ups:**
+    - Step 29: the live WhatsApp connection (EP-30), the "Broj nije povezan" note, and the counter card from EP-31. `WHATSAPP_LIVE` in the client switches the uskoro state off.
+    - Step 19: the `done_url` "Urađeno" action in `public/sw.js`.
+    - The database accepts duplicate `lead_minutes` values (for example `{0,0}`), and only the S12 server action refuses them. A later schema step could add a distinct check.
+    - `ReminderTypeIcon`'s sr-only type labels are still Serbian-only (Step 17 follow-up).
 
 ---
 
