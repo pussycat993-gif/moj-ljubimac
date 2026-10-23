@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { defaultErrorStateLabels } from "@/components/app/error-state";
+import { defaultPetHeaderLabels } from "@/components/app/pet-header";
 import { defaultAppShellLabels, defaultPublicShellLabels } from "@/components/app/shells";
 
 const path = (p: string) => join(process.cwd(), p);
@@ -26,6 +27,7 @@ function unport(name: string, source: string) {
   if (name === "logo-mark") s = s.replace("brand brown = the --primary token)", "brand brown #563218)");
   if (name === "shells") s = stripShellLabels(s);
   if (name === "error-state") s = stripErrorStateLabels(s);
+  if (name === "pet-header") s = stripPetHeaderLabels(s);
   return s;
 }
 
@@ -67,6 +69,16 @@ function stripErrorStateLabels(source: string) {
     .replace("  onRetry,\n  labels = defaultErrorStateLabels,\n", "  onRetry,\n")
     .replace("  onRetry?: () => void\n  labels?: ErrorStateLabels\n", "  onRetry?: () => void\n")
     .replace("{labels.retry}", defaultErrorStateLabels.retry);
+}
+
+// Owner decision (Step 14, FR-35): PetHeader takes one optional `labels` prop (the chip list's aria-label) whose
+// default is the mockup's Serbian string. As above, that prop is the only allowed change and is ignored here.
+function stripPetHeaderLabels(source: string) {
+  return source
+    .replace(/\n\/\/ labels:start[\s\S]*?\/\/ labels:end\n/, "")
+    .replace("  actions,\n  labels = defaultPetHeaderLabels,\n", "  actions,\n")
+    .replace("  actions?: ReactNode\n  labels?: PetHeaderLabels\n", "  actions?: ReactNode\n")
+    .replace("aria-label={labels.chips}", `aria-label="${defaultPetHeaderLabels.chips}"`);
 }
 
 describe("shadcn primitives (Design §6, ADR-14)", () => {

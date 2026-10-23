@@ -1254,6 +1254,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"weight_entries_api": {
+                  Row: {
+                    "access": Json | null,"created_at": string | null,"created_by": string | null,"created_by_name": string | null,"id": string | null,"measured_on": string | null,"note": string | null,"pet_id": string | null,"value": number | null,"weight_unit": Database["public"]['Enums']["weight_unit"] | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    {
+      foreignKeyName: "weight_entries_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "weight_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "weight_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pets"
+      referencedColumns: ["id"]
+    }
+                  ]
                 }
           }
           Functions: {

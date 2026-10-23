@@ -73,7 +73,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 11 | Authentication, gates & server utilities | ✅ | 04, 10 | — | 2026-10-21 |
 | 12 | Registration, profile, legal pages & i18n | ✅ | 11, 05, 08 | — | 2026-10-23 |
 | 13 | Pets: list, create, edit, delete | ✅ | 12, 06 | — | 2026-10-23 |
-| 14 | Pet record: view, weight, vaccinations | ⬜ | 13, 08 | — | |
+| 14 | Pet record: view, weight, vaccinations | ✅ | 13, 08 | — | 2026-10-23 |
 | 15 | Treatments, doses, vet visits & attachments | ⬜ | 14 | — | |
 | 16 | Memorial, restore & PDF export | ⬜ | 15 | — | |
 | 17 | Reminder lists & manual reminders | ⬜ | 14 | — | |
@@ -2216,7 +2216,49 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+**2026-10-23** (unattended overnight run)
+- **Built:**
+  - Migration `20261023053835_weight_entries_api.sql`: `view:weight_entries_api` (EP-08, `security_invoker`, every WeightEntry field). `weight_unit` comes from the pet, `created_by_name` from `private.pet_person_name`, and the per-entry `access` from `private.entry_access(private.pet_access(…))`, the same rule as `get_pet_record`. The EP-08 / EP-09 Request rules are added as check constraints on existing columns: `weight_entries.note` ≤ 500; `vaccinations.name` 1–100, `next_due_on > given_on`, `clinic` ≤ 100, `batch_number` ≤ 60, `note` ≤ 1000. The clock rules (`measured_on` / `given_on` not in the future) are checked in the actions. `lib/supabase/database.types.ts` regenerated with `npm run db:types`.
+  - `lib/actions/weights.ts`: EP-08 `createWeightEntry` / `updateWeightEntry` / `deleteWeightEntry`. Request validation with field codes; writes read back through `weight_entries_api`; RLS insert rejection → `not_found`; 0 rows → `not_found`; trigger errors (`forbidden_role`, `household_read_only`) pass through.
+  - `lib/actions/vaccinations.ts`: EP-09 `createVaccination` / `updateVaccination` / `deleteVaccination`. Request validation, including `before_start` against the stored `given_on` on update; returns the Vaccination schema with `days_until_due` (Belgrade). The Step 08 trigger syncs the reminder.
+  - S03 `app/(app)/ljubimci/[id]/page.tsx` + `pet-record-client.tsx`, ported from `pet-record.tsx`: Suspense loading state, then default / per-tab empty / read_only / error (`PetRecordError`, retry = `router.refresh()`). Shows PetHeader (EP-15 photo, "Izmeni" link, DropdownMenu "Obriši trajno" → AlertDialog → EP-05 → toast + `/ljubimci`), Pregled (last weight with change, last visit), Vakcine (next-dose badge, row menu, edit route link, delete dialog → EP-09) and Težina (bar trend oldest → newest, all measurements newest first, add / edit dialog and delete dialog → EP-08). Aside: "Osnovni podaci" and "Moj veterinar". No StateSwitcher.
+  - S04 `app/(app)/ljubimci/[id]/vakcine/nova/page.tsx` + `vaccination-form-client.tsx`: EP-01 single-pet header (`[]` or `access.can_edit = false` → error state), clinic prefilled from `vet_name`, "Napravićemo podsetnik." helper, EP-09 insert → toast + back to S03. 422 → inline; any other failure → the X ErrorState. No StateSwitcher.
+  - Edit route `app/(app)/ljubimci/[id]/vakcine/[vakcinaId]/page.tsx`: EP-02 preload, the S04 form in edit mode ("Izmeni vakcinu", "Sačuvaj izmene"), EP-09 update.
+  - i18n: `petRecord` and `vaccinationForm` in `lib/i18n/sr.ts` and `en.ts`.
+  - Tests: `tests/pet-record/weight-tab.test.tsx` (11), `vaccination-form.test.tsx` (12), `member-view.test.tsx` (11), `delete-dialog.test.tsx` (8), `tests/components/pet-header.test.tsx` (2); pgTAP `weight_entries_api` (29), `vaccination_reminder_sync` (22).
+- **Verification:**
+  - `npm run typecheck` ✅ exit 0
+  - `npm run lint` ✅ exit 0 (0 errors; the 2 known warnings in the generated `cloudflare-env.d.ts`)
+  - `npm test` ✅ `Test Files 45 passed (45)`, `Tests 499 passed (499)`
+  - `npx supabase test db` ✅ `Files=40, Tests=1356`, `All tests successful.` `Result: PASS`
+  - `npm run build` ✅ exit 0. Routes: `ƒ /_not-found`, `/auth/callback`, `/ljubimci`, `/ljubimci/[id]`, `/ljubimci/[id]/izmena`, `/ljubimci/[id]/vakcine/[vakcinaId]`, `/ljubimci/[id]/vakcine/nova`, `/ljubimci/novi`, `○ /manifest.webmanifest`, `ƒ /prijava`, `/prijava/nova-lozinka`, `/privatnost`, `/profil`, `/registracija`, `/uslovi`, `ƒ Proxy (Middleware)`
+- **Owner decisions used (2026-10-23):**
+  - EP-08 / EP-09 run as server actions in `lib/actions/weights.ts` and `lib/actions/vaccinations.ts` (added to the file list).
+  - `components/app/pet-header.tsx` got an optional `labels` prop (`{ chips }`, default "Osnovni podaci"), following the shells.tsx pattern. **Exception 3:** `tests/design/ui-overrides.test.ts` keeps the "ported unchanged" check and strips only that prop (`stripPetHeaderLabels`). `tests/components/pet-header.test.tsx` is new.
+  - Weight and vaccination rows have a row DropdownMenu ("Još opcija: {entry}") with "Izmeni" / "Obriši". Delete opens the AlertDialog "Obrisati unos?" / "Ovo ne može da se poništi." / "Da, obriši" / "Odustani".
+  - Weight edit reuses the weight dialog with the title "Izmeni merenje — {pet}". Vaccination edit uses the new route `/ljubimci/[id]/vakcine/[vakcinaId]` with "Izmeni vakcinu" / "Sačuvaj izmene".
+  - "Dodaj merenje" (header button and empty-state action) is gated on `can_log` (FR-28). Weight row actions follow the entry's `access.can_edit`. Vaccination add and row actions follow `access.can_edit`. "Izmeni" follows `access.can_edit`; "Obriši trajno" follows `access.can_delete`, and the DropdownMenu is hidden when it would be empty.
+  - ReadOnlyBanner text by `read_only_reason` (household_member with `owner_name`, household_read_only, transferred), as given.
+  - Vaccine badge: 0–30 days → soon ("· danas" at 0, "· za {n} dan/dana" with Intl plurals); below 0 → missed ("· kasni {n} dan/dana"); over 30 → outline "Sledeća {date}"; no next dose → "Bez sledeće doze".
+  - S03 aside: "Osnovni podaci" and "Moj veterinar" ("Pozovi" hidden without a phone). The no-vet card, "Još o ljubimcu" and "Svi pregledi" are left out.
+  - `page.tsx` passes `Me.entitlements` to the client (unused until Steps 15–16).
+  - Toast text is the mockup's `role="status"` text; failed writes show the 5xx toast "Nešto nije u redu. Pokušaj ponovo." and reload the record.
+  - English is a faithful translation written in this step. Formats use `Intl` (sr-Latn "19. 10. 2026." / "4,2 kg", en-GB "19 Oct 2026" / "4.2 kg"). Plurals use `_one/_few/_other` keys; `lib/i18n/index.ts` is unchanged.
+  - 422 without mockup copy: the date pickers disable future dates (`measured_on`, `given_on`) and days on or before `given_on` (`next_due_on`). Any other unmapped field code shows the form-level error: "Nismo uspeli da sačuvamo vakcinu…" on S04, and the 5xx message in the weight dialog's error slot.
+  - Sex unknown: masculine forms ("Kastriran", "obrisan"); the sex chip is hidden.
+- **Deviations / decisions:**
+  - **Pregled empty condition** keeps the mockup rule (no upcoming reminders, no weight, no visit), using `PetRecord.upcoming_reminders`, even though the reminders block itself is left out until Step 17.
+  - **Aside rows without a value** (breed, birthday, colour, microchip, passport) are hidden. A birth year alone shows the year. Neutered `unknown` shows "Ne znam" (S02 copy). The microchip meta line in the header is hidden without a microchip. Without a breed, the header subtitle uses the species label, as on S01.
+  - **Vakcine empty-state action** links to S04 (the mockup button had no target).
+  - **Weight values** use `Intl.NumberFormat` with 1–3 decimals in kg and 0–3 in g, so stored decimals are never rounded away. The mockup used `toFixed(1)` / round.
+  - **No toast after an entry delete** (the mockup has no copy for it); the list refreshes.
+  - **S04 `role="status"` line** is replaced by the toast, because a successful save navigates back to S03 (same as S02 in Step 13). S04 and the edit route show the error state for a caller without `access.can_edit` (a member who opens the URL directly).
+  - **PetRecord entry types:** `lib/actions/pets.ts` (not on this step's list) still types `vaccinations` / `weights` loosely. The client casts them to `Vaccination` / `WeightEntry` from the new action files.
+  - **Insert ids in pgTAP:** `vaccinations.id` is not a client-insertable column, so `vaccination_reminder_sync.test.sql` inserts as the authenticated owner and reads the id back.
+  - **Files touched outside the original Step 14 list (owner decisions):** `lib/actions/weights.ts`, `lib/actions/vaccinations.ts`, `app/(app)/ljubimci/[id]/vakcine/[vakcinaId]/page.tsx`, `components/app/pet-header.tsx`, `tests/design/ui-overrides.test.ts`, `tests/components/pet-header.test.tsx`.
+- **Follow-ups:**
+  - Tighten the `PetRecord` entry array types in `lib/actions/pets.ts` when that file is next on a step's list (Step 15 adds treatments and visits).
+  - The transferred-copy rule (`forbidden_role`) is still not enforced on entry writes in the database (Step 25, as noted in Steps 06 and 13). The UI already hides the controls.
 
 ---
 
