@@ -85,7 +85,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 23 | Subscription status, Premium page & account data control | ✅ | 12, 15, 19 | — | 2026-10-23 |
 | 24 | Organisations: animals, team, public profile | ✅ | 09, 15, 19, 22 | — | 2026-10-23 |
 | 25 | Requests, inquiries & record transfers | ✅ | 24, 22 | — | 2026-10-23 |
-| 26 | Litters & public organisation pages | ⬜ | 25 | — | |
+| 26 | Litters & public organisation pages | ✅ | 25 | — | 2026-10-23 |
 | 27 | Partners directory & vet suggestion | ⬜ | 09, 12, 14 | — | |
 | 28 | Operator admin | ⬜ | 27, 24, 19 | — | |
 | 28a | Schema: Šapa pomoći | ⬜ | 28 | — | |
@@ -4474,7 +4474,54 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-23** — Step 26 built (unattended overnight run).
+  - **Built:**
+    - Migration `20261023233000_litters_and_public_pages.sql`. It changes no table, column, enum or constraint, and adds no cache tag or purge (TC ADR-18).
+      - Helpers in `private`: `litter_json(litters)` (API §6 Litter; `father_name` = the father's `pets.name`, else the outside sire; offspring in creation order) and `name_initials(text)` (first letter of the first two words with letters: "Azil Šapica" → "AŠ").
+      - `rpc:list_litters()` (EP-61 list): security definer with an explicit membership check (`not_found` without one; a shelter → `forbidden_role`). Returns `{ items, eligible_mothers, eligible_fathers, access }`: items by `born_on` desc; mothers / fathers = the organisation's female / male non-offspring pets with `breeding_status = active`; `access.can_edit` = approved and an active breeder plan (Admins and Volunteers, API §4.4), `can_delete` for Admins.
+      - `rpc:create_litter(p_mother_id, p_father_id, p_father_name, p_born_on, p_offspring_count) → uuid` (EP-61 create): checks membership, breeder type, approval and the breeder plan, then the Request (`DETAIL '<field>:<code>'`: mother female and ours, at most one father field, father a male of ours, `father_name` ≤ 120, `born_on` not in the future on the Belgrade calendar, count 1–20). One transaction: `litters` + `offspring_count` `pets` rows ("Mladunče N", the mother's species / species_other / breed, sex unknown, `birth_date = born_on`, `available`; `created_at = clock_timestamp()` keeps the order) + one `pet_status_history` row each (`available`, by the caller). Organisation pets get no reminders (BR-51; the Step 08 sync skips pets without an owner).
+      - `rpc:get_public_org_page(p_slug, p_limit, p_offset)` (EP-62): approved organisations only, a breeder also needs an active plan (E-21), else `not_found`; `validation_failed` for limit outside 1–50 or a negative offset. Returns exactly PublicOrgPage / PublicAnimal (BR-37): available animals (shelter `shelter_status`, breeder `offspring_status`, active lifecycle), sort `created_at` desc, `vaccinated` as a yes/no, price as Money for breeders only. The R2 keys (`logo_r2_key`, `photo_r2_key`) are added only when `auth.role() = 'service_role'`, so anon / authenticated callers never get a key.
+      - Offspring status / price changes are Data API `pets` updates (EP-61): the Step 09 trigger writes `pet_status_history`, the Step 24 guard answers `breeder_plan_required`.
+      - `npm run db:types` regenerated `lib/supabase/database.types.ts`.
+    - `lib/server/public-org-page.ts` (new, owner decision): `getPublicOrgPage(slug, { limit, offset })`, the EP-62 read shared by the route and the S23 page. Service-role RPC, then presigned GETs (10 min) as API §6 FileUrl (`pet_photo` with the pet id; `organisation_logo` with the slug — PublicOrgPage carries no organisation id); a failed presign gives `url = null`. Types PublicOrgPage, PublicAnimal; `PUBLIC_ORG_HEADERS` = `Cache-Control: no-store`.
+    - `app/api/public/orgs/[slug]/route.ts`: GET per EP-62 (`force-dynamic`; 200 / 404 / 422 / 500, `Cache-Control: no-store` on every answer).
+    - `lib/actions/litters.ts` (new): `listLitters`, `createLitter` (Request checks with field codes → one `create_litter` call → the Litter from `list_litters`) and `updateOffspring` (Data API update of `offspring_status` / `price_minor` where `litter_id is not null`; price `{amount_minor ≥ 0, currency "RSD"}`, null clears). Types Litter, LitterOffspring, LittersPage.
+    - S22 `app/(org)/organizacija/legla/page.tsx` + `litters-screen.tsx`: port of `litters.tsx` without the StateSwitcher. EP-53 heading line; litter cards (first expanded) with "{mother} × {father}" ("{name} (spoljni pastuv)" for an outside sire, "—" without a father), breed · okot {date}, plural count · available; offspring rows with link to S03, sex (left out when unknown) · price or "Cena nije upisana", status badge, the "Cena (RSD)" input (saved on blur / Enter) and the status Select. New litter Dialog: mother Select from `eligible_mothers`, "Otac" name field (`father_name`), date picker with future days disabled, count 1–20, inline errors, form-level generic error for unmapped codes. States: default, empty, read_only (pending / plan-less banners, no "Novo leglo", controls disabled), error, loading (Suspense fallback).
+    - S23 `app/(public)/o/[slug]/page.tsx` + `public-org-screen.tsx`: port of `public-org.tsx` without the StateSwitchers. Header (logo or initials, "{type} · {city}", description, phone / email / website links shown only when set), the animal grid (photo, name, price for breeders, species · sex · age, public description, neutered badge hidden when unknown, vaccinated badge; masculine forms for unknown sex), "Učitaj još" through EP-62. Guest vs signed-in from the session (EP-43 `get_me`; visitor language from the `ml_locale` cookie). Request Dialog: guest → sign-in prompt (`/prijava?next=/o/<slug>`, "Napravi nalog"); signed-in → form prefilled from Me → EP-63 `submitOrgRequest` with a fresh idempotency key per opening; ok → sent confirmation; 401 → sign-in prompt; 422 → inline field errors; 429 → rate-limit message; 404 → "Ova životinja više nije dostupna."; other → generic. Error state on 404 / 5xx. The PublicShell footer links are unchanged.
+    - `lib/i18n/sr.ts` / `en.ts`: new sections `litters` and `publicOrg`, with English translations.
+    - Tests:
+      - pgTAP: `litters.test.sql` (45), `public_org_page.test.sql` (30).
+      - Vitest: `tests/litters/create-litter.test.ts` (8), `tests/litters/litters-screen.test.tsx` (13), `tests/public/public-org-route.test.ts` (8), `tests/public/public-org-screen.test.tsx` (14).
+      - Playwright: `e2e/shelter-intake-to-adoption.spec.ts` (intake on S20 → "Za udomljavanje" → visible on `/o/azil-sapica` → Ivana sends a request → Milica accepts (Rezervisan; the animal leaves the public page on the next request) → "Pošalji karton" → minted tr_ token → Ivana accepts on S14 and sees the pet on S01; the copy is owned by her).
+  - **Owner decisions applied (2026-10-23):**
+    - `lib/server/public-org-page.ts` as the shared EP-62 loader for `route.ts` and `page.tsx`.
+    - `get_public_org_page(p_slug, p_limit, p_offset)` returns jsonb, security definer, granted to anon and authenticated, public fields only (the service role additionally gets the R2 keys to presign — see deviations).
+    - `create_litter(p_mother_id, p_father_id, p_father_name, p_born_on, p_offspring_count)` returns uuid, security definer, checks membership and the breeder plan.
+    - S22: per-offspring "Cena (RSD)" / "Price (RSD)", empty → "Cena nije upisana" / "No price yet"; count required 1–20 "Upiši broj od 1 do 20." / "Enter a number from 1 to 20."; "Otac" is a name field only (`father_name`); plural mladunče / mladunčeta / mladunaca.
+    - S23: unknown sex uses the masculine form and the neutered badge is hidden when unknown; rate limited "Previše zahteva za kratko vreme. Pokušaj ponovo za {n} min."; not found "Ova životinja više nije dostupna."
+    - e2e: setup approves the seeded shelter with a service-role client (and puts it back to pending afterwards); after "Pošalji karton" the spec mints a tr_ token for the newest transfer, overwrites its `token_hash`, and accepts as the seeded Premium owner.
+    - Applied from earlier decisions: server actions (httpOnly session); sr-Latn / en-GB date and number formats; plurals with Intl.PluralRules; date pickers disable invalid dates; unmapped field codes show the screen's form-level error; unknown sex hides the sex label; the existing Toaster and the 5xx text "Nešto nije u redu. Pokušaj ponovo."; English written in this step.
+  - **Database functions (pre-approved exception 6):** none beyond the owner-decided RPCs above (`rpc:list_litters` is already in the contract). **Follow-up:** add `rpc:create_litter` and `rpc:get_public_org_page` to `docs/product/05-api-integration-contract.md` (EP-61, EP-62).
+  - **Verification** (in order; all on the same code):
+    - `npm run typecheck` ✅ exit 0
+    - `npm run lint` ✅ exit 0 (0 errors; the 2 known warnings in the generated `cloudflare-env.d.ts`)
+    - `npm test` ✅ `Test Files 101 passed (101)`, `Tests 1096 passed (1096)`
+    - `npx supabase test db` ✅ `Files=71, Tests=2353`, `All tests successful.`, `Result: PASS` (after `npx supabase db reset`)
+    - `npm run build` ✅ exit 0. Routes include `ƒ /api/public/orgs/[slug]`, `ƒ /o/[slug]` and `ƒ /organizacija/legla`.
+    - `npm run e2e` ✅ `6 passed` with 2 workers, including `e2e\shelter-intake-to-adoption.spec.ts › a shelter takes in an animal, an adopter requests it on the public page, and receives the record`. As in earlier steps there is no `.env.local`: the run got the Supabase variables from `npx supabase status`, plus `NEXT_PUBLIC_SITE_URL=http://localhost:3000`, a local `ACTION_TOKEN_SECRET` and placeholder `R2_*` values (EP-60 accept calls `r2()` even when nothing is copied; with no photo or attachment no R2 request is made). Emails went to the local Resend console fallback.
+  - **Deviations / decisions:**
+    - **R2 keys only for the service role:** `get_public_org_page` adds `logo_r2_key` / `photo_r2_key` only when `auth.role() = 'service_role'`, so the server can presign (API §10) while anon / authenticated callers of the RPC get no internal field. The loader drops the keys before responding.
+    - **FileUrl ids on EP-62:** `photo_url.id` is the pet id; `logo_url.id` is the slug, because PublicOrgPage has no organisation id.
+    - **Litter validation codes:** both father fields and a father that is not a male of the organisation → `fields.father_id = invalid`; `born_on` in the future → `born_on: invalid` (the §7.1 field-code list has no `in_future`). S22 shows them as the form-level error (the date picker already blocks future days).
+    - **Copy composed from mockup strings (no new messages):** the price input's accessible name "Cena (RSD) — {name}"; a litter without a father shows "—" (as the mockup's save does); `typeCity` "{type} · {city}" falls back to the type alone without a city.
+    - **S23 paging:** EP-62 pages by 20; S23 adds "Učitaj još" (the S20 / S21 label) when `total` exceeds the loaded animals, fetching `GET /api/public/orgs/<slug>?offset=`. A failed fetch leaves the button for another try.
+    - **S23 width:** `PublicShell` default width, as in the mockup.
+    - **Website link:** EP-72 stores `https://…`, so the link uses the stored value and the label drops the scheme (mockup shows "drugasansa.rs").
+  - **Follow-ups:**
+    - Add `rpc:create_litter` and `rpc:get_public_org_page` to `docs/product/05-api-integration-contract.md` (EP-61, EP-62).
+    - CR-24 (Step 25) still applies: EP-63 sends no admin notification email.
+    - `acceptTransfer` (Step 25) calls `r2()` before checking whether anything must be copied, so a local run without `R2_*` fails on accept even for a record without files; local e2e sets placeholder `R2_*` values. Consider creating the R2 client only when the key map is non-empty.
+    - Breeders have no S02 path in this step to mark a pet as a breeding animal (`breeding_status = active`), which `eligible_mothers` needs; EP-03 accepts `breeding_status` for organisations, so a later step or the S20 breeder flow should expose it.
 
 ---
 

@@ -1566,6 +1566,9 @@ isOneToOne: false
 "create_intake":
 { Args: { "p_approx_age_text": string,"p_arrival_type": string,"p_breed": string,"p_intake_on": string,"p_name": string,"p_note": string,"p_place_found": string,"p_sex": string,"p_species": string,"p_species_other": string }; Returns: Json
                            },
+"create_litter":
+{ Args: { "p_born_on": string,"p_father_id": string,"p_father_name": string,"p_mother_id": string,"p_offspring_count": number }; Returns: string
+                           },
 "create_organisation_invitation":
 { Args: { "p_email": string,"p_invitation_id": string,"p_role": string,"p_token_hash": string }; Returns: Json
                            },
@@ -1614,6 +1617,9 @@ isOneToOne: false
 "get_pet_record":
 { Args: { "p_pet_id": string }; Returns: Json
                            },
+"get_public_org_page":
+{ Args: { "p_limit"?: number,"p_offset"?: number,"p_slug": string }; Returns: Json
+                           },
 "get_reminder_settings":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
@@ -1625,6 +1631,9 @@ isOneToOne: false
                            },
 "is_premium":
 { Args: { "user_id": string }; Returns: boolean
+                           },
+"list_litters":
+{ Args: Record<PropertyKey, never>; Returns: Json
                            },
 "list_org_animals":
 { Args: { "p_limit"?: number,"p_offset"?: number,"p_q"?: string,"p_status"?: string }; Returns: Json
