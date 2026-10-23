@@ -81,7 +81,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 19 | Reminder dispatch job & message actions | ✅ | 18 | — | 2026-10-23 |
 | 20 | Care log & meal reminders | ✅ | 19 | — | 2026-10-23 |
 | 21 | Moments & public links | ✅ | 15 | — | 2026-10-23 |
-| 22 | Household sharing | ⬜ | 19 | — | |
+| 22 | Household sharing | ✅ | 19 | — | 2026-10-23 |
 | 23 | Subscription status, Premium page & account data control | ⬜ | 12, 15, 19 | — | |
 | 24 | Organisations: animals, team, public profile | ⬜ | 09, 15, 19, 22 | — | |
 | 25 | Requests, inquiries & record transfers | ⬜ | 24, 22 | — | |
@@ -3644,7 +3644,76 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-23** — Step 22 built (unattended overnight run).
+  - **Built:**
+    - Migration `20261023200000_household_sharing.sql` (no table, column, enum or policy change):
+      - `rpc:get_household(p_household_id default null)` (EP-34): security definer, `authenticated` only. It reads only households the caller owns or belongs to, and an unrelated id → `not_found`. Without an id it picks the household the caller owns, else the earliest-joined membership. It returns `{ household, my_households }` in the §6 shapes: `owner_premium_until` is the latest premium-family `current_period_end`; members are the owner first, then memberships by `joined_at`; pets are all of the owner's pets for the owner and only shared pets for a member; `pending_invitations` (pending and not past `expires_at`, newest first) is filled for the owner only; `access` is owner → `can_edit = not read_only`, member → read-only.
+      - The EP-38 column grant `update (reminders_enabled)` on `household_memberships`, re-stated. Step 05 had already granted it together with the own-row policy.
+      - `rpc:create_household_invitation(p_invitation_id, p_token_hash, p_email, p_household_name)` (EP-35): security definer, `authenticated` only, one transaction. It checks, in order: owner account (`forbidden_role`), Premium (`premium_required:household`), token hash and email shape, then `household_name` `required` / `too_long` only when the caller has no household. It creates that household on first use. Then: owner + memberships ≥ 6 → `household_full`; the owner's or a member's address → `already_member`. It expires a pending invitation to the same address, inserts the invitation (email lower-cased, `expires_at = now() + 7 days`), and returns the HouseholdInvitation plus what the email needs (household name, inviter, inviter locale, the address's account locale, active shared pet names).
+      - `rpc:get_household_invitation(p_token_hash)` (EP-39): security definer, `anon` and `authenticated`. It returns the household InvitationView. The (session) fields are null without a session. `expired` or past `expires_at` → `invitation_expired`, unknown → `not_found`.
+      - `rpc:decide_household_invitation(p_token_hash, p_decision)` (EP-40): security definer, `authenticated` only. It locks the row and checks, in order: `validation_failed` (decision), `not_found`, `invitation_used`, `invitation_expired`. On decline it sets `declined` + `decided_at`. On accept it checks `already_member` and `household_read_only` (`read_only` or the owner without Premium). It then inserts the membership (`joined_at = now()`, `reminders_enabled = false`, and the Step 05 size trigger raises `household_full`) and sets `accepted`, `accepted_by` and `decided_at`.
+      - The helper `private.household_invitation_json` (HouseholdInvitation; `pending` past `expires_at` is reported `expired`).
+      - `npm run db:types` regenerated `lib/supabase/database.types.ts`.
+    - `lib/actions/household.ts` (`"use server"`):
+      - `getHousehold` (EP-34).
+      - `createHouseholdInvitation` (EP-35). It checks the gates and the request (`email` invalid, `idempotency_key` required / uuid v4, `household_name` ≤ 60), then runs `withIdempotency` (24 h replay). Inside it, `checkRateLimit` allows 20 per user per day, then the hh_ token is built: `signActionToken("hh", [invitation_id], now + 7 days)`, and only `hashToken(token)` goes to the database. `invite_url` is `NEXT_PUBLIC_SITE_URL + "/poziv/" + token`. Email invitations send the Design §9.1 `household_invitation` email through `sendEmail`. Link invitations send nothing.
+      - `changeHouseholdMembership` (EP-36). `revoke_invitation` sets a pending invitation to `expired` with `expires_at = now()`; otherwise it answers `invitation_used`, and an invisible one → `not_found`. `remove_member` is owner only and `leave` is member only (else `forbidden_role`). Both are Data API deletes, so the Step 05 trigger answers `household_read_only` / `forbidden_role`. Revoke and remove return the refreshed Household; leave returns `{ left: true }`.
+      - `setSharedPet` (EP-37: upsert with `ignoreDuplicates` / delete) and `setMyReminderOptIn` (EP-38, own row; the owner → `not_found`).
+    - `lib/actions/invitations.ts` (`"use server"`): `getHouseholdInvitation` (EP-39, with or without a session) and `decideHouseholdInvitation` (EP-40: gates first, so a Visitor → `401 unauthenticated`). The path is chosen by the `hh_` prefix. `og_` / `tr_` / malformed tokens → `not_found` without a database call, and S14 shows its error state for them.
+    - `lib/integrations/resend.ts`: the `household_invitation` template only (subject, body with `({pets})` or the no-pets body, the "Pogledaj poziv" button, the shared footer). `EmailTemplate` is now a union, and `renderEmail` casts the renderer looked up by id.
+    - S13 `app/(app)/domacinstvo/page.tsx` + `household-screen.tsx`: port of `household.tsx` without the StateSwitcher.
+      - The view comes from EP-34 (API EP-34 "States"). `household = null` and no Premium, or a 403 `premium_required` → G (PremiumLock over the blurred cards). `household = null` with Premium, or only the owner → E. `read_only` → R (ReadOnlyBanner with `owner_premium_until`, "Obnovi Premium" → `/premium`, and every control hidden). `my_role = member` → M. Otherwise D.
+      - Invite Dialog: "Naziv domaćinstva" when there is no household; Mejlom with client checks, then "Poziv je poslat na …"; Linkom with "Napravi link" → the address field + "Kopiraj" + sr-only "Link je kopiran". `household_full`, `already_member` and `rate_limited` are inline; `premium_required` → G.
+      - "Poslati pozivi" lists pending invitations with "Opozovi" (toast "Poziv je opozvan.").
+      - "Ukloni" goes through the AlertDialog (EP-36). The shared-pets Switch (EP-37) is optimistic and reverts on error.
+      - Member view: the subtitle "{household} · vlasnik: {owner}", the opt-in Switch with its `role="status"` line (EP-38), and "Napusti domaćinstvo" → `/ljubimci`.
+      - A failed EP-34 read → ErrorState.
+    - S14 `app/(auth)/poziv/[token]/page.tsx` + `invite-accept-screen.tsx`: port of `invite-accept.tsx`, household variant only, without the StateSwitcher. EP-39 runs on the server, and the loading variant is the Suspense fallback.
+      - The variants come from EP-39 / EP-40: household (pending), accepted, declined, sign-in prompt (`is_signed_in = false`: "Napravi nalog" → `/registracija`, "Već imam nalog — prijavi me" → `/prijava?next=/poziv/<token>`, because S16 already honours `next`), expired (410) and error (404 / 5xx / og_ / tr_).
+      - EP-40 `household_full`, `already_member`, `invitation_used` and `household_read_only` are inline messages; 401 → the sign-in variant. The language is `profiles.locale` when signed in, else the `ml_locale` cookie.
+    - `lib/i18n/sr.ts` / `en.ts`: the new sections `household` and `invitation`, and `messages.household_invitation`, with English translations.
+    - Tests:
+      - pgTAP: `supabase/tests/household_invitations.test.sql` (50), `household_sharing.test.sql` (34), `household_member_permissions.test.sql` (26), `household_read_only.test.sql` (20).
+      - Vitest: `tests/household/create-invitation.test.ts` (11), `decide-invitation.test.ts` (9), `change-membership.test.ts` (10), `member-reminder-channels.test.ts` (3), `household-screen.test.tsx` (17), `invite-accept-screen.test.tsx` (18).
+      - Playwright: `e2e/household-invitation.spec.ts`.
+  - **Owner decisions applied (2026-10-23):**
+    - The invite Dialog asks for "Naziv domaćinstva" / "Household name" while `household = null` ("Upiši naziv domaćinstva." / "Enter a household name.", "Najviše 60 znakova." / "At most 60 characters."). The Linkom tab has "Napravi link" / "Create link" (EP-35 with email null). `rate_limited`: "Danas si poslao/la previše poziva. Pokušaj sutra." / "You've sent too many invitations today. Try again tomorrow."
+    - "Poslati pozivi" / "Sent invitations": each row shows the email or "Poziv linkom" / "Link invitation", plus "važi do {date}" / "valid until {date}", "Opozovi" / "Revoke" (EP-36), and the toast "Poziv je opozvan." / "Invitation revoked."
+    - "{household_name} · vlasnik: {owner_name}" / "{household_name} · owner: {owner_name}" (no declension).
+    - The member read-only banner: "Vlasniku domaćinstva je istekao Premium. Deljene ljubimce vidiš, ali ne možeš ništa da menjaš dok ga ne obnovi." / "The household owner's Premium has ended. You can still see the shared pets but can't change anything until they renew."
+    - S14 for hh_: expired "Pozivi u domaćinstvo važe 7 dana. Zamoli osobu koja te je pozvala za novi." The error state and og_ / tr_ tokens show "Poziv nije pronađen" / "Proveri da li si otvorio/la ceo link." The inline messages: already member, household full, already used, read-only (owner copy).
+    - Email with no shared pets drops " ({pets})", and names are joined with `Intl.ListFormat`.
+    - "Obnovi Premium" and the PremiumLock CTA go to `/premium` (built in Step 23).
+    - With several households, the default one is shown.
+    - e2e: the seed already has a Premium owner (Ivana) and a second verified user (Marko), so no users are created. The existing Toaster is used.
+    - From Steps 13–17: server actions run on the server because of the httpOnly session; 5xx → toast "Nešto nije u redu. Pokušaj ponovo."; sr-Latn / en-GB dates (Europe/Belgrade); plurals with `Intl.PluralRules` (`acceptedBody_one/_few/_other`); English is a faithful translation.
+  - **Verification:**
+    - `npm run typecheck` ✅ exit 0
+    - `npm run lint` ✅ exit 0. 0 errors and 2 warnings, both the unused eslint-disable directives in the generated `cloudflare-env.d.ts` that were already there.
+    - `npm test` ✅ `Test Files 79 passed (79)`, `Tests 879 passed (879)`
+    - `npx supabase test db` ✅ `All tests successful. Files=59, Tests=1925`, `Result: PASS`. This was run after `npx supabase db reset`, which applied all migrations and the seed cleanly.
+    - `npm run build` ✅ exit 0. The routes include `ƒ /domacinstvo` and `ƒ /poziv/[token]`.
+    - `npm run e2e` ✅ `5 passed`, including `e2e\household-invitation.spec.ts › a Premium owner invites by link; a second user signs in, accepts and logs weight on the shared pet`. As in Step 12, there is no `.env.local`. The run got `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` from `npx supabase status`, plus `NEXT_PUBLIC_SITE_URL=http://localhost:3000` and a local `ACTION_TOKEN_SECRET` (needed to sign the hh_ token). The spec puts the seed back before and after the run, using the service role: it removes Marko's membership and his entries on Luna, and expires the household's pending invitations.
+    - An extra live check through psql as seeded Ivana / Marko / anon: `get_household`, `create_household_invitation`, `get_household_invitation` (signed in and anon) and `decide_household_invitation` answered as specified, inside a rolled-back transaction.
+  - **Deviations / decisions:**
+    - **Database functions (pre-approved exception 6):** `create_household_invitation`, `get_household_invitation` and `decide_household_invitation` are security definer with `search_path` set, act on `auth.uid()` only, are revoked from public, and are granted to `authenticated` (plus `anon` for EP-39 only). There is no client insert on `households` / `household_memberships`, and the invitee cannot see the invitation under RLS. Errors use the TC §5.7.1 format with §7.2 codes, and field codes go in DETAIL. EP-36 and EP-37 / EP-38 stay Data API writes (single rows, existing triggers), run from server actions.
+    - **PremiumLock CTA → `/premium`:** the composite's button has no link, and `components/app/*` is out of bounds. S13 wraps the PremiumLock in a `div` whose click handler sends a click on its button to `/premium`.
+    - **hh_ token:** it follows §9.3 and the Step 24 og_ decision: `signActionToken("hh", [invitation_id], now + 7 days)`, stored as `hashToken`. Lookup is by hash only, and validity is the table's `expires_at` (§9.3: "follow their table's expires_at"). The signature is not checked again on lookup. Creating an invitation needs `ACTION_TOKEN_SECRET`; without it the action answers `internal_error`.
+    - Rate-limit operation `household_invitations.create`, a fixed UTC-day window (86 400 s). Idempotency operation `household_invitation`. Only successful results are stored, so a call refused by the limiter can be retried with the same key.
+    - A failed invitation email → `internal_error` (not stored for idempotency). The invitation row stays pending, and the next attempt to the same address expires it.
+    - The email language is the address's account locale when an account exists, else the inviter's. `{date}` is `expires_at` on the Europe/Belgrade calendar (`formatBelgradeDate` from Step 19).
+    - S14 when EP-39 answers `accepted`: the member who accepted sees the accepted variant. Anyone else sees the household card with "Ovaj poziv je već iskorišćen." and no buttons. A pending invitation opened by a current member shows "Već si član ovog domaćinstva." and no buttons.
+    - S14 sign-in variant: a Visitor gets no `shared_pets` (session field), so the mockup's pet-avatar row shows "Poziva te: {inviter}" in the same row. The accepted variant keeps the mockup's "Idi na ljubimce" → `/ljubimci`, although EP-40 "States" says "then S13".
+    - New copy variants with no mockup text: `readOnlyOwnerNoDate` (no `owner_premium_until`), `remindersDescriptionNoPets`, `leaveDescriptionNoPets`, `acceptedBodyNoPets`, and the singular / plural `acceptedBody_*`. The sr `readOnlyOwner` has no period after `{date}`, because the sr-Latn date already ends with one. The S14 error variant uses the lucide `SearchX` icon.
+    - EP-39 / EP-40 apply `invitation_expired` literally ("status = expired or expires_at < now()"), also to decided invitations past their expiry. EP-40 reports `invitation_used` before `invitation_expired`.
+    - S13 in the R state hides "Opozovi" too (Design: controls hidden), although EP-36 allows revoke while read-only. The owner view lists memorial pets as well (EP-34: all of the owner's pets). "(ti)" is shown only in the member view, as in the mockup.
+  - **FR-31:** Step 05 shipped no BR-27 ownership-transfer function, so `supabase/tests/household_succession.test.sql` was not created. **FR-31 tests are deferred to Step 30.**
+  - **Follow-ups:**
+    - Add `rpc:create_household_invitation`, `rpc:get_household_invitation` and `rpc:decide_household_invitation` to `docs/product/05-api-integration-contract.md` (EP-35, EP-39, EP-40), as the database side of those actions.
+    - Step 24: `lib/actions/invitations.ts` gets the og_ path (EP-39 `kind = organisation`, EP-40 team accept) and S14 the team variant. Step 25: tr_ → EP-60. Step 24 decides whether team invitations share the 20-per-day counter (`household_invitations.create` here).
+    - The household switcher for users in several households.
+    - Step 30: time-based Premium expiry must refresh `households.read_only` (Step 05 follow-up). EP-34 reports the stored flag, while EP-40 accept also checks `is_premium(owner)`.
+    - Local setup: `ACTION_TOKEN_SECRET` must be set (it is already in `.env.example`) for invitations to work.
 
 ---
 

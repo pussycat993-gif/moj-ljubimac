@@ -27,8 +27,22 @@ export type ReminderEmailVariables = {
   app_url: string;
 };
 
+export type HouseholdInvitationEmailVariables = {
+  /** profiles.full_name of the inviting owner. */
+  inviter: string;
+  household: string;
+  /** Shared pet names joined with Intl.ListFormat; null → the body without " ({pets})" (owner decision, Step 22). */
+  pets: string | null;
+  /** household_invitations.expires_at in the recipient's date format. */
+  date: string;
+  /** invite_url — /poziv/<token> (EP-35). */
+  url: string;
+};
+
 /** Template ids of Design §9.1 this adapter renders. Later steps add theirs here. */
-export type EmailTemplate = { id: "reminder_email"; variables: ReminderEmailVariables };
+export type EmailTemplate =
+  | { id: "reminder_email"; variables: ReminderEmailVariables }
+  | { id: "household_invitation"; variables: HouseholdInvitationEmailVariables };
 
 export type RenderedEmail = { subject: string; html: string; text: string };
 
@@ -103,12 +117,27 @@ const RENDERERS: { [K in EmailTemplate["id"]]: (t: Dictionary, v: Extract<EmailT
       note: copy.note,
     };
   },
+  household_invitation(t, v) {
+    const copy = t.messages.household_invitation;
+    const template = v.pets ? copy.body : copy.bodyNoPets;
+    const values = { inviter: v.inviter, household: v.household, pets: v.pets ?? "", date: v.date };
+    const escaped = Object.fromEntries(Object.entries(values).map(([k, value]) => [k, escapeHtml(value)]));
+    return {
+      subject: format(copy.subject, { inviter: v.inviter, household: v.household }),
+      bodyHtml: format(escapeHtml(template), escaped),
+      bodyText: format(template, values),
+      buttons: [{ label: copy.button, url: v.url, primary: true }],
+      note: null,
+    };
+  },
 };
 
 /** Renders a Design §9.1 email in the recipient's locale, with the shared footer. */
 export function renderEmail(template: EmailTemplate, locale: Locale): RenderedEmail {
   const t = getDictionary(locale);
-  const parts = RENDERERS[template.id](t, template.variables);
+  // The map is keyed by id, so each renderer gets its own template's variables.
+  const render = RENDERERS[template.id] as (t: Dictionary, v: EmailTemplate["variables"]) => EmailParts;
+  const parts = render(t, template.variables);
   const footer = t.messages.email_footer;
   const button = (b: EmailParts["buttons"][number]) =>
     `<a href="${escapeHtml(b.url)}" style="display:inline-block;margin:0 8px 8px 0;padding:12px 16px;border-radius:8px;` +

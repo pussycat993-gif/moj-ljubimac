@@ -1546,11 +1546,23 @@ isOneToOne: false
 "confirm_moment":
 { Args: { "p_moment_date": string,"p_moment_id": string,"p_pet_id": string,"p_photos": Json,"p_text": string }; Returns: Json
                            },
+"create_household_invitation":
+{ Args: { "p_email"?: string,"p_household_name"?: string,"p_invitation_id": string,"p_token_hash": string }; Returns: Json
+                           },
+"decide_household_invitation":
+{ Args: { "p_decision": string,"p_token_hash": string }; Returns: Json
+                           },
 "dispatch_watchdog_due":
 { Args: Record<PropertyKey, never>; Returns: boolean
                            },
 "get_channel_usage":
 { Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"get_household":
+{ Args: { "p_household_id"?: string }; Returns: Json
+                           },
+"get_household_invitation":
+{ Args: { "p_token_hash": string }; Returns: Json
                            },
 "get_me":
 { Args: Record<PropertyKey, never>; Returns: Json
