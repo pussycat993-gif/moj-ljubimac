@@ -45,6 +45,12 @@ isOneToOne: false
       foreignKeyName: "adoption_requests_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "adoption_requests_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pets"
       referencedColumns: ["id"]
     },{
@@ -91,6 +97,12 @@ isOneToOne: false
       foreignKeyName: "attachments_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "attachments_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pets"
       referencedColumns: ["id"]
     },{
@@ -118,6 +130,12 @@ isOneToOne: false
       columns: ["decided_by"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "breeder_inquiries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "breeder_inquiries_pet_id_fkey"
@@ -221,6 +239,12 @@ isOneToOne: false
       foreignKeyName: "feeding_entries_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "feeding_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pets"
       referencedColumns: ["id"]
     }
@@ -299,6 +323,12 @@ isOneToOne: false
       foreignKeyName: "household_pets_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "household_pets_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pets"
       referencedColumns: ["id"]
     }
@@ -365,6 +395,12 @@ isOneToOne: false
       foreignKeyName: "intakes_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: true
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "intakes_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: true
       referencedRelation: "pets"
       referencedColumns: ["id"]
     }
@@ -385,7 +421,19 @@ isOneToOne: true
       foreignKeyName: "litters_father_id_fkey"
       columns: ["father_id"]
 isOneToOne: false
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "litters_father_id_fkey"
+      columns: ["father_id"]
+isOneToOne: false
       referencedRelation: "pets"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "litters_mother_id_fkey"
+      columns: ["mother_id"]
+isOneToOne: false
+      referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "litters_mother_id_fkey"
@@ -414,6 +462,12 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
+      foreignKeyName: "memorial_records_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: true
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "memorial_records_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: true
@@ -478,6 +532,12 @@ isOneToOne: true
       columns: ["created_by"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "moments_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "moments_pet_id_fkey"
@@ -667,6 +727,12 @@ isOneToOne: false
       foreignKeyName: "pet_status_history_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "pet_status_history_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pets"
       referencedColumns: ["id"]
     }
@@ -819,7 +885,19 @@ isOneToOne: false
       foreignKeyName: "record_transfers_new_pet_id_fkey"
       columns: ["new_pet_id"]
 isOneToOne: false
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "record_transfers_new_pet_id_fkey"
+      columns: ["new_pet_id"]
+isOneToOne: false
       referencedRelation: "pets"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "record_transfers_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "record_transfers_pet_id_fkey"
@@ -917,6 +995,12 @@ isOneToOne: false
       foreignKeyName: "reminders_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "reminders_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pets"
       referencedColumns: ["id"]
     },{
@@ -944,6 +1028,12 @@ isOneToOne: false
       columns: ["created_by"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "stool_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "stool_entries_pet_id_fkey"
@@ -1015,6 +1105,12 @@ isOneToOne: false
       foreignKeyName: "treatments_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "treatments_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pets"
       referencedColumns: ["id"]
     }
@@ -1061,6 +1157,12 @@ isOneToOne: false
       foreignKeyName: "vaccinations_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "vaccinations_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pets"
       referencedColumns: ["id"]
     }
@@ -1082,6 +1184,12 @@ isOneToOne: false
       columns: ["created_by"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "vet_visits_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
+      referencedRelation: "pet_summaries_api"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "vet_visits_pet_id_fkey"
@@ -1113,6 +1221,12 @@ isOneToOne: false
       foreignKeyName: "weight_entries_pet_id_fkey"
       columns: ["pet_id"]
 isOneToOne: false
+      referencedRelation: "pet_summaries_api"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "weight_entries_pet_id_fkey"
+      columns: ["pet_id"]
+isOneToOne: false
       referencedRelation: "pets"
       referencedColumns: ["id"]
     }
@@ -1120,11 +1234,34 @@ isOneToOne: false
                 }
           }
           Views: {
-            [_ in never]: never
+            "pet_summaries_api": {
+                  Row: {
+                    "access": Json | null,"attachment_count": number | null,"birth_date": string | null,"birth_year": number | null,"breed": string | null,"can_log": boolean | null,"has_photo": boolean | null,"id": string | null,"lifecycle": Database["public"]['Enums']["pet_lifecycle"] | null,"memorial": Json | null,"moment_count": number | null,"name": string | null,"next_reminder": Json | null,"organisation_id": string | null,"owner_name": string | null,"sex": Database["public"]['Enums']["pet_sex"] | null,"species": Database["public"]['Enums']["pet_species"] | null,"species_other": string | null,"vet_name": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "access"?: never,"attachment_count"?: never,"birth_date"?: string | null,"birth_year"?: number | null,"breed"?: string | null,"can_log"?: never,"has_photo"?: never,"id"?: string | null,"lifecycle"?: Database["public"]['Enums']["pet_lifecycle"] | null,"memorial"?: never,"moment_count"?: never,"name"?: string | null,"next_reminder"?: never,"organisation_id"?: string | null,"owner_name"?: never,"sex"?: Database["public"]['Enums']["pet_sex"] | null,"species"?: Database["public"]['Enums']["pet_species"] | null,"species_other"?: string | null,"vet_name"?: string | null
+                         }
+                        Update: {
+                           "access"?: never,"attachment_count"?: never,"birth_date"?: string | null,"birth_year"?: number | null,"breed"?: string | null,"can_log"?: never,"has_photo"?: never,"id"?: string | null,"lifecycle"?: Database["public"]['Enums']["pet_lifecycle"] | null,"memorial"?: never,"moment_count"?: never,"name"?: string | null,"next_reminder"?: never,"organisation_id"?: string | null,"owner_name"?: never,"sex"?: Database["public"]['Enums']["pet_sex"] | null,"species"?: Database["public"]['Enums']["pet_species"] | null,"species_other"?: string | null,"vet_name"?: string | null
+                         }
+                        Relationships: [
+                    {
+      foreignKeyName: "pets_organisation_id_fkey"
+      columns: ["organisation_id"]
+isOneToOne: false
+      referencedRelation: "organisations"
+      referencedColumns: ["id"]
+    }
+                  ]
+                }
           }
           Functions: {
             "get_me":
 { Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"get_pet_record":
+{ Args: { "p_pet_id": string }; Returns: Json
                            },
 "is_premium":
 { Args: { "user_id": string }; Returns: boolean

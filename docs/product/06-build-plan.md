@@ -72,7 +72,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 10 | Design foundation | ✅ | 01 | — | 2026-10-20 |
 | 11 | Authentication, gates & server utilities | ✅ | 04, 10 | — | 2026-10-21 |
 | 12 | Registration, profile, legal pages & i18n | ✅ | 11, 05, 08 | — | 2026-10-23 |
-| 13 | Pets: list, create, edit, delete | ⬜ | 12, 06 | — | |
+| 13 | Pets: list, create, edit, delete | ✅ | 12, 06 | — | 2026-10-23 |
 | 14 | Pet record: view, weight, vaccinations | ⬜ | 13, 08 | — | |
 | 15 | Treatments, doses, vet visits & attachments | ⬜ | 14 | — | |
 | 16 | Memorial, restore & PDF export | ⬜ | 15 | — | |
@@ -2047,7 +2047,54 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+**2026-10-23** (unattended overnight run)
+- **Built:**
+  - Migration `20261023051407_pet_summaries_api.sql`: `view:pet_summaries_api` (EP-01, `security_invoker`, every PetSummary field; on top of RLS it lists own pets, shared pets that are active, and the organisation's active breeding stock). Security definer helpers scoped to `auth.uid()`: `private.pet_access` (Access), `private.pet_can_log`, `private.is_transferred_copy`, `private.pet_person_name` (profiles RLS is self-only, so `owner_name` / `created_by_name` come from here, only for callers who can read the pet), and `private.pet_upcoming_reminders` (ReminderOccurrence instances per API §5.3 and the EP-25 visibility rules, with channels and `can_mark_done`). Also the EP-03/EP-04 Request rules as check constraints on existing `pets` columns: name 1–60, species_other 1–60, the ≤100 / ≤30 / ≤2000 / ≤1000 / ≤40 lengths, `birth_year ≥ 1990`, birth_date XOR birth_year. The clock-dependent rules (birth_date not in the future, birth_year ≤ this year) are checked in the action, because a check constraint must not depend on the clock.
+  - Migration `20261023051410_get_pet_record.sql`: `rpc:get_pet_record(p_pet_id)` (EP-02, stable, security invoker; no relation → `not_found`) returns the full PetRecord: Pet without the raw key, access, can_log, read_only_reason, owner_name, memorial, upcoming_reminders (3), vaccinations with days_until_due, treatments with is_active / next dose / recent_doses / dose_count, vet_visits with Money cost and attachments, weights in the pet's unit with per-entry access, and attachment_count. Helpers `private.pet_json` and `private.entry_access`. `lib/supabase/database.types.ts` regenerated with `npm run db:types`.
+  - `lib/integrations/r2.ts` (aws4fetch): presigned PUT, with Content-Type and Content-Length signed, and presigned GET with inline Content-Disposition, both 10 minutes; signed HEAD and DELETE; `safeFileName`; config from `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET`.
+  - `lib/actions/uploads.ts`: EP-13 `requestUpload` / `confirmUpload` for `pet_photo`. Uses the §10 key layout, a stateless HMAC `upload_token`, and HEAD verification (on a mismatch the object is deleted and the action returns `file_too_large` / `file_type_not_allowed`). The old photo key is queued in `r2_deletion_queue`.
+  - `lib/actions/files.ts`: EP-15 `getFileUrls` (`pet_photo`; other kinds answer `url = null` until their steps).
+  - `lib/actions/pets.ts`: EP-03 `createPet`, EP-04 `updatePet` (with Request validation and field codes) and EP-05 `deletePet`. Also the PetSummary / Pet / PetRecord / ReminderOccurrence types.
+  - S01 `app/(app)/ljubimci/page.tsx` + `pets-home-client.tsx`: Suspense loading state, then default / empty / error. FR-59 search uses the mockup's normaliser. The Free counter and PremiumLock show when the owner's active pets reach `Entitlements.limits.active_pets`. Photos come from EP-15. The "Danas" card is in its empty form. No StateSwitcher.
+  - S02 `app/(app)/ljubimci/novi/page.tsx` + `pet-form-client.tsx` and `app/(app)/ljubimci/[id]/izmena/page.tsx`: create (EP-03) and edit (EP-02 preload, EP-04 save). The photo goes through EP-13 after save. Errors map as follows: 422 → inline, `premium_required` → PremiumLock, other / 5xx → the X ErrorState. Success shows a toast and redirects to `/ljubimci/[id]`. No StateSwitcher.
+  - i18n: `common` (retry, premium lock title/CTA, Premium), `pet`, `petsHome`, `petForm` in `lib/i18n/sr.ts` and `en.ts`.
+  - Tests: `tests/pets/pets-home.test.tsx` (15), `tests/pets/pet-form.test.tsx` (16), `tests/pets/delete-pet.test.ts` (10), `tests/pets/pet-photo-upload.test.ts` (19), `tests/integrations/r2.test.ts` (9), `tests/components/error-state.test.tsx` (2); pgTAP `pet_summaries_api` (43), `get_pet_record` (47), `pet_birthday_reminder` (16), `pet_delete` (27); `e2e/add-pet.spec.ts`.
+- **Verification:**
+  - `npm run typecheck` ✅ exit 0
+  - `npm run lint` ✅ exit 0 (0 errors; the 2 known warnings in the generated `cloudflare-env.d.ts`)
+  - `npm test` ✅ `Test Files 40 passed (40)`, `Tests 455 passed (455)`
+  - `npx supabase test db` ✅ `Files=38, Tests=1305`, `All tests successful.` `Result: PASS`
+  - `npm run build` ✅ exit 0. Routes: `ƒ /_not-found`, `/auth/callback`, `/ljubimci`, `/ljubimci/[id]/izmena`, `/ljubimci/novi`, `○ /manifest.webmanifest`, `ƒ /prijava`, `/prijava/nova-lozinka`, `/privatnost`, `/profil`, `/registracija`, `/uslovi`, `ƒ Proxy (Middleware)`
+  - `npm run e2e` ✅ `2 passed` — `e2e\registration.spec.ts` and `e2e\add-pet.spec.ts` (fresh verified Free owner → S01 empty → S02 create → toast + redirect → S01 shows Luna active, "Free · 1 / 1 aktivan ljubimac", and "Dodaj ljubimca" → `#premium-lock`). As in Step 12, the Supabase env vars came from `npx supabase status -o env` (no `.env.local`).
+- **Owner decisions used (2026-10-23):**
+  - EP-03/EP-04 run as the server actions `createPet` / `updatePet` in `lib/actions/pets.ts`.
+  - `<Toaster/>` from `@/components/ui/sonner` is mounted in `app/(app)/layout.tsx` (bottom centre, 4 s, Design §8). The toast text is the mockup's `role="status"` text. A failed photo upload after save shows the 5xx toast "Nešto nije u redu. Pokušaj ponovo."
+  - `components/app/error-state.tsx` got an optional `labels` prop (`{ retry }`, default "Pokušaj ponovo"), following the shells.tsx pattern. **Exception 3:** `tests/design/ui-overrides.test.ts` keeps the "ported unchanged" check and strips only that prop (`stripErrorStateLabels`). `tests/components/error-state.test.tsx` is new.
+  - English is a faithful translation written in this step. Formats use `Intl` (sr-Latn "19. 10. 2026.", en-GB "19 Oct 2026", "08:00"). Plurals use `Intl.PluralRules` with `_one/_few/_other` keys; `lib/i18n/index.ts` is unchanged. The calendar captions are the mockup arrays, stored as comma-separated dictionary strings.
+  - 422 without mockup copy: the date picker disables future dates. Any other unmapped field code shows the S02 form-level error ("Nismo uspeli da sačuvamo ljubimca…").
+  - Sex unknown: the S01 sex chip is hidden.
+  - PremiumLock CTA stays inert (Step 23).
+  - S01 cards leave out Težina and "Karton ažuriran". With only "Otvori karton" left in the footer, the footer row is `justify-end` instead of `justify-between`.
+  - No next reminder → "Nema zakazanih podsetnika.". A birthday with a null title → "Rođendan — {pet}".
+  - Age: years with plurals. Under 1 year it shows months. With only a birth year it shows "oko …"; a birth year equal to the current year counts months since January. No date hides Starost.
+  - "Danas" card when empty: heading, weekday from `Intl`, "Danas nema podsetnika."; no count, no "Pogledaj sve".
+  - "Ukloni fotografiju" only clears a photo not uploaded yet; a saved photo can only be replaced.
+  - The edit route is `/ljubimci/[id]/izmena`. EP-03/EP-04 redirect to S03 (`/ljubimci/[id]`, Step 14); the e2e spec opens `/ljubimci` itself.
+- **Deviations / decisions:**
+  - **upload_token signing key:** TC §8.1 names no separate key. The HMAC uses `ACTION_TOKEN_SECRET` (the app's only token-signing secret), with an `up_` prefix and an `upload:` domain separator.
+  - **Old photo key queueing** writes `r2_deletion_queue` with the service-role client, because the table has no client access (TC §5.7) and this step allows no new trigger. This is the Step 06 follow-up.
+  - **EP-05:** the key collection and queueing are done by the existing after-delete triggers on `pets`, `attachments` and `moment_photos`, inside the same transaction as the delete (not after commit). The action is a single RLS-scoped delete: 0 rows → `not_found`, and the role trigger → `forbidden_role`.
+  - **EP-13 authorization** is checked in the action: owner or organisation team ✅, member → `forbidden_role`. The transferred-copy rule (`forbidden_role`) is not enforced on uploads yet (Step 25, as in Step 06).
+  - **EP-03 organisation callers:** a caller with an organisation membership creates for that organisation (`organisation_id`). The organisation-only fields remain Step 24's.
+  - **Per-entry access when the household is read-only:** only members lose edit rights. The owner keeps writing (Step 06 rule).
+  - **ReminderOccurrence on S01:** vaccination, birthday and vet follow-up show the date; doses, meals and manual reminders show date · time. A reminder due today shows "Danas · HH:mm" and the Danas badge. Other open reminders get no badge.
+  - **S01 subtitle without a breed:** the species label (or `species_other`).
+  - **S02 photo preview:** the avatar preview shows the saved photo (EP-15) in edit mode.
+  - **Files touched outside the original Step 13 list (owner decisions):** `app/(app)/layout.tsx` (Toaster), `components/app/error-state.tsx`, `tests/design/ui-overrides.test.ts`, `tests/components/error-state.test.tsx`.
+- **Follow-ups:**
+  - `ReminderTypeIcon` still has a Serbian-only sr-only type label (`reminderTypeLabel`). It is not on this step's list; Step 17 adds the reminder composites' labels.
+  - Local photo upload needs real R2 credentials (`R2_*`) and `ACTION_TOKEN_SECRET` in `.env.local`. Without them the upload fails and the save still succeeds, with the error toast.
+  - Add `ACTION_TOKEN_SECRET` as the upload-token key to TC §8.1 (its purpose line names only action links).
 
 ---
 

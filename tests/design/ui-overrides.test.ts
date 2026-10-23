@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { defaultErrorStateLabels } from "@/components/app/error-state";
 import { defaultAppShellLabels, defaultPublicShellLabels } from "@/components/app/shells";
 
 const path = (p: string) => join(process.cwd(), p);
@@ -24,6 +25,7 @@ function unport(name: string, source: string) {
   let s = source.replace(/from "@\/components\/app\/([a-z-]+)"/g, 'from "./$1"');
   if (name === "logo-mark") s = s.replace("brand brown = the --primary token)", "brand brown #563218)");
   if (name === "shells") s = stripShellLabels(s);
+  if (name === "error-state") s = stripErrorStateLabels(s);
   return s;
 }
 
@@ -54,6 +56,17 @@ function stripShellLabels(source: string) {
     .replace(/=\{labels\.(\w+)\}/g, (_, k: string) => `="${value(k)}"`)
     .replace(/\{labels\.(\w+)\}/g, (_, k: string) => value(k))
     .replace(/labels\.(\w+)/g, (_, k: string) => `"${value(k)}"`);
+}
+
+// Owner decision (Step 13, FR-35): ErrorState takes one optional `labels` prop (the button text) whose default is
+// the mockup's Serbian string, so screens can pass the active dictionary. As for the shells, that prop is the only
+// allowed change and is ignored here; everything else must still equal the docs mockup.
+function stripErrorStateLabels(source: string) {
+  return source
+    .replace(/\/\/ labels:start[\s\S]*?\/\/ labels:end\n\n/, "")
+    .replace("  onRetry,\n  labels = defaultErrorStateLabels,\n", "  onRetry,\n")
+    .replace("  onRetry?: () => void\n  labels?: ErrorStateLabels\n", "  onRetry?: () => void\n")
+    .replace("{labels.retry}", defaultErrorStateLabels.retry);
 }
 
 describe("shadcn primitives (Design §6, ADR-14)", () => {

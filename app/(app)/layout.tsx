@@ -4,9 +4,11 @@ import { createClient } from "@/lib/supabase/server"
 import type { Me } from "@/lib/actions/registration"
 import { fromProfileLocale, getDictionary } from "@/lib/i18n"
 import { SignedInShell } from "@/components/app/signed-in-shell"
+import { Toaster } from "@/components/ui/sonner"
 
 // App shell (Design §5.1). User, role and language come from EP-43 (profiles.locale, FR-35).
 // No profile yet → the S15 completion step. Count badges are wired in Step 17 (EP-25).
+// Confirmations are Sonner toasts at bottom centre, 4 s (Design §8; owner decision, Step 13).
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient()
   const {
@@ -28,6 +30,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       labels={dict.shell.app}
     >
       {children}
+      <Toaster position="bottom-center" duration={4000} />
     </SignedInShell>
   )
 }
