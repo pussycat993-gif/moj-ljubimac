@@ -1502,6 +1502,14 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"v_public_plans": {
+                  Row: {
+                    "code": Database["public"]['Enums']["subscription_plan"] | null,"family": string | null,"monthly_equivalent": Json | null,"period": string | null,"price": Json | null,"trial_days": number | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    
+                  ]
                 },"weight_entries_api": {
                   Row: {
                     "access": Json | null,"created_at": string | null,"created_by": string | null,"created_by_name": string | null,"id": string | null,"measured_on": string | null,"note": string | null,"pet_id": string | null,"value": number | null,"weight_unit": Database["public"]['Enums']["weight_unit"] | null
@@ -1537,7 +1545,10 @@ isOneToOne: false
                 }
           }
           Functions: {
-            "claim_due_occurrences":
+            "cancel_account_deletion":
+{ Args: Record<PropertyKey, never>; Returns: undefined
+                           },
+"claim_due_occurrences":
 { Args: { "p_limit"?: number }; Returns: Json
                            },
 "claim_resend_occurrences":
@@ -1565,6 +1576,12 @@ isOneToOne: false
 { Args: { "p_token_hash": string }; Returns: Json
                            },
 "get_me":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"get_my_data_overview_base":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"get_my_subscription":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
 "get_pet_record":
@@ -1603,9 +1620,54 @@ isOneToOne: false
 "register_push_subscription":
 { Args: { "p_auth": string,"p_endpoint": string,"p_p256dh": string,"p_user_agent"?: string }; Returns: Json
                            },
+"request_account_deletion":
+{ Args: Record<PropertyKey, never>; Returns: undefined
+                           },
+"request_data_export":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "created_at": string,
+"expires_at": string | null,
+"id": string,
+"r2_key": string | null,
+"ready_at": string | null,
+"requested_at": string,
+"size_bytes": number | null,
+"status": Database["public"]['Enums']["data_export_status"],
+"updated_at": string,
+"user_id": string
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "data_exports"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
 "restore_pet_from_memorial":
 { Args: { "p_pet_id": string,"p_reenable_reminders"?: boolean }; Returns: Json
                            },
+"set_auto_renew":
+{ Args: { "p_auto_renew": boolean }; Returns: {
+              "auto_renew": boolean,
+"card_brand": string | null,
+"card_last4": string | null,
+"created_at": string,
+"current_period_end": string,
+"id": string,
+"last_notice_days": number | null,
+"monri_cit_id": string | null,
+"monri_token_ref": string | null,
+"plan": Database["public"]['Enums']["subscription_plan"],
+"status": Database["public"]['Enums']["subscription_status"],
+"trial_ends_at": string | null,
+"updated_at": string,
+"user_id": string
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "subscriptions"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
 "set_meal_schedule":
 { Args: { "p_meal_times": (string)[],"p_meal_weekdays"?: (number)[],"p_pet_id": string }; Returns: Json
                            }

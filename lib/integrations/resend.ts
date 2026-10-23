@@ -39,10 +39,18 @@ export type HouseholdInvitationEmailVariables = {
   url: string;
 };
 
+export type AccountDeletionScheduledEmailVariables = {
+  /** profiles.deletion_due_at in the recipient's date format. */
+  date: string;
+  /** NEXT_PUBLIC_SITE_URL/profil/podaci — S19, where the deletion is cancelled (owner decision, Step 23). */
+  url: string;
+};
+
 /** Template ids of Design §9.1 this adapter renders. Later steps add theirs here. */
 export type EmailTemplate =
   | { id: "reminder_email"; variables: ReminderEmailVariables }
-  | { id: "household_invitation"; variables: HouseholdInvitationEmailVariables };
+  | { id: "household_invitation"; variables: HouseholdInvitationEmailVariables }
+  | { id: "account_deletion_scheduled"; variables: AccountDeletionScheduledEmailVariables };
 
 export type RenderedEmail = { subject: string; html: string; text: string };
 
@@ -126,6 +134,16 @@ const RENDERERS: { [K in EmailTemplate["id"]]: (t: Dictionary, v: Extract<EmailT
       subject: format(copy.subject, { inviter: v.inviter, household: v.household }),
       bodyHtml: format(escapeHtml(template), escaped),
       bodyText: format(template, values),
+      buttons: [{ label: copy.button, url: v.url, primary: true }],
+      note: null,
+    };
+  },
+  account_deletion_scheduled(t, v) {
+    const copy = t.messages.account_deletion_scheduled;
+    return {
+      subject: format(copy.subject, { date: v.date }),
+      bodyHtml: format(escapeHtml(copy.body), { date: escapeHtml(v.date) }),
+      bodyText: format(copy.body, { date: v.date }),
       buttons: [{ label: copy.button, url: v.url, primary: true }],
       note: null,
     };

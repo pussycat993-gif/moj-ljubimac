@@ -82,7 +82,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 20 | Care log & meal reminders | ✅ | 19 | — | 2026-10-23 |
 | 21 | Moments & public links | ✅ | 15 | — | 2026-10-23 |
 | 22 | Household sharing | ✅ | 19 | — | 2026-10-23 |
-| 23 | Subscription status, Premium page & account data control | ⬜ | 12, 15, 19 | — | |
+| 23 | Subscription status, Premium page & account data control | ✅ | 12, 15, 19 | — | 2026-10-23 |
 | 24 | Organisations: animals, team, public profile | ⬜ | 09, 15, 19, 22 | — | |
 | 25 | Requests, inquiries & record transfers | ⬜ | 24, 22 | — | |
 | 26 | Litters & public organisation pages | ⬜ | 25 | — | |
@@ -3852,7 +3852,78 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-23** — Step 23 built (unattended overnight run).
+  - **Built:**
+    - Migration `20261023210000_subscription_and_data_control.sql`. It changes no table, column, enum or constraint and inserts no plan rows (OQ-03):
+      - View `v_public_plans` (EP-44): `unnest(enum_range(null::subscription_plan)) with ordinality` left-joined to active `plans` rows, in enum order (family, then monthly before yearly). Columns `code`, `family`, `period`, `price`, `monthly_equivalent` (yearly: `round(price_minor / 12)`) and `trial_days` (7 premium, 0 breeder). Without an active priced row, `price` and `monthly_equivalent` are null (CR-22). `security_invoker`; select granted to `anon`, `authenticated` and `service_role`.
+      - `rpc:get_my_subscription()` (EP-47): security invoker, own rows through RLS, the most recent row of the caller's plan family, or the never-subscribed shape. `days_remaining` and `period_days` are counted on the Europe/Belgrade calendar (7 while trialing). `over_limits` is filled for owners without an active row and lists only the Free limits currently exceeded: active pets > 1, attachments per pet > 10, household memberships (members without the owner) > 0, and reminder types with WhatsApp selected > 0.
+      - The helper `private.subscription_family_of(uuid)`: owner → premium; the admin of a breeder organisation → breeder; everyone else → `forbidden_role`.
+      - Owner-decision functions, all security definer with `set search_path`, acting on `auth.uid()` only, revoked from public / anon:
+        - `set_auto_renew(p_auto_renew)` returns `subscriptions` (EP-48). It locks the running row, sets `false` → `cancelled`, and `true` → `trialing` while `trial_ends_at > now()`, else `active`. No running row → `subscription_not_active`.
+        - `request_data_export()` returns `data_exports` (EP-50). It locks the profile; a `preparing` row → `export_in_progress`.
+        - `get_my_data_overview_base()` returns jsonb with the summary (own pet names, attachment and moment counts), the deletion block (`days_left` on the Belgrade calendar) and the BR-27 heir's `full_name`.
+        - `request_account_deletion()` (already pending → `account_pending_deletion`) and `cancel_account_deletion()` (a no-op when nothing is pending). `deletion_due_at` is still derived by the Step 04 profiles trigger.
+      - `npm run db:types` regenerated `lib/supabase/database.types.ts`.
+    - `lib/actions/subscription.ts`: `getMySubscription` (EP-47) and `setAutoRenew` (EP-48, then a re-read of EP-47). It also has the §6 `Subscription` / `Plan` types (`Plan.price` nullable).
+    - `lib/actions/checkout.ts`: `startCheckout` (EP-45 stub). The checks run in this order: gates, request (`idempotency_key` required / uuid v4, `plan` enum), role (shelter accounts and breeder non-admins → `forbidden_role`), active `plans` row of the account's family (else `fields.plan = plan_not_allowed`), `expect_trial` with `trial_used` → `trial_already_used`, a running row of the same family → `subscription_already_active`. It then always answers `503 payment_provider_unavailable`. It writes nothing and stores nothing in `idempotency_keys`.
+    - `lib/actions/data-control.ts`:
+      - `requestDataExport`: inserts the row only.
+      - `getMyDataOverview`: `latest_export` plus a presigned R2 GET (10 min, `r2().presignGet`) when `ready`. `file_name` is `moj-ljubimac-podaci-<Belgrade date>.zip`.
+      - `requestAccountDeletion`: `confirm` must be true. It sends the §9.1 `account_deletion_scheduled` email with the due date and `NEXT_PUBLIC_SITE_URL/profil/podaci`.
+      - `cancelAccountDeletion`: gate-3 exempt, no email.
+    - `lib/integrations/resend.ts`: the `account_deletion_scheduled` template only.
+    - S18: `app/(app)/profil/page.tsx` and `profile-client.tsx`.
+      - The page now renders a Suspense loading state (`ProfileLoading`, the mockup's skeletons). It reads EP-43, the cities and, for owner accounts, EP-47; a failed read → ErrorState.
+      - The Premium card: days remaining as `Progress`, computed from `current_period_end` on the Belgrade calendar; "Sledeća naplata {date} · {price} · {card}" without the null segments; the "Otkaži obnovu" AlertDialog → EP-48 false; the cancelled variant with "Uključi obnovu" → EP-48 true; the expired variant with the `over_limits` list and "Obnovi Premium" → `/premium`; never subscribed → "Free plan", Free pill and "Pogledaj Premium".
+      - The name/city/language form is unchanged.
+    - S17: `app/(app)/premium/page.tsx` and `premium-client.tsx`, a port of `premium.tsx` without the StateSwitcher.
+      - `payments_coming_soon` shows when either Premium plan has `price` null (EP-44) or after a 503 from EP-45. `trial_used` shows when EP-47 `trial_available = false` or after EP-45 `trial_already_used`.
+      - The purchase state is wired to data only (prices from EP-44, marked `/* placeholder price — OQ-03 */`). Step 31 owns it.
+    - S19: `app/(app)/profil/podaci/page.tsx` and `account-data-screen.tsx`, a port of `account-data.tsx` without the StateSwitcher. The states are default / preparing / ready / failed / pending / error, all driven by EP-43 / EP-50 / EP-51.
+    - `lib/i18n/sr.ts` and `en.ts`: new sections `subscription`, `premium` and `accountData`, and `messages.account_deletion_scheduled`, with English translations.
+    - Tests:
+      - pgTAP: `supabase/tests/public_plans.test.sql` (14), `subscription_read.test.sql` (38), `downgrade_limits.test.sql` (14), `account_deletion_request.test.sql` (30).
+      - Vitest: `tests/subscription/set-auto-renew.test.ts` (6), `profile-subscription-card.test.tsx` (9), `tests/premium/start-checkout.test.ts` (6), `premium-screen.test.tsx` (6), `tests/data-control/request-data-export.test.ts` (5), `account-deletion.test.ts` (6), `account-data-screen.test.tsx` (9).
+  - **Owner decisions applied (2026-10-23):**
+    - The database functions `set_auto_renew`, `request_data_export`, `request_account_deletion`, `cancel_account_deletion` and `get_my_data_overview_base`, and `v_public_plans` built from the plan enum with nullable prices.
+    - Pending deletion: the S19 card is built from the EP-43 `deletion_*` fields and the export card is hidden.
+    - The heir line has no declension and is omitted without an heir.
+    - Plurals dan / prilog / trenutak / član.
+    - A failed export: the default card plus "Priprema arhive nije uspela. Pokušaj ponovo."; the fake Progress bar in the preparing state is removed.
+    - S18: the never-subscribed card; the subscription card only for `account_type = owner`; non-owners opening `/premium` are redirected to `/organizacija`.
+    - S18: a price only when `Subscription.price` is set; the card segment is omitted when `card_brand` is null.
+    - The over-limit copy and "{used} od {allowed}".
+    - The S17 trial-used copy; "Tvoj plan" only on the current plan's card.
+    - The `account_deletion_scheduled` button → `${NEXT_PUBLIC_SITE_URL}/profil/podaci`.
+    - Applied from earlier decisions: server actions; the existing Toaster for errors; English written in this step; sr-Latn / en-GB dates on the Europe/Belgrade calendar; `Intl.PluralRules` with `_one/_few/_other`.
+  - **Verification** (in order; all on the same code):
+    - `npm run typecheck`: exit 0.
+    - `npm run lint`: exit 0 (2 pre-existing warnings in `cloudflare-env.d.ts`).
+    - `npm test`: 86 files, 926 tests passed.
+    - `npx supabase test db`: PASS, 63 files, 2021 tests.
+      - The first run failed in `household_rls.test.sql` #16 and `server_support.test.sql` #12. Both failures came from rows the Step 22 Playwright run had left in the local database at 19:40 UTC: one accepted household invitation, its `idempotency_keys` row and its `rate_limit_counters` row.
+      - Those three local rows were deleted with psql. No file changed, and the re-run passed.
+    - `npm run build`: exit 0; `/premium` and `/profil/podaci` are built.
+  - **Deviations:**
+    - **`DataExport.download_url`:** API §6 types it as `FileUrl`, but the `FileUrl.kind` enum has no value for archives. The action returns the FileUrl shape with `kind: "data_export"` and `mime_type: "application/zip"`.
+    - **Gate 4:** EP-45 / EP-47 / EP-48 / EP-50 / EP-51 run `checkGates` with `access: "read"`, so the organisation-pending gate does not apply. API §5.6 intro limits that gate to organisation writes. Gates 1–3 still apply.
+    - **`over_limits.household`:** `used` counts the members without the owner, because the Free allowance is 0 members. The "3 člana" value uses the član plural.
+    - **The deletion email:** if it fails, the failure is logged and the request still returns `ok`, because the deletion is already stored and S19 shows the same date. The contract does not say what to do here.
+    - **New copy keys:**
+      - `planYearly` ("Godišnji plan"), because the mockup shows only "Mesečni plan".
+      - `dialogBodyNoPets`, `readyValid` (no size) and `yearlyNote` without "2 meseca gratis". That text is a claim about real prices, so it waits for OQ-03.
+      - S17 hides the Free card's "Trenutni plan" button for Premium users.
+    - **S19 delete dialog date:** "today + 30 days" is computed when the dialog opens, to satisfy the React purity lint rule.
+    - **The account-deletion pgTAP file** also covers the EP-50 database side (`request_data_export`, `get_my_data_overview_base`), because the file list has no separate export pgTAP file. The "identical to before" check compares the profile without `updated_at`, which the cancel necessarily bumps.
+  - **Not sent (CR-24, no Design §9.1 template):** the EP-48 cancel / resume confirmation email and the EP-51 cancel-deletion confirmation email.
+  - **Follow-ups:**
+    - Archive delivery — the `/api/internal/exports` builder, the `data_export_ready` email and `ready` / `failed` rows — is Step 30a. Export expiry and R2 removal are Step 30 (EP-52). Renewal and expiry of subscriptions are Step 30 / 31 (EP-49).
+    - Add these to `docs/product/05-api-integration-contract.md`:
+      - `rpc:set_auto_renew`, `rpc:request_data_export`, `rpc:get_my_data_overview_base`, `rpc:request_account_deletion` and `rpc:cancel_account_deletion` as the database side of EP-48, EP-50 and EP-51.
+      - `data_export` in the `FileUrl.kind` enum.
+      - `Plan.price` as nullable before payments.
+    - Step 31: the S17 purchase state with real prices, and the "2 meseca gratis" note once the prices are known.
+    - Local setup: before `npx supabase test db`, clear leftover e2e rows (or run `npx supabase db reset`), because the Step 22 e2e spec leaves data that two older pgTAP files count.
 
 ---
 
