@@ -4,10 +4,13 @@ import { useEffect, useState, type MouseEvent, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
+  Archive,
   CalendarDays,
   ClipboardList,
+  FileDown,
   FileText,
   ImageIcon,
+  Loader2,
   MoreVertical,
   Pencil,
   Phone,
@@ -41,23 +44,34 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/sonner"
 import { cn } from "@/lib/utils"
 import { EmptyState } from "@/components/app/empty-state"
 import { ErrorState } from "@/components/app/error-state"
 import type { PetSpecies } from "@/components/app/pet-avatar"
 import { PetHeader } from "@/components/app/pet-header"
+import { PremiumLock } from "@/components/app/premium-lock"
 import { ReadOnlyBanner } from "@/components/app/read-only-banner"
 import { StatusBadge } from "@/components/app/status-badge"
 import { deleteAttachment } from "@/lib/actions/attachments"
 import { getFileUrls, type FileUrl } from "@/lib/actions/files"
+import { movePetToMemorial, type MemorialReason } from "@/lib/actions/memorial"
+import { getPdfExportBundle } from "@/lib/actions/pdf-export"
 import { deletePet, type PetRecord, type WeightUnit } from "@/lib/actions/pets"
 import { deleteTreatment, logDose, type Treatment } from "@/lib/actions/treatments"
 import { deleteVaccination, type Vaccination } from "@/lib/actions/vaccinations"
@@ -67,13 +81,15 @@ import type { Me } from "@/lib/actions/registration"
 import { format, type Dictionary, type Locale } from "@/lib/i18n"
 
 // S03 — Karton ljubimca · /ljubimci/[id] · FR-03 (display), FR-04, FR-05, FR-06, FR-07, FR-08, FR-13,
-// FR-28 · EP-02 (rpc:get_pet_record), EP-05 (delete_pet), EP-08 (weights), EP-09 (vaccination
-// edit/delete), EP-10 (treatment edit/delete), EP-11 ("Doza data"), EP-12 (visit edit/delete), EP-14
-// (attachment chip delete), EP-15 (photo, attachment URLs). Renders the header, Pregled (last weight,
-// last visit), Vakcine, Terapije, Pregledi and Težina; memorial, PDF, the next-reminders block and
-// the Dnevnik/Trenuci links arrive in Steps 16–21. States: loading (PetRecordLoading) / default /
+// FR-10, FR-11, FR-28 · EP-02 (rpc:get_pet_record), EP-05 (delete_pet), EP-06 ("Premesti u
+// Uspomene"), EP-08 (weights), EP-09 (vaccination edit/delete), EP-10 (treatment edit/delete), EP-11
+// ("Doza data"), EP-12 (visit edit/delete), EP-14 (attachment chip delete), EP-15 (photo, attachment
+// URLs), EP-16 ("Izvezi PDF" → pdf-export-client, loaded on click). Renders the header, Pregled
+// (last weight, last visit), Vakcine, Terapije, Pregledi and Težina; the next-reminders block and the
+// Dnevnik/Trenuci links arrive in Steps 17–21. States: loading (PetRecordLoading) / default /
 // per-tab empty / read_only (banner by read_only_reason, every edit control hidden; members keep
-// "Doza data" and their own weights, FR-28) / error (PetRecordError on 404 / 5xx).
+// "Doza data" and their own weights, FR-28) / premium_locked ("Izvezi PDF" on Free; the memorial
+// dialog on premium_required) / error (PetRecordError on 404 / 5xx).
 
 export type PetRecordCopy = Pick<Dictionary, "petRecord" | "pet" | "petForm" | "common">
 
@@ -530,6 +546,16 @@ export function PetRecordClient({
   const [busy, setBusy] = useState(false)
   const [dosing, setDosing] = useState<string | null>(null)
   const [fileUrls, setFileUrls] = useState<Record<string, FileUrl>>({})
+  const [pdfLockOpen, setPdfLockOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
+
+  // memorial form
+  const [memorialOpen, setMemorialOpen] = useState(false)
+  const [memDate, setMemDate] = useState<Date | undefined>(undefined)
+  const [memReason, setMemReason] = useState<MemorialReason>("passed_away")
+  const [memNote, setMemNote] = useState("")
+  const [memError, setMemError] = useState("")
+  const [memLocked, setMemLocked] = useState(false)
 
   // EP-15: view URLs for every attachment chip (batches of 50), signed when the record renders.
   const attachmentIds = visits.flatMap((v) => v.attachments.map((a) => a.id))
@@ -677,6 +703,76 @@ export function PetRecordClient({
     router.refresh()
   }
 
+  /** "Izvezi PDF" (FR-10): Free → PremiumLock (E-25); Premium → EP-16, then the PDF in the browser. */
+  async function exportPdf() {
+    if (!entitlements?.pdf_export) {
+      setPdfLockOpen(true)
+      return
+    }
+    setExporting(true)
+    try {
+      const result = await getPdfExportBundle({ pet_id: pet.id })
+      if (!result.ok) {
+        if (result.error.code === "premium_required") setPdfLockOpen(true)
+        else toast.error(copy.common.error)
+        return
+      }
+      const { exportPetRecordPdf } = await import("./pdf-export-client")
+      const fileName = await exportPetRecordPdf(result.data, copy, locale)
+      toast(format(t.pdfReady, { file: fileName }))
+    } catch {
+      toast.error(copy.common.error)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  function openMemorial() {
+    setMemDate(undefined)
+    setMemReason("passed_away")
+    setMemNote("")
+    setMemError("")
+    setMemLocked(false)
+    setMemorialOpen(true)
+  }
+
+  /** EP-06 (FR-11): toast + S06; a Free owner's third memorial → PremiumLock in the dialog (E-02). */
+  async function saveMemorial() {
+    if (!memDate) {
+      setMemError(t.errMemorialDate)
+      return
+    }
+    setMemError("")
+    setBusy(true)
+    const result = await movePetToMemorial({
+      pet_id: pet.id,
+      date: isoDate(memDate),
+      reason: memReason,
+      note: memNote.trim() || null,
+    })
+    setBusy(false)
+    if (!result.ok) {
+      const { code, fields } = result.error
+      if (code === "premium_required") {
+        setMemLocked(true)
+        return
+      }
+      if (code === "validation_failed" && fields) {
+        // 422 → the dialog's inline message; an unmapped field code → the form-level error (owner decision).
+        setMemError(fields.date ? t.errMemorialDate : copy.common.error)
+        return
+      }
+      setMemorialOpen(false)
+      toast.error(copy.common.error)
+      router.refresh()
+      return
+    }
+    setMemorialOpen(false)
+    toast(format(female ? t.movedFemale : t.movedMale, { name: pet.name }))
+    router.push("/uspomene")
+    router.refresh()
+  }
+
   const today = belgradeDate(new Date(now))
   // Free counter "n / 10" on the owner's own pet (EP-02 States, BR-01); hidden on Premium.
   const attachmentLimit =
@@ -703,8 +799,14 @@ export function PetRecordClient({
       ? String(pet.birth_year)
       : null
 
+  // EP-06 / EP-16: the owner only (members and organisation roles are refused); a memorial pet
+  // cannot be moved again, so the item is hidden (owner decision, Step 16).
+  const isOwner = record.access.role === "owner"
+  const canMove = isOwner && pet.lifecycle === "active"
+  const pdfLocked = !entitlements?.pdf_export
+
   const headerActions =
-    canEdit || canDelete ? (
+    canEdit || canDelete || isOwner ? (
       <>
         {canEdit && (
           <Button asChild variant="outline" className="h-11 md:h-9">
@@ -714,7 +816,18 @@ export function PetRecordClient({
             </Link>
           </Button>
         )}
-        {canDelete && (
+        {isOwner && (
+          <Button className="h-11 md:h-9" onClick={exportPdf} disabled={exporting}>
+            {exporting ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <FileDown className="size-4" aria-hidden />
+            )}
+            {t.exportPdf}
+            {pdfLocked && <StatusBadge status="premium" className="ml-1" />}
+          </Button>
+        )}
+        {(canMove || canDelete) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" className="size-11 md:size-9" aria-label={t.moreOptions}>
@@ -722,10 +835,19 @@ export function PetRecordClient({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="shadow-raised">
-              <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
-                <Trash2 className="size-4" aria-hidden />
-                {t.deletePermanently}
-              </DropdownMenuItem>
+              {canMove && (
+                <DropdownMenuItem onSelect={openMemorial}>
+                  <Archive className="size-4" aria-hidden />
+                  {t.moveToMemorial}
+                </DropdownMenuItem>
+              )}
+              {canMove && canDelete && <DropdownMenuSeparator />}
+              {canDelete && (
+                <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+                  <Trash2 className="size-4" aria-hidden />
+                  {t.deletePermanently}
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -756,6 +878,23 @@ export function PetRecordClient({
         actions={headerActions}
         labels={{ chips: t.basics }}
       />
+
+      {pdfLockOpen && (
+        <section aria-label={t.pdfLockLabel}>
+          <PremiumLock title={copy.common.premiumTitle} description={t.pdfLockDescription} cta={copy.common.premiumCta}>
+            <Card className="gap-3 p-6">
+              <p className="font-heading text-lg font-bold">{format(t.pdfTitle, { name: pet.name })}</p>
+              <Separator />
+              <p className="text-sm">{t.pdfLockSections}</p>
+              <div className="h-8 rounded-sm bg-foreground/5" />
+              <div className="h-8 rounded-sm bg-foreground/5" />
+              <div className="h-8 rounded-sm bg-foreground/5" />
+              <div className="h-8 rounded-sm bg-foreground/5" />
+              <div className="h-8 rounded-sm bg-foreground/5" />
+            </Card>
+          </PremiumLock>
+        </section>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* main column */}
@@ -1170,6 +1309,72 @@ export function PetRecordClient({
           )}
         </aside>
       </div>
+
+      {/* Memorial dialog (EP-06) */}
+      <Dialog open={memorialOpen} onOpenChange={setMemorialOpen}>
+        <DialogContent className="shadow-raised">
+          <DialogHeader>
+            <DialogTitle>{format(t.memorialTitle, { name: pet.name })}</DialogTitle>
+            <DialogDescription>{t.memorialDescription}</DialogDescription>
+          </DialogHeader>
+          {memLocked ? (
+            <PremiumLock
+              title={copy.common.premiumTitle}
+              description={t.memorialLockDescription}
+              cta={copy.common.premiumCta}
+            />
+          ) : (
+            <div className="space-y-4">
+              <DateField
+                id="uspomena-datum"
+                label={t.date}
+                value={memDate}
+                onChange={setMemDate}
+                locale={locale}
+                copy={copy.petForm}
+              />
+              {memError && <p className="text-sm text-destructive">{memError}</p>}
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium">{t.memorialReason}</legend>
+                <RadioGroup
+                  value={memReason}
+                  onValueChange={(v) => setMemReason(v as MemorialReason)}
+                  className="space-y-1"
+                >
+                  {(["passed_away", "rehomed", "lost"] as const).map((value) => (
+                    <div key={value} className="flex items-center gap-2">
+                      <RadioGroupItem id={`razlog-${value}`} value={value} />
+                      <Label htmlFor={`razlog-${value}`}>
+                        {(female ? copy.pet.reasonFemale : copy.pet.reasonMale)[value]}
+                      </Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+              </fieldset>
+              <div className="space-y-2">
+                <Label htmlFor="uspomena-napomena">{t.note}</Label>
+                <Textarea
+                  id="uspomena-napomena"
+                  value={memNote}
+                  maxLength={1000}
+                  onChange={(e) => setMemNote(e.target.value)}
+                  placeholder={t.memorialNotePlaceholder}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" className="h-11 md:h-9" onClick={() => setMemorialOpen(false)}>
+              {t.cancel}
+            </Button>
+            {!memLocked && (
+              <Button className="h-11 md:h-9" onClick={saveMemorial} disabled={busy}>
+                {t.moveToMemorial}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirmation */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>

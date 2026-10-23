@@ -1295,11 +1295,17 @@ isOneToOne: false
 "log_dose":
 { Args: { "p_given_at"?: string,"p_occurrence_id"?: string,"p_treatment_id": string }; Returns: Json
                            },
+"move_pet_to_memorial":
+{ Args: { "p_date": string,"p_note"?: string,"p_pet_id": string,"p_reason"?: Database["public"]['Enums']["memorial_reason"] }; Returns: Json
+                           },
 "partners_nearby":
 { Args: { "p_city_id"?: string,"p_lat"?: number,"p_limit"?: number,"p_lng"?: number,"p_type"?: Database["public"]['Enums']["partner_type"] }; Returns: Json
                            },
 "record_partner_click":
 { Args: { "p_action": Database["public"]['Enums']["partner_click_action"],"p_partner_id": string }; Returns: undefined
+                           },
+"restore_pet_from_memorial":
+{ Args: { "p_pet_id": string,"p_reenable_reminders"?: boolean }; Returns: Json
                            }
           }
           Enums: {

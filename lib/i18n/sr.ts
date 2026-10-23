@@ -222,6 +222,17 @@ export const sr = {
       flea_tick: "Zaštita od buva i krpelja",
       other: "Ostalo",
     },
+    // Memorial reason (S03 memorial dialog, S06 badge, PDF); sex unknown → masculine (owner decision).
+    reasonFemale: {
+      passed_away: "Preminula",
+      rehomed: "Udomljena kod drugih",
+      lost: "Izgubljena",
+    },
+    reasonMale: {
+      passed_away: "Preminuo",
+      rehomed: "Udomljen kod drugih",
+      lost: "Izgubljen",
+    },
   },
   // S01 Moji ljubimci (pets-home.tsx)
   petsHome: {
@@ -251,6 +262,7 @@ export const sr = {
       "Na Free planu imaš jednog aktivnog ljubimca. Premium otključava neograničen broj ljubimaca, PDF karton i deljenje sa domaćinstvom.",
     lockPreviewTitle: "Novi ljubimac",
     lockPreviewFields: "Ime, vrsta, rasa, pol, datum rođenja",
+    memorials: "Uspomene",
   },
   // S02 Dodaj / izmeni ljubimca (pet-form.tsx)
   petForm: {
@@ -441,6 +453,44 @@ export const sr = {
     // Attachment chip remove button and EP-15 url = null (owner decisions, Step 15).
     removeFile: "Ukloni {file}",
     fileUnavailable: "Fajl nije dostupan.",
+    // "Izvezi PDF" and the generated PDF (Step 16; PDF title, Prilozi and footer: owner decisions).
+    exportPdf: "Izvezi PDF",
+    pdfReady: "Karton je spreman: {file}",
+    pdfLockLabel: "Izvoz kartona u PDF",
+    pdfLockDescription: "Izvezi ceo karton u PDF — za veterinara, groomera ili granicu.",
+    pdfTitle: "Karton ljubimca — {name}",
+    pdfLockSections: "Vakcine · Terapije · Pregledi · Težina",
+    pdfAttachments: "Prilozi",
+    pdfMemorial: "Uspomene",
+    pdfDate: "Datum",
+    pdfFooter: "Moj Ljubimac · {date}",
+    pdfOwner: "Vlasnik: {name}",
+    // "Premesti u Uspomene" dialog (Step 16).
+    moveToMemorial: "Premesti u Uspomene",
+    memorialTitle: "Premesti u Uspomene — {name}",
+    memorialDescription: "Karton ostaje sačuvan, a svi podsetnici za ovog ljubimca se zaustavljaju.",
+    memorialReason: "Razlog",
+    memorialNotePlaceholder: "Nešto što želiš da zapamtiš",
+    errMemorialDate: "Izaberi datum.",
+    memorialLockDescription: "Na Free planu čuvaš do 2 uspomene. Uz Premium čuvaš uspomene bez ograničenja.",
+    movedFemale: "{name} je premeštena u Uspomene. Podsetnici su zaustavljeni.",
+    movedMale: "{name} je premešten u Uspomene. Podsetnici su zaustavljeni.",
+  },
+  // S06 Uspomene (memorials.tsx)
+  memorials: {
+    back: "Nazad na ljubimce",
+    title: "Uspomene",
+    subtitle: "Kartoni ljubimaca koji više nisu s tobom. Čuvamo ih dok god imaš nalog.",
+    freeCounter: "Free · {count} / {limit} uspomene",
+    premiumBadge: "Premium · bez ograničenja",
+    restore: "Vrati među aktivne",
+    viewRecord: "Pogledaj karton",
+    restored: "{name} je ponovo među aktivnim ljubimcima.",
+    lockLabel: "Vraćanje ljubimca među aktivne",
+    lockDescription:
+      "Na Free planu imaš jednog aktivnog ljubimca, a to mesto zauzima {slot}. Uz Premium možeš da vratiš i ovog ljubimca ({name}).",
+    emptyTitle: "Ovde još nema uspomena",
+    emptyDescription: "Kada ljubimac premine, bude udomljen ili se izgubi, njegov karton možeš da sačuvaš ovde.",
   },
   // S04 Nova vakcina (vaccination-form.tsx) and its edit route (owner decision, Step 14)
   vaccinationForm: {

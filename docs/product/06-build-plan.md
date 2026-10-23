@@ -75,7 +75,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 13 | Pets: list, create, edit, delete | ✅ | 12, 06 | — | 2026-10-23 |
 | 14 | Pet record: view, weight, vaccinations | ✅ | 13, 08 | — | 2026-10-23 |
 | 15 | Treatments, doses, vet visits & attachments | ✅ | 14 | — | 2026-10-23 |
-| 16 | Memorial, restore & PDF export | ⬜ | 15 | — | |
+| 16 | Memorial, restore & PDF export | ✅ | 15 | — | 2026-10-23 |
 | 17 | Reminder lists & manual reminders | ⬜ | 14 | — | |
 | 18 | Reminder settings, email & push channels | ⬜ | 17 | — | |
 | 19 | Reminder dispatch job & message actions | ⬜ | 18 | — | |
@@ -2572,7 +2572,52 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+**2026-10-23** (unattended overnight run; resumed after the copy-approval stop)
+- **Built:**
+  - Migration `20261023062348_memorial_rpcs.sql`: `rpc:move_pet_to_memorial` (EP-06) and `rpc:restore_pet_from_memorial` (EP-07), both security invoker. RLS on `pets` / `memorial_records`, the role trigger `pets_check_write` (member, organisation lifecycle → `forbidden_role`) and `pets_enforce_free_limits` (`premium_required:memorials`, `premium_required:pets`; BR-01, BR-03, E-02, E-03) decide who may change the lifecycle. The Step 08 trigger stops reminders on the way in (BR-17). Restore with `reenable_reminders` runs the definer helper `private.reenable_pet_reminders`. That helper works only for the owner and only once the pet is active again. It re-enables only reminders whose next due time is still in the future: a one-off reminder needs `starts_at` ahead, and a repeating or meal reminder needs no end or an end ahead. The Step 08 trigger then regenerates their occurrences. Field codes use `DETAIL '<field>:<code>'`. `lib/supabase/database.types.ts` was regenerated with `npm run db:types`.
+  - `lib/actions/memorial.ts`: EP-06 `movePetToMemorial` and EP-07 `restorePetFromMemorial` return ActionResult (05- §3.6). They validate the Request (date not in the future, Europe/Belgrade; reason enum).
+  - `lib/actions/pdf-export.ts`: EP-16 builds the `PdfExportBundle`. Owner with Premium ✅; Free → `premium_required` (`limit = pdf_export`, E-25); member / organisation → `forbidden_role`; none → `not_found`. Its data comes from EP-02, the full dose logs, and EP-15 URLs for the photo and image attachments.
+  - `app/(app)/ljubimci/[id]/pdf-export-client.tsx`: `@react-pdf/renderer` is loaded with `await import()` on click. The document has the title "Karton ljubimca — {pet}", "Vlasnik: {name}", the S03 section labels plus "Prilozi", and the footer "Moj Ljubimac · {date}". The file is named `{pet}-karton.pdf`. JPG/PNG images are embedded; PDFs and failed images are listed by name (ADR-12). Inter Regular/Bold are registered from `public/fonts` for č/ć/š/ž/đ.
+  - S06 `app/(app)/uspomene/page.tsx` + `memorials-client.tsx`, ported from `memorials.tsx`:
+    - Data comes from EP-01 (lifecycle = memorial), EP-15 photos and EP-43 Entitlements / `usage.free_slot_pet`.
+    - It shows the Free counter "n / 2" or the Premium badge.
+    - "Vrati među aktivne" → EP-07 with `reenable_reminders = true`. It shows the toast "{name} je ponovo među aktivnim ljubimcima." and the card leaves the list.
+    - On Free with the slot taken, PremiumLock names `usage.free_slot_pet`. This is checked before the call and again on `premium_required`.
+    - States are default / empty / premium_locked / error. No StateSwitcher.
+  - S03 `pet-record-client.tsx`:
+    - DropdownMenu "Premesti u Uspomene" opens a dialog (date, reason, note) → EP-06. It then shows a toast and redirects to S06. A third memorial on Free shows PremiumLock inside the dialog.
+    - "Izvezi PDF": Free (`Entitlements.pdf_export` false) → PremiumLock; Premium → EP-16 → pdf-export-client.
+    - For a memorial pet, "Premesti u Uspomene" is hidden. The years line is hidden when birth is unknown, and the reason badge when the reason is null.
+  - S01 `pets-home-client.tsx`: the Uspomene link → `/uspomene`.
+  - i18n: the `petRecord` keys (memorial dialog, PDF, `pdfOwner`) and the `memorials` section in `lib/i18n/sr.ts` / `en.ts`.
+  - `public/fonts/Inter-Regular.ttf`, `Inter-Bold.ttf` and `OFL.txt` (SIL Open Font License 1.1 for Inter, from the Google Fonts GitHub repository `ofl/inter/OFL.txt`).
+  - Tests: `tests/memorial/memorials-screen.test.tsx` (11), `tests/memorial/memorial-dialog.test.tsx` (8), `tests/pdf/pdf-export.test.ts` (8; asserts on the react-pdf Document element tree); pgTAP `memorial_rpcs` (45).
+- **Verification (final run, after the owner decisions below were applied):**
+  - `npm run typecheck` ✅ exit 0
+  - `npm run lint` ✅ exit 0 (0 errors; the 2 known warnings in the generated `cloudflare-env.d.ts`)
+  - `npm test` ✅ `Test Files 53 passed (53)`, `Tests 596 passed (596)`
+  - `npx supabase test db` ✅ `Files=45, Tests=1491`, `All tests successful.` `Result: PASS`
+  - `npm run build` ✅ exit 0. Routes: `ƒ /_not-found`, `/auth/callback`, `/ljubimci`, `/ljubimci/[id]`, `/ljubimci/[id]/izmena`, `/ljubimci/[id]/pregledi/[pregledId]`, `/ljubimci/[id]/pregledi/novi`, `/ljubimci/[id]/terapije/[terapijaId]`, `/ljubimci/[id]/terapije/nova`, `/ljubimci/[id]/vakcine/[vakcinaId]`, `/ljubimci/[id]/vakcine/nova`, `/ljubimci/novi`, `○ /manifest.webmanifest`, `ƒ /prijava`, `/prijava/nova-lozinka`, `/privatnost`, `/profil`, `/registracija`, `/uslovi`, `/uspomene`, `ƒ Proxy (Middleware)`
+- **Owner decisions used (2026-10-23):**
+  - `pdf-export-client.ts` was renamed to `pdf-export-client.tsx`; `@react-pdf/renderer` loads with `await import()` on click.
+  - Fonts: `public/fonts/Inter-Regular.ttf` and `Inter-Bold.ttf` were added. `@fontsource/inter` is not installed, so they come from the Google Fonts GitHub repository; the owner accepted that source. At the owner's request, `public/fonts/OFL.txt` (the OFL text for Inter) was added next to them.
+  - The PDF title, sections, footer, file name, image embedding and Document-tree test follow the owner's decisions. The owner name under the title is labelled "Vlasnik: {name}" / "Owner: {name}" (new key `petRecord.pdfOwner`).
+  - Restore sends `reenable_reminders = true` and shows only "{name} je ponovo među aktivnim ljubimcima." / "{name} is back among your active pets."
+  - S03 for a memorial pet: "Premesti u Uspomene" is hidden. The years line is hidden without a birth date, and the reason badge when the reason is null.
+  - Approved copy: `petRecord.memorialLockDescription` (no mockup copy for the third-memorial PremiumLock) is "Na Free planu čuvaš do 2 uspomene. Uz Premium čuvaš uspomene bez ograničenja." / "On the Free plan you keep up to 2 memorials. With Premium you keep memorials without limit." The PROPOSED comment was removed.
+  - Also accepted from the previous STOPPED report:
+    - PDF dose logs name their author (`created_by_name`).
+    - PremiumLock is used on S03 for "Izvezi PDF" and inside the memorial dialog.
+    - The S06 counter wording is "Free · {count} / {limit} uspomene".
+    - Reason badges use the masculine form when the sex is unknown.
+  - English is a faithful translation written in this step. Dates use `Intl` (sr-Latn / en-GB, Europe/Belgrade). The PremiumLock CTA stays inert (Step 23).
+  - **Exception 1:** `tests/pets/pets-home.test.tsx` asserted "no Uspomene link", which Step 16 adds. Only that assertion was changed, to expect the link to `/uspomene`.
+- **Deviations / decisions:**
+  - **Files outside the original list (owner decisions):** `app/(app)/ljubimci/[id]/pdf-export-client.tsx` (renamed from `.ts`), `public/fonts/Inter-Regular.ttf`, `public/fonts/Inter-Bold.ttf`, `public/fonts/OFL.txt`, `tests/pets/pets-home.test.tsx` (exception 1).
+  - **Reminder re-enable** is a narrow definer helper, because clients write only their own manual reminders (Step 08 RLS). It re-enables only reminders whose next due time is in the future.
+- **Follow-ups:**
+  - The PremiumLock CTA needs to be wired in Step 23.
+  - Organisation animal status changes stay with Step 24.
 
 ---
 

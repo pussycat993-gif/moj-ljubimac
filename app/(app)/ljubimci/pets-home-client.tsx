@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { ArrowRight, PawPrint, Plus, Search } from "lucide-react"
+import { Archive, ArrowRight, PawPrint, Plus, Search } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -20,7 +20,7 @@ import { format, type Dictionary, type Locale } from "@/lib/i18n"
 
 // S01 — Moji ljubimci · /ljubimci · FR-01, FR-36, FR-59 · EP-01 (view:pet_summaries_api, active
 // rows), EP-15 (pet photos), EP-43 (Entitlements). The "Danas" strip renders empty until Step 17
-// (EP-25); the Uspomene link arrives with Step 16. States: loading (PetsHomeLoading, while EP-01
+// (EP-25); the header links to S06 Uspomene (Step 16). States: loading (PetsHomeLoading, while EP-01
 // is in flight) / default / empty (no active pet) / premium_locked (Free and own active count ≥
 // the limit when pressing "Dodaj ljubimca").
 
@@ -259,6 +259,12 @@ function Header({
           </div>
         )}
         <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" className="h-11 md:h-9">
+            <Link href="/uspomene">
+              <Archive className="size-5" aria-hidden />
+              {t.memorials}
+            </Link>
+          </Button>
           {add && (
             <Button asChild className="h-11 md:h-9">
               <Link href={add}>

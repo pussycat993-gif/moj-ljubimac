@@ -149,13 +149,13 @@ describe("S01 — states and cards", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Nešto nije u redu. Pokušaj ponovo.")
   })
 
-  it("'Danas' renders empty until Step 17, with the weekday; no Uspomene link", () => {
+  it("'Danas' renders empty until Step 17, with the weekday; the Uspomene link opens S06 (Step 16)", () => {
     renderHome({ pets: [luna] })
     expect(screen.getByRole("heading", { name: "Danas" })).toBeInTheDocument()
     expect(screen.getByText("· Ponedeljak, 19. oktobar")).toBeInTheDocument()
     expect(screen.getByText("Danas nema podsetnika.")).toBeInTheDocument()
     expect(screen.queryByRole("link", { name: /Pogledaj sve/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: /Uspomene/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /Uspomene/ })).toHaveAttribute("href", "/uspomene")
   })
 
   it("pet card: breed, sex chip, age with plurals, next reminder, link to the record", () => {
