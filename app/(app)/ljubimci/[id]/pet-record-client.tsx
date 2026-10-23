@@ -12,6 +12,7 @@ import {
   FileText,
   ImageIcon,
   Loader2,
+  MapPin,
   MoreVertical,
   Pencil,
   Phone,
@@ -75,6 +76,7 @@ import { deleteAttachment } from "@/lib/actions/attachments"
 import { getFileUrls, type FileUrl } from "@/lib/actions/files"
 import { movePetToMemorial, type MemorialReason } from "@/lib/actions/memorial"
 import { getPdfExportBundle } from "@/lib/actions/pdf-export"
+import { suggestNearbyVets, type Partner } from "@/lib/actions/partners"
 import { markOccurrenceDone } from "@/lib/actions/reminders"
 import { reminderRowLabels, toReminderRow } from "@/app/(app)/podsetnici/reminders-client"
 import { deletePet, type PetRecord, type WeightUnit } from "@/lib/actions/pets"
@@ -515,6 +517,80 @@ export function PetRecordLoading({ copy }: { copy: PetRecordCopy }) {
 export function PetRecordError({ copy }: { copy: PetRecordCopy }) {
   const router = useRouter()
   return <ErrorState message={copy.common.error} labels={{ retry: copy.common.retry }} onRetry={() => router.refresh()} />
+}
+
+/**
+ * The aside "Predlog veterinara u blizini" block (FR-56, BR-43, Design §12 S03, CR-22): for a personal pet
+ * without "moj veterinar", the first 2 vets from EP-64 (p_type = vet, p_limit = 2, p_city_id = the EP-43
+ * profile city — lib/actions/partners.ts suggestNearbyVets). [] — or any failure, or no profile city
+ * (owner decision, Step 27) — renders nothing.
+ */
+function VetSuggestion({ petName, locale, t }: { petName: string; locale: Locale; t: PetRecordCopy["petRecord"] }) {
+  const [vets, setVets] = useState<Partner[]>([])
+
+  useEffect(() => {
+    let active = true
+    try {
+      void Promise.resolve(suggestNearbyVets())
+        .then((result) => {
+          if (active && result?.ok && Array.isArray(result.data)) setVets(result.data.slice(0, 2))
+        })
+        .catch(() => undefined)
+    } catch {
+      // No suggestion block on any failure.
+    }
+    return () => {
+      active = false
+    }
+  }, [])
+
+  if (vets.length === 0) return null
+  const km = new Intl.NumberFormat(intlLocale(locale), {
+    style: "unit",
+    unit: "kilometer",
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })
+
+  return (
+    <Card className="gap-3 p-4 md:p-6" data-testid="vet-suggestion">
+      <div className="min-w-0">
+        <h2 className="font-heading text-lg font-bold">{t.vetSuggestionTitle}</h2>
+        <p className="text-sm text-muted-foreground">{format(t.vetSuggestionText, { name: petName })}</p>
+      </div>
+      <ul className="space-y-2">
+        {vets.map((v) => (
+          <li key={v.id} className="flex items-center gap-3 rounded-sm bg-foreground/5 p-3">
+            <Stethoscope className="size-5 shrink-0 text-pet-accent" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <Link
+                href={`/partneri/${v.id}`}
+                className="block rounded-sm break-words text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                {v.name}
+              </Link>
+              <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+                <MapPin className="size-3.5 shrink-0" aria-hidden />
+                <span className="truncate">
+                  {v.distance_km !== null
+                    ? format(t.vetSuggestionDistance, { distance: km.format(v.distance_km), address: v.address })
+                    : v.address}
+                </span>
+              </p>
+            </div>
+            <Button asChild variant="outline" size="icon" className="size-11 shrink-0 md:size-9">
+              <a href={`tel:${v.phone.replace(/\s/g, "")}`} aria-label={format(t.vetSuggestionCall, { name: v.name })}>
+                <Phone className="size-4" aria-hidden />
+              </a>
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <Button asChild variant="link" className="justify-start px-0">
+        <Link href="/partneri">{t.allPartners}</Link>
+      </Button>
+    </Card>
+  )
 }
 
 type PendingDelete = { kind: "weight" | "vaccination" | "treatment" | "visit" | "attachment"; id: string }
@@ -1337,7 +1413,7 @@ export function PetRecordClient({
             )}
           </Card>
 
-          {pet.vet_name && (
+          {pet.vet_name ? (
             <Card className="gap-3 p-4 md:p-6">
               <h2 className="font-heading text-lg font-bold">{t.vet}</h2>
               <p className="text-sm">{pet.vet_name}</p>
@@ -1350,6 +1426,10 @@ export function PetRecordClient({
                 </Button>
               )}
             </Card>
+          ) : (
+            (record.access.role === "owner" || record.access.role === "member") && (
+              <VetSuggestion petName={pet.name} locale={locale} t={t} />
+            )
           )}
 
           {/* The care log and moments are personal: organisation animals have none (EP-17, EP-20). */}

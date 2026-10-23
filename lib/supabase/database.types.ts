@@ -1614,6 +1614,9 @@ isOneToOne: false
 "get_organisation_invitation":
 { Args: { "p_token_hash": string }; Returns: Json
                            },
+"get_partner":
+{ Args: { "p_city_id"?: string,"p_lat"?: number,"p_lng"?: number,"p_partner_id": string }; Returns: Json
+                           },
 "get_pet_record":
 { Args: { "p_pet_id": string }; Returns: Json
                            },

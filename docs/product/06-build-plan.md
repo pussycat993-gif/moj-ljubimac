@@ -86,7 +86,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 24 | Organisations: animals, team, public profile | ✅ | 09, 15, 19, 22 | — | 2026-10-23 |
 | 25 | Requests, inquiries & record transfers | ✅ | 24, 22 | — | 2026-10-23 |
 | 26 | Litters & public organisation pages | ✅ | 25 | — | 2026-10-23 |
-| 27 | Partners directory & vet suggestion | ⬜ | 09, 12, 14 | — | |
+| 27 | Partners directory & vet suggestion | ✅ | 09, 12, 14 | — | 2026-10-23 |
 | 28 | Operator admin | ⬜ | 27, 24, 19 | — | |
 | 28a | Schema: Šapa pomoći | ⬜ | 28 | — | |
 | 28b | Listings, public pages, profiles & donation info | ⬜ | 28a, 21, 19 | — | |
@@ -4646,7 +4646,58 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-23** — Step 27 built (unattended overnight run).
+  - **Built:**
+    - Migration `20261023235000_partner_directory.sql`: `rpc:get_partner(p_partner_id, p_lat, p_lng, p_city_id) → jsonb` (EP-65). Security invoker (the partners / partner_hours RLS applies too), granted to authenticated and service_role only. It returns one Partner: `distance_km` from the coordinates, else from the `p_city_id` city centre, else null (BR-42); full `hours` by weekday; `today_hours` for today's ISO weekday in Europe/Belgrade (null means closed). An unknown partner, or one whose `paid_until` has passed, raises `not_found` (BR-40, E-23). One coordinate only raises `validation_failed` (`lat` / `lng: required`). `logo_url` is null; `logo_r2_key` is passed back for signing. No table, column, enum or constraint changes. The Step 09 `partners_nearby` and `record_partner_click` passed every Step 27 test unchanged, so they were not touched. `npm run db:types` regenerated `lib/supabase/database.types.ts`.
+    - `lib/actions/partners.ts` (new):
+      - `getPartner` (EP-65): Request checks with field codes, then one `get_partner` call. The logo is signed through `lib/integrations/r2.ts` `presignGet` (10 min) and the key is dropped. If signing fails, the profile shows initials.
+      - `listPartnersNearby` (EP-64 for S24 re-reads): coordinates or `city_id` required; `type` / `limit` checked.
+      - `suggestNearbyVets` (S03 block): EP-43 `get_me` city, then EP-64 with `p_type = vet`, `p_limit = 2`, `p_city_id` = the profile city. With no city it returns `[]`.
+      - `recordPartnerClick` (EP-66, owner decision).
+      - Types Partner, PartnerHours, City (re-exported from registration.ts).
+    - S24 `app/(app)/partneri/page.tsx` + `partners-screen.tsx`: port of `partners.tsx` without the StateSwitcher.
+      - First read uses the EP-43 profile city with every type. Type chips re-read with `p_type`.
+      - "Koristi moju lokaciju" uses the browser Geolocation API with permission, then re-reads with `p_lat` / `p_lng`. On denial or with no API, the profile city stays (E-22).
+      - "Istaknuto" (the `featured` rows EP-64 lists first) is followed by "Po udaljenosti". Cards show initials, type badge, featured badge, distance ("1,2 km" / "1.2 km" via Intl), address and today's hours.
+      - Quick actions appear only when the partner has the data (E-24). "Poruka" uses `message_channel` + `message_number` (wa.me / viber:// / sms:, BR-44). Each tap calls EP-66 fire-and-forget, and a failure never blocks the link.
+      - Vet-suggestion banner: shown for the first active EP-01 pet (`pet_summaries_api`, by name) with an empty `vet_name`. "Pogledaj veterinare" switches to the vet chip (`p_type = vet`); "Ne sada" hides the banner.
+      - States: default / loading (skeleton grid, and the Suspense fallback) / empty (`[]`) / error (retry re-reads). With no profile city and no location, the owner-decided "Dodaj grad u profil" state links to `/profil`.
+      - Card links carry `?lat=&lng=` when the location is in use.
+    - S25 `app/(app)/partneri/[id]/page.tsx` + `partner-profile-screen.tsx`: port of `partner-profile.tsx` without the StateSwitcher.
+      - Data comes from `getPartner`, with `?lat=&lng=` or else the EP-43 profile city.
+      - Header: logo (AvatarImage) or initials, name, type, "{distance} od tebe" (only when `distance_km` is set), "{address}, {city}".
+      - The four quick actions as large buttons (EP-66 on tap), "O nama" (only with a description), and "Radno vreme" for all 7 weekdays (today marked from the Belgrade weekday; a missing weekday shows "Zatvoreno").
+      - Contact card: phone, messaging number · channel, email, website, Instagram, plus "Uputstva do adrese".
+      - States: default / minimal (absent fields and their actions hidden) / loading (h1 + skeletons) / error (404 / 5xx, retry = `router.refresh()`).
+    - S03 `app/(app)/ljubimci/[id]/pet-record-client.tsx`: the aside "Moj veterinar" card is now `vet_name ? card : block`. The new `VetSuggestion` block comes from the mockup's "Bez veterinara (predlog)" view. It shows the first 2 vets from `suggestNearbyVets`: name linking to S25, "{distance} · {address}", call icon button "Pozovi: {name}", and "Svi partneri →" to `/partneri`. It renders only for personal pets (`access.role` owner / member). `[]`, no profile city, or any failure means no block. Nothing else on S03 changed.
+    - `lib/i18n/sr.ts` / `en.ts`: new sections `partners` and `partnerProfile`; five `petRecord.vetSuggestion*` / `allPartners` keys. All copy comes from the mockups or the owner decisions; English written in this step.
+    - Tests:
+      - pgTAP: `partner_directory.test.sql` (30). It seeds partners in Kragujevac inside the transaction and sets Ivana's profile city there for the test. It checks: FR-52 hidden by `paid_until`; `get_partner` → `not_found`; featured first with ≤ 3 per type and a 4th featured refused, then distance ascending; FR-53 coordinates vs profile city; `get_partner` distance / hours / today_hours / fields / validation; FR-55 click row inserted, actions without data → `validation_failed`, hidden partner → `not_found`; Visitors can't call `get_partner`.
+      - Vitest: `tests/partners/get-partner.test.ts` (9), `partners-screen.test.tsx` (13), `partner-profile-screen.test.tsx` (8), `vet-suggestion.test.tsx` (6). `vet-suggestion` runs the real `suggestNearbyVets` against a fake server client and asserts the `partners_nearby` arguments.
+  - **Owner decisions applied (2026-10-23):**
+    - No profile city and no location: empty state "Dodaj grad u profil" / "Add your city to your profile", "Partnere u blizini prikazujemo prema lokaciji ili gradu iz profila." / "We show nearby partners by your location or your profile city.", action "Otvori profil" / "Open profile" → `/profil`. On S03 in that case, no block.
+    - S24 links to S25 with `?lat=&lng=` when the location is in use; otherwise S25 uses the EP-43 city.
+    - S03 vet block: personal pets only; it renders nothing on any failure, so the Step 14 tests needed no mock (all existing S03 tests pass unchanged).
+    - EP-66 goes through `recordPartnerClick` in `lib/actions/partners.ts`; `https://` is added to partner websites only when the stored value has no scheme. No Nominatim calls.
+    - Applied from earlier decisions: server actions; sr-Latn / en-GB number formats; the 5xx text "Nešto nije u redu. Pokušaj ponovo."; English written in this step.
+  - **Database functions (pre-approved exception 6):** none. `rpc:get_partner` is the function this step's prompt names for EP-65.
+  - **Verification** (in order; all on the same code):
+    - `npm run typecheck` ✅ exit 0
+    - `npm run lint` ✅ exit 0 (0 errors; the 2 known warnings in the generated `cloudflare-env.d.ts`)
+    - `npm test` ✅ `Test Files 105 passed (105)`, `Tests 1132 passed (1132)`
+    - `npx supabase test db` ✅ `Files=72, Tests=2383`, `All tests successful.`, `Result: PASS`. Ran after `npx supabase db reset`: the first run failed `household_rls` #16 and `server_support` #12 only because of leftover local rows (extra invitations / idempotency keys from earlier e2e runs). After the reset everything passed.
+    - `npm run build` ✅ exit 0. Routes include `ƒ /partneri` and `ƒ /partneri/[id]`.
+  - **Deviations / decisions:**
+    - **Extra wrappers in `lib/actions/partners.ts`:** `listPartnersNearby` and `suggestNearbyVets` wrap EP-64 (no client in the app calls the Data API from the browser). `suggestNearbyVets` composes EP-43 + EP-64 because the S03 `page.tsx` is not on this step's list and does not pass the profile city to the client. Neither adds an endpoint, field or error code.
+    - **`logo_r2_key` in the `get_partner` result:** the RPC passes the key so `getPartner` can sign it in the same round trip. The action removes it, so EP-65 returns exactly Partner.
+    - **External links:** https links (website, wa.me, Instagram, maps) open in a new tab (`target="_blank" rel="noopener noreferrer"`) so the EP-66 call is not cut off by navigation. tel:, mailto:, sms: and viber: open in place.
+    - **Display details:** S25 does not repeat the city when the stored address already ends with it (the seed addresses include ", Novi Sad"). The website label drops the scheme (mockup shows "drvet.rs"). An Instagram handle loses a leading "@" in the link. The S03 call button is not counted through EP-66 (EP-66 callers are S24 / S25 only).
+    - **S24 banner visibility:** as in the mockup, the banner shows only in the default state with partners listed (not while loading, empty or in error). The banner pet is the first active EP-01 pet with an empty `vet_name`, organisation animals included, as EP-01 returns them; owner accounts see only personal pets.
+    - **S03 for memorial pets:** the block follows the rule as written (empty `vet_name` on a personal pet), memorial pets included.
+  - **Follow-ups:**
+    - Add `rpc:get_partner` (with its signature) to `docs/product/05-api-integration-contract.md` EP-65.
+    - `lib/actions/files.ts` (EP-15) still answers `url = null` for `partner_logo`. S25 signs the logo in `getPartner`, so nothing needs it yet; Step 28 (admin partner logo) may want EP-15 to serve it.
+    - The logo is shown with shadcn `AvatarImage` inside the existing Avatar (OQ-10 `LogoAvatar` not approved).
 
 ---
 
