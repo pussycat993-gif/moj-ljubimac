@@ -48,3 +48,18 @@ Prijava ide preko Supabase Auth (TC ADR-06); sesija je u httpOnly kolačićima, 
 2. **Sign In / Providers → Email:** uključena potvrda mejla (BR-29), minimalna dužina lozinke 8.
 3. **Sign In / Providers → Google:** uključen, sa Client ID i Client Secret vlasnikovog Google OAuth klijenta. U Google Cloud konzoli je authorized redirect URI Supabase-ov callback (`https://<SUPABASE_PROJECT_REF>.supabase.co/auth/v1/callback`). TC §8.1 nema promenljivu aplikacije za Google — podešava se samo ovde.
 4. **URL Configuration:** Site URL = `NEXT_PUBLIC_SITE_URL`; Redirect URLs sadrži `<NEXT_PUBLIC_SITE_URL>/auth/callback`.
+
+## Scheduled jobs
+
+pg_cron u Supabase-u (TC §8, ADR-04) svakog minuta poziva `POST /api/internal/dispatch` (EP-33: slanje podsetnika mejlom i push-om, ponovno slanje posle 30 minuta, propušteni, watchdog) preko `pg_net`. Job `reminder-dispatch` poziva `private.call_internal_route('/api/internal/dispatch')`, koja iz Supabase Vault-a čita dve tajne (samo imena; vrednosti vlasnik postavlja po okruženju, nikad u migraciji):
+
+- `dispatch_url` — osnovni URL aplikacije (npr. `NEXT_PUBLIC_SITE_URL`); svaki job dodaje svoju putanju.
+- `dispatch_secret` — ista vrednost kao `DISPATCH_SECRET` aplikacije; šalje se u zaglavlju `X-Dispatch-Secret`.
+
+Dok bilo koja od tih tajni nedostaje, poziv ne radi ništa — lokalno pg_cron zato nikad ne zove napolje. Noćno generisanje podsetnika (`nightly-reminder-occurrences`) radi u bazi i ne koristi te tajne.
+
+Lokalno:
+
+- VAPID ključevi za push: `npx @pushforge/builder vapid` (javni ključ u `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, privatni JWK u `VAPID_PRIVATE_KEY_JWK`, plus `VAPID_SUBJECT`). Bez njih se push preskače; bez `RESEND_API_KEY` mejl se samo ispiše u konzolu.
+- Ako želiš da lokalni pg_cron zove `next dev`, u Vault upiši `dispatch_url` = `http://host.docker.internal:3000` i `dispatch_secret` = tvoj `DISPATCH_SECRET` (`select vault.create_secret('<vrednost>', '<ime>');`). Job se gasi sa `select cron.unschedule('reminder-dispatch');`.
+- Ručno pokretanje (kad je lokalni pg_cron isključen ili bez tajni): `curl -X POST http://localhost:3000/api/internal/dispatch -H "X-Dispatch-Secret: <DISPATCH_SECRET>"`

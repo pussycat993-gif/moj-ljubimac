@@ -773,6 +773,47 @@ export const sr = {
     save: "Sačuvaj podešavanja",
     saved: "Podešavanja su sačuvana.",
   },
+  // Design §9.1 message copy (Step 19): emails, push and the /api/a/done pages, keyed by template id.
+  // The language follows the recipient's profiles.locale. {pet} is the pet name (nominative) or
+  // reminders.forMe; a null meal / birthday title uses reminders.mealTitle / pet.birthdayTitle.
+  messages: {
+    email_footer: "Moj Ljubimac · Ovaj mejl ti šaljemo jer imaš nalog. Obaveštenja menjaš u Podešavanjima.",
+    reminder_email: {
+      subject: "{pet}: {title}",
+      body: "Zdravo, {first_name}! Podsetnik: {title} — {pet}, {date} u {time}.",
+      // Owner decision (Step 19): no first name on the profile.
+      bodyNoName: "Zdravo! Podsetnik: {title} — {pet}, {date} u {time}.",
+      done: "Urađeno",
+      open: "Otvori u aplikaciji",
+      note: "Dugme „Urađeno“ važi 24 sata.",
+    },
+    reminder_push: {
+      title: "{pet}: {title}",
+      body: "{date} u {time}",
+      action: "Urađeno",
+    },
+    action_done_page: {
+      heading: "Označeno kao urađeno",
+      body: "{pet}: {title} — označeno u {time}.",
+      button: "Otvori aplikaciju",
+    },
+    action_expired_page: {
+      heading: "Link je istekao",
+      body: "Link važi 24 sata i samo jednom. Otvori aplikaciju i označi podsetnik tamo.",
+      button: "Otvori aplikaciju",
+    },
+    // Owner decision (Step 19): EP-32 not_found and household_read_only pages.
+    action_not_found_page: {
+      heading: "Podsetnik nije dostupan",
+      body: "Više nemaš pristup ovom podsetniku.",
+      button: "Otvori aplikaciju",
+    },
+    action_read_only_page: {
+      heading: "Domaćinstvo je samo za čitanje",
+      body: "Vlasniku domaćinstva je istekao Premium, pa podsetnik ne možeš da označiš.",
+      button: "Otvori aplikaciju",
+    },
+  },
 }
 
 /** Same shape as `sr` with every string widened — en.ts must match it key for key (NFR-05). */

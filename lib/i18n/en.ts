@@ -737,4 +737,40 @@ export const en: Dictionary = {
     save: "Save settings",
     saved: "Settings saved.",
   },
+  messages: {
+    email_footer: "Moj Ljubimac · You're getting this email because you have an account. Change notifications in Settings.",
+    reminder_email: {
+      subject: "{pet}: {title}",
+      body: "Hi {first_name}! Reminder: {title} — {pet}, {date} at {time}.",
+      bodyNoName: "Hi! Reminder: {title} — {pet}, {date} at {time}.",
+      done: "Done",
+      open: "Open in the app",
+      note: 'The "Done" button works for 24 hours.',
+    },
+    reminder_push: {
+      title: "{pet}: {title}",
+      body: "{date} at {time}",
+      action: "Done",
+    },
+    action_done_page: {
+      heading: "Marked as done",
+      body: "{pet}: {title} — marked at {time}.",
+      button: "Open the app",
+    },
+    action_expired_page: {
+      heading: "This link has expired",
+      body: "The link works once and for 24 hours. Open the app and mark the reminder there.",
+      button: "Open the app",
+    },
+    action_not_found_page: {
+      heading: "Reminder not available",
+      body: "You no longer have access to this reminder.",
+      button: "Open the app",
+    },
+    action_read_only_page: {
+      heading: "The household is read-only",
+      body: "The household owner's Premium has ended, so you can't mark this reminder.",
+      button: "Open the app",
+    },
+  },
 }

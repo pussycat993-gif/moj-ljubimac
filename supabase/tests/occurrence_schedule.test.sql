@@ -8,9 +8,9 @@ create extension if not exists pgtap with schema extensions;
 select plan(11);
 
 select has_extension('pg_cron', 'pg_cron is installed');
-select is((select count(*)::int from cron.job), 1, 'exactly one cron job exists (only the nightly generation)');
+select is((select count(*)::int from cron.job where jobname <> 'reminder-dispatch'), 1, 'exactly one cron job besides the Step 19 dispatch exists (the nightly generation)');
 select is(
-  (select row(jobname, schedule, command)::text from cron.job),
+  (select row(jobname, schedule, command)::text from cron.job where jobname <> 'reminder-dispatch'),
   row('nightly-reminder-occurrences', '0 1 * * *', 'select private.generate_all_reminder_occurrences()')::text,
   'it runs once per night at 01:00 UTC and calls the all-reminders function'
 );

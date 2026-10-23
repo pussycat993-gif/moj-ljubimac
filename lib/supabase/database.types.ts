@@ -1283,7 +1283,16 @@ isOneToOne: false
                 }
           }
           Functions: {
-            "get_channel_usage":
+            "claim_due_occurrences":
+{ Args: { "p_limit"?: number }; Returns: Json
+                           },
+"claim_resend_occurrences":
+{ Args: { "p_limit"?: number }; Returns: Json
+                           },
+"dispatch_watchdog_due":
+{ Args: Record<PropertyKey, never>; Returns: boolean
+                           },
+"get_channel_usage":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
 "get_me":
@@ -1304,8 +1313,14 @@ isOneToOne: false
 "log_dose":
 { Args: { "p_given_at"?: string,"p_occurrence_id"?: string,"p_treatment_id": string }; Returns: Json
                            },
+"mark_missed_occurrences":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           },
 "mark_occurrence_done":
 { Args: { "p_occurrence_id": string }; Returns: Json
+                           },
+"mark_occurrence_done_for":
+{ Args: { "p_occurrence_id": string,"p_recipient_id": string }; Returns: Json
                            },
 "move_pet_to_memorial":
 { Args: { "p_date": string,"p_note"?: string,"p_pet_id": string,"p_reason"?: Database["public"]['Enums']["memorial_reason"] }; Returns: Json
