@@ -1,15 +1,32 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type MouseEvent } from "react"
 import Link from "next/link"
-import { Bell, CalendarClock, Check, CircleX, Eye, Home, SearchX, UserRound, Users } from "lucide-react"
+import {
+  Bell,
+  CalendarClock,
+  Check,
+  CircleX,
+  ClipboardList,
+  Eye,
+  FileText,
+  Home,
+  Paperclip,
+  SearchX,
+  Syringe,
+  UserRound,
+  Users,
+} from "lucide-react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { PetAvatar, type PetSex, type PetSpecies } from "@/components/app/pet-avatar"
+import { PremiumLock } from "@/components/app/premium-lock"
 import type { InvitationDecision, InvitationView } from "@/lib/actions/invitations"
+import type { TransferView } from "@/lib/actions/transfers"
 import type { ActionResult } from "@/lib/server/result"
 import { format, type Dictionary, type Locale } from "@/lib/i18n"
 
@@ -17,7 +34,7 @@ import { format, type Dictionary, type Locale } from "@/lib/i18n"
 // variant (Step 24, CR-18; the team / teamAdmin views) of docs/product/04-design/screens/invite-accept.tsx
 // without the StateSwitcher. Variants from EP-39 / EP-40 (API §7.3): household or team (pending, chosen by
 // InvitationView.kind), accepted, declined (invitation_declined), sign-in prompt (is_signed_in = false),
-// expired (410 invitation_expired), error (404 / 5xx, and tr_ tokens until Step 25), loading (the page's
+// expired (410 invitation_expired), error (404 / 5xx; tr_ tokens render TransferAcceptScreen below, Step 25), loading (the page's
 // Suspense fallback). EP-40 409 / 403 answers are inline messages.
 
 export type InvitationCopy = {
@@ -485,7 +502,370 @@ export function InviteAcceptScreen({
         </Card>
       )}
 
-      {/* Error — unknown token, 5xx, or a tr_ token before Step 25 */}
+      {/* Error — unknown token or 5xx */}
+      {variant === "error" && (
+        <Card role="alert" className="items-center gap-4 p-6 text-center md:p-8">
+          <span className="flex size-12 items-center justify-center rounded-full bg-foreground/5">
+            <SearchX className="size-6 text-muted-foreground" aria-hidden />
+          </span>
+          <h1 className="font-heading text-[28px] leading-9 font-bold">{t.notFoundTitle}</h1>
+          <p className="text-sm text-muted-foreground">{t.notFoundBody}</p>
+          <Separator />
+          <Button variant="outline" className="h-11 w-full md:h-9" asChild>
+            <Link href="/ljubimci">{t.goHome}</Link>
+          </Button>
+        </Card>
+      )}
+    </>
+  )
+}
+
+// S14 record-transfer variants (Step 25, FR-50, FR-51; invite-accept.tsx transfer / slot views) for tr_ tokens.
+// From EP-60 (API §7.3): transfer (pending), accepted (ok with status accepted and new_pet_id), declined
+// (invitation_declined), sign-in (no session; accept / decline answer 401), expired (410 invitation_expired, the
+// "link no longer works" copy for every non-household kind, Step 24), slot taken (403 premium_required with
+// details.limit = transfer_slot → PremiumLock naming details.slot_pet_name), error (404 / 5xx). invitation_used and
+// forbidden_role (BR-33) are inline messages.
+
+export type TransferCopy = {
+  invitation: Dictionary["invitation"]
+  pet: Dictionary["pet"]
+  common: Dictionary["common"]
+}
+
+export type TransferActions = {
+  acceptTransfer: (input: { token: string }) => Promise<ActionResult<TransferView>>
+  declineTransfer: (input: { token: string }) => Promise<ActionResult<TransferView>>
+}
+
+type TransferVariant = "transfer" | "accepted" | "declined" | "signin" | "expired" | "slot" | "error"
+
+const transferIntl = (locale: Locale) => (locale === "en" ? "en-GB" : "sr-Latn")
+
+function transferPlural(t: Record<string, unknown>, base: string, n: number, locale: Locale) {
+  const rule = new Intl.PluralRules(transferIntl(locale)).select(n)
+  const key = `${base}_${rule === "one" || rule === "few" ? rule : "other"}`
+  return format(String(t[key]), { n })
+}
+
+/** The animal's age: the organisation's approximate age, else from the birth date (Step 13 rule). */
+function transferAge(animal: TransferView["animal"], t: Dictionary["pet"], locale: Locale): string | null {
+  if (animal.approx_age_text) return animal.approx_age_text
+  if (!animal.birth_date) return null
+  const [year, month, day] = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Belgrade" })
+    .format(new Date())
+    .split("-")
+    .map(Number)
+  const [by, bm, bd] = animal.birth_date.split("-").map(Number)
+  const months = Math.max(0, (year - by) * 12 + (month - bm) - (day < bd ? 1 : 0))
+  return months >= 12
+    ? transferPlural(t, "years", Math.floor(months / 12), locale)
+    : transferPlural(t, "months", months, locale)
+}
+
+function TransferAnimalCard({ view, copy, locale }: { view: TransferView; copy: TransferCopy; locale: Locale }) {
+  const t = copy.invitation
+  const a = view.animal
+  const species =
+    a.species === "other" && a.species_other
+      ? a.species_other
+      : (copy.pet.species[a.species as keyof Dictionary["pet"]["species"]] ?? a.species)
+  const detail = [[species, a.breed].filter(Boolean).join(" · "), transferAge(a, copy.pet, locale)]
+    .filter(Boolean)
+    .join(" · ")
+  const includes = [
+    { icon: Syringe, label: transferPlural(t, "vaccinations", view.counts.vaccinations, locale) },
+    { icon: ClipboardList, label: transferPlural(t, "visits", view.counts.vet_visits, locale) },
+    { icon: Paperclip, label: transferPlural(t, "attachments", view.counts.attachments, locale) },
+  ]
+  return (
+    <div data-pet-sex={a.sex} className="overflow-hidden rounded-md border border-border bg-card">
+      <div className="h-3 bg-pet-accent-soft" aria-hidden />
+      <div className="space-y-4 p-4">
+        <div className="flex items-center gap-3">
+          <PetAvatar
+            name={a.name}
+            sex={a.sex as PetSex}
+            species={avatarSpecies(a.species)}
+            photoUrl={a.photo_url?.url ?? undefined}
+            size="md"
+            ring
+          />
+          <div className="min-w-0">
+            <p className="truncate font-heading text-lg font-bold">{a.name}</p>
+            {detail && <p className="truncate text-sm text-muted-foreground">{detail}</p>}
+            {a.microchip_number && (
+              <p className="truncate text-xs text-muted-foreground">{format(t.microchip, { n: a.microchip_number })}</p>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {includes.map((item) => {
+            const Icon = item.icon
+            return (
+              <span
+                key={item.label}
+                className="inline-flex items-center gap-1 rounded-sm bg-foreground/5 px-2 py-1 text-xs font-medium"
+              >
+                <Icon className="size-3.5 text-pet-accent" aria-hidden />
+                {item.label}
+              </span>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function initialTransferVariant(initial: ActionResult<TransferView>, signedIn: boolean): TransferVariant {
+  if (!initial.ok) return initial.error.code === "invitation_expired" ? "expired" : "error"
+  const v = initial.data
+  if (v.status === "declined") return "declined"
+  if (v.status === "accepted" && v.new_pet_id) return "accepted"
+  if (!signedIn && v.status === "pending") return "signin"
+  return "transfer"
+}
+
+/** S14 for tr_ tokens (EP-60). */
+export function TransferAcceptScreen({
+  token,
+  initial,
+  user,
+  locale,
+  copy,
+  actions,
+}: {
+  token: string
+  initial: ActionResult<TransferView>
+  /** The signed-in user (EP-43), null for a Visitor. */
+  user: { name: string; email: string } | null
+  locale: Locale
+  copy: TransferCopy
+  actions: TransferActions
+}) {
+  const t = copy.invitation
+  const router = useRouter()
+  const [view, setView] = useState<TransferView | null>(initial.ok ? initial.data : null)
+  const [variant, setVariant] = useState<TransferVariant>(() => initialTransferVariant(initial, user !== null))
+  const [busy, setBusy] = useState(false)
+  const [slotPet, setSlotPet] = useState("")
+  const [inline, setInline] = useState<string | null>(() =>
+    initial.ok && initial.data.status === "accepted" && !initial.data.new_pet_id ? t.transferUsed : null,
+  )
+
+  const petName = view?.animal.name ?? ""
+  const organisationName = view?.organisation.name ?? ""
+  const city = view?.organisation.city
+    ? locale === "en"
+      ? view.organisation.city.name_en || view.organisation.city.name_sr
+      : view.organisation.city.name_sr
+    : null
+  const validUntil = view
+    ? new Intl.DateTimeFormat(transferIntl(locale), {
+        day: "numeric",
+        month: locale === "en" ? "short" : "numeric",
+        year: "numeric",
+        timeZone: "Europe/Belgrade",
+      }).format(new Date(view.expires_at))
+    : ""
+
+  async function decide(decision: "accept" | "decline") {
+    setBusy(true)
+    const result = decision === "accept" ? await actions.acceptTransfer({ token }) : await actions.declineTransfer({ token })
+    setBusy(false)
+    if (result.ok) {
+      setInline(null)
+      setView(result.data)
+      setVariant(result.data.status === "accepted" ? "accepted" : "declined")
+      return
+    }
+    switch (result.error.code) {
+      case "unauthenticated":
+        setVariant("signin")
+        return
+      case "invitation_expired":
+        setVariant("expired")
+        return
+      case "not_found":
+        setVariant("error")
+        return
+      case "invitation_used":
+        setInline(t.transferUsed)
+        return
+      case "forbidden_role":
+        setInline(t.transferForbidden)
+        return
+      case "premium_required":
+        if (result.error.details?.limit === "transfer_slot") {
+          setSlotPet(String(result.error.details?.slot_pet_name ?? ""))
+          setInline(null)
+          setVariant("slot")
+          return
+        }
+        setInline(copy.common.error)
+        return
+      default:
+        setInline(copy.common.error)
+    }
+  }
+
+  // PremiumLock's CTA opens the Premium page (owner decision, Step 22).
+  function openPremium(e: MouseEvent<HTMLDivElement>) {
+    if ((e.target as HTMLElement).closest("button")) router.push("/premium")
+  }
+
+  const kicker = (
+    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <FileText className="size-4" aria-hidden />
+      <span>{t.transferKicker}</span>
+    </div>
+  )
+
+  return (
+    <>
+      {/* Record transfer from an organisation (FR-50) */}
+      {variant === "transfer" && view && (
+        <Card className="gap-6 p-4 md:p-6">
+          <div className="space-y-2">
+            {kicker}
+            <h1 className="font-heading text-[28px] leading-9 font-bold">{format(t.transferTitle, { pet: petName })}</h1>
+            <p className="text-sm text-muted-foreground">
+              {city
+                ? format(t.transferIntro, { organisation: organisationName, city })
+                : format(t.transferIntroNoCity, { organisation: organisationName })}
+            </p>
+          </div>
+
+          <TransferAnimalCard view={view} copy={copy} locale={locale} />
+
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            <li className="flex items-start gap-2">
+              <Eye className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span className="min-w-0">{format(t.transferKeepsCopy, { organisation: organisationName })}</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <CalendarClock className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span className="min-w-0">{format(t.validUntil, { date: validUntil })}</span>
+            </li>
+          </ul>
+
+          {user && <SignedInAs user={user} label={t.notYou} />}
+
+          {inline && (
+            <p role="alert" className="text-sm text-destructive">
+              {inline}
+            </p>
+          )}
+
+          {view.status === "pending" && (
+            <div className="flex flex-col gap-2 md:flex-row-reverse">
+              <Button className="h-11 md:h-9 md:flex-1" disabled={busy} onClick={() => void decide("accept")}>
+                {t.acceptRecord}
+              </Button>
+              <Button
+                variant="outline"
+                className="h-11 md:h-9 md:flex-1"
+                disabled={busy}
+                onClick={() => void decide("decline")}
+              >
+                {t.decline}
+              </Button>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Accepted confirmation */}
+      {variant === "accepted" && (
+        <Card className="items-center gap-4 p-6 text-center md:p-8">
+          <span className="flex size-12 items-center justify-center rounded-full bg-foreground/5">
+            <Check className="size-6 text-primary" aria-hidden />
+          </span>
+          <h1 className="font-heading text-[28px] leading-9 font-bold">
+            {format(t.transferAcceptedTitle, { pet: petName })}
+          </h1>
+          <p className="text-sm text-muted-foreground">{t.transferAcceptedBody}</p>
+          <Button className="h-11 w-full md:h-9" asChild>
+            <Link href="/ljubimci">{t.goToPets}</Link>
+          </Button>
+        </Card>
+      )}
+
+      {/* Declined */}
+      {variant === "declined" && (
+        <Card role="status" className="items-center gap-4 p-6 text-center md:p-8">
+          <span className="flex size-12 items-center justify-center rounded-full bg-foreground/5">
+            <CircleX className="size-6 text-muted-foreground" aria-hidden />
+          </span>
+          <h1 className="font-heading text-[28px] leading-9 font-bold">{t.transferDeclinedTitle}</h1>
+          <p className="text-sm text-muted-foreground">
+            {format(t.transferDeclinedBody, { pet: petName, organisation: organisationName })}
+          </p>
+          <Separator />
+          <Button variant="outline" className="h-11 w-full md:h-9" asChild>
+            <Link href="/ljubimci">{t.goHome}</Link>
+          </Button>
+        </Card>
+      )}
+
+      {/* Not signed in — must sign in or register first */}
+      {variant === "signin" && (
+        <Card className="gap-6 p-4 md:p-6">
+          <div className="space-y-2">
+            {kicker}
+            <h1 className="font-heading text-[28px] leading-9 font-bold">{format(t.transferTitle, { pet: petName })}</h1>
+            <p className="text-sm text-muted-foreground">{t.signInBody}</p>
+          </div>
+          {view && <TransferAnimalCard view={view} copy={copy} locale={locale} />}
+          <div className="flex flex-col gap-2">
+            <Button className="h-11 md:h-9" asChild>
+              <Link href="/registracija">{t.createAccount}</Link>
+            </Button>
+            <Button variant="outline" className="h-11 md:h-9" asChild>
+              <Link href={`/prijava?next=${encodeURIComponent(`/poziv/${token}`)}`}>{t.signIn}</Link>
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Free slot taken (FR-51, E-20) */}
+      {variant === "slot" && view && (
+        <div className="space-y-4">
+          <Card className="gap-4 p-4 md:p-6">
+            <div className="space-y-2">
+              {kicker}
+              <h1 className="font-heading text-[28px] leading-9 font-bold">{format(t.slotTitle, { pet: petName })}</h1>
+              <p className="text-sm text-muted-foreground">{format(t.slotBody, { slot: slotPet })}</p>
+            </div>
+            <TransferAnimalCard view={view} copy={copy} locale={locale} />
+            <p className="flex items-start gap-2 text-sm text-muted-foreground">
+              <CalendarClock className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span className="min-w-0">{format(t.slotValidUntil, { date: validUntil })}</span>
+            </p>
+          </Card>
+          <div onClick={openPremium}>
+            <PremiumLock title={copy.common.premiumTitle} cta={copy.common.premiumCta} description={t.slotPremium} />
+          </div>
+        </div>
+      )}
+
+      {/* Expired (E-19) */}
+      {variant === "expired" && (
+        <Card className="items-center gap-4 p-6 text-center md:p-8">
+          <span className="flex size-12 items-center justify-center rounded-full bg-foreground/5">
+            <CalendarClock className="size-6 text-muted-foreground" aria-hidden />
+          </span>
+          <h1 className="font-heading text-[28px] leading-9 font-bold">{t.expiredTitle}</h1>
+          <p className="text-sm text-muted-foreground">{t.linkExpiredBody}</p>
+          <Separator />
+          <Button variant="outline" className="h-11 w-full md:h-9" asChild>
+            <Link href="/ljubimci">{t.goHome}</Link>
+          </Button>
+        </Card>
+      )}
+
+      {/* Error — unknown token or 5xx */}
       {variant === "error" && (
         <Card role="alert" className="items-center gap-4 p-6 text-center md:p-8">
           <span className="flex size-12 items-center justify-center rounded-full bg-foreground/5">

@@ -59,12 +59,43 @@ export type TeamInvitationEmailVariables = {
   url: string;
 };
 
+export type RecordTransferEmailVariables = {
+  /** organisations.name of the sending organisation. */
+  organisation: string;
+  /** pets.name (nominative). */
+  pet: string;
+  /** record_transfers.expires_at in the recipient's date format. */
+  date: string;
+  /** /poziv/<token> (EP-59). */
+  url: string;
+};
+
+export type OrgRequestAcceptedEmailVariables = {
+  organisation: string;
+  pet: string;
+  /** The organisation's contact details (BR-36). */
+  org_phone: string;
+  org_email: string;
+};
+
+export type OrgRequestRejectedEmailVariables = {
+  organisation: string;
+  pet: string;
+  /** The organisation's public page /o/<slug> (S23). */
+  url: string;
+};
+
 /** Template ids of Design §9.1 this adapter renders. Later steps add theirs here. */
 export type EmailTemplate =
   | { id: "reminder_email"; variables: ReminderEmailVariables }
   | { id: "household_invitation"; variables: HouseholdInvitationEmailVariables }
   | { id: "account_deletion_scheduled"; variables: AccountDeletionScheduledEmailVariables }
-  | { id: "team_invitation"; variables: TeamInvitationEmailVariables };
+  | { id: "team_invitation"; variables: TeamInvitationEmailVariables }
+  | { id: "record_transfer"; variables: RecordTransferEmailVariables }
+  | { id: "adoption_request_accepted"; variables: OrgRequestAcceptedEmailVariables }
+  | { id: "adoption_request_rejected"; variables: OrgRequestRejectedEmailVariables }
+  | { id: "breeder_inquiry_accepted"; variables: OrgRequestAcceptedEmailVariables }
+  | { id: "breeder_inquiry_rejected"; variables: OrgRequestRejectedEmailVariables };
 
 export type RenderedEmail = { subject: string; html: string; text: string };
 
@@ -122,7 +153,38 @@ export const TOKEN_COLORS = {
   border: "#D9CCBF",
 } as const;
 
+/** Subject, body and (optional) button of a template whose variables are all plain strings. */
+function simple(
+  copy: { subject: string; body: string; button?: string },
+  values: Record<string, string>,
+  url: string | null,
+): EmailParts {
+  const escaped = Object.fromEntries(Object.entries(values).map(([k, value]) => [k, escapeHtml(value)]));
+  return {
+    subject: format(copy.subject, values),
+    bodyHtml: format(escapeHtml(copy.body), escaped),
+    bodyText: format(copy.body, values),
+    buttons: copy.button && url ? [{ label: copy.button, url, primary: true }] : [],
+    note: null,
+  };
+}
+
 const RENDERERS: { [K in EmailTemplate["id"]]: (t: Dictionary, v: Extract<EmailTemplate, { id: K }>["variables"]) => EmailParts } = {
+  record_transfer(t, v) {
+    return simple(t.messages.record_transfer, { organisation: v.organisation, pet: v.pet, date: v.date }, v.url);
+  },
+  adoption_request_accepted(t, v) {
+    return simple(t.messages.adoption_request_accepted, { ...v }, null);
+  },
+  adoption_request_rejected(t, v) {
+    return simple(t.messages.adoption_request_rejected, { organisation: v.organisation, pet: v.pet }, v.url);
+  },
+  breeder_inquiry_accepted(t, v) {
+    return simple(t.messages.breeder_inquiry_accepted, { ...v }, null);
+  },
+  breeder_inquiry_rejected(t, v) {
+    return simple(t.messages.breeder_inquiry_rejected, { organisation: v.organisation, pet: v.pet }, v.url);
+  },
   reminder_email(t, v) {
     const copy = t.messages.reminder_email;
     const template = v.first_name ? copy.body : copy.bodyNoName;

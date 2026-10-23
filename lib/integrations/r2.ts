@@ -30,6 +30,11 @@ export type R2 = {
   head(key: string): Promise<ObjectHead | null>;
   /** true when R2 confirmed the deletion (a missing object counts as deleted). */
   remove(key: string): Promise<boolean>;
+  /**
+   * Server-side copy inside the bucket (S3 CopyObject: PUT with x-amz-copy-source), used by the EP-60 record
+   * transfer (API §10 step 6). Throws when R2 does not confirm the copy.
+   */
+  copy(sourceKey: string, targetKey: string): Promise<void>;
 };
 
 /** TC §8.1: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET. */
@@ -107,6 +112,18 @@ export function createR2(config: R2Config): R2 {
       } catch {
         return false;
       }
+    },
+
+    async copy(sourceKey, targetKey) {
+      const response = await doFetch(
+        await client.sign(objectUrl(targetKey).toString(), {
+          method: "PUT",
+          headers: { "x-amz-copy-source": `/${encodeURIComponent(config.bucket)}/${encodeKey(sourceKey)}` },
+        }),
+      );
+      // CopyObject can answer 200 with an <Error> body when the copy fails part-way.
+      const body = response.ok ? await response.text().catch(() => "") : "";
+      if (!response.ok || body.includes("<Error>")) throw new Error(`R2 copy failed with ${response.status}`);
     },
   };
 }

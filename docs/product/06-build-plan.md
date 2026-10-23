@@ -84,7 +84,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 22 | Household sharing | ✅ | 19 | — | 2026-10-23 |
 | 23 | Subscription status, Premium page & account data control | ✅ | 12, 15, 19 | — | 2026-10-23 |
 | 24 | Organisations: animals, team, public profile | ✅ | 09, 15, 19, 22 | — | 2026-10-23 |
-| 25 | Requests, inquiries & record transfers | ⬜ | 24, 22 | — | |
+| 25 | Requests, inquiries & record transfers | ✅ | 24, 22 | — | 2026-10-23 |
 | 26 | Litters & public organisation pages | ⬜ | 25 | — | |
 | 27 | Partners directory & vet suggestion | ⬜ | 09, 12, 14 | — | |
 | 28 | Operator admin | ⬜ | 27, 24, 19 | — | |
@@ -4300,7 +4300,59 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-23** — Step 25 built (unattended overnight run).
+  - **Built:**
+    - Migration `20261023230000_org_requests_and_transfers.sql`. It changes no table, column, enum or constraint.
+      - Helpers in `private`: `pet_is_transferred(p_pet)` (the pet has an accepted transfer), `city_json`, `record_transfer_json` (RecordTransfer; `is_expired` = expired, or pending past `expires_at`), `org_request_json(kind, id)` (AdoptionRequest / BreederInquiry, `pet.price` on inquiries only, `transfer` = latest by `created_at`), `transfer_view_json` (TransferView; `new_pet_id` only to the accepting user; the internal `photo_r2_key` that the action turns into `animal.photo_url`), `pending_transfer_for_update` (locks the row; `not_found` / `invitation_used` / `invitation_expired`) and `assert_transfer_recipient` (owner account, else `forbidden_role`; Free with an active pet → `premium_required:transfer_slot`).
+      - `rpc:list_org_requests(p_status, p_limit, p_offset)` (EP-57): security definer with an explicit membership check. Shelter → `adoption_requests`, breeder → `breeder_inquiries`. Returns `{ kind, items, total, status_counts, access }`, sort `created_at` desc, counts over all rows. `access.can_edit` = Admin and approved and (shelter or active breeder plan); Volunteer → `false`. Errors: `validation_failed` (`p_status`, `p_limit` 1–50, `p_offset`), `not_found`.
+      - `rpc:decide_org_request(p_kind, p_id, p_decision)` (EP-58): locks the request; `not_found` (no relation), `validation_failed` (kind ≠ organisation type), `forbidden_role` (Volunteer), `organisation_pending_approval`, `breeder_plan_required`, `already_decided`. Sets `status`, `decided_by`, `decided_at`; accept → `shelter_status` / `offspring_status = reserved` (the Step 09 trigger writes `pet_status_history`). Other pending requests stay. Returns the request, the applicant's `profiles.locale` and the organisation's name, slug, phone and email.
+      - `rpc:submit_org_request(p_pet_id, p_name, p_phone, p_email, p_message)` (EP-63): the pet must be listed on EP-62 right now (approved organisation, active pet, shelter `available` / breeder offspring `available` with an active plan), else `not_found`. Validates name 1–120, phone 6–30, email, message ≤ 2000 (`DETAIL '<field>:<code>'`). Inserts the pending row for `auth.uid()` and returns `{ id, kind, status, created_at }`.
+      - `rpc:create_record_transfer(p_id, p_pet_id, p_recipient_email, p_token_hash)` and `rpc:resend_record_transfer(p_new_id, p_transfer_id, p_token_hash)` (EP-59): membership (`not_found`), Admin (`forbidden_role`), approval, breeder plan, Request checks, pet already handed over → `invitation_used`. One transaction: pending transfers of the pet → `expired`, the new row (`expires_at = now() + 30 days`), the animal → `adopted` (shelter) / `sold` (breeder animal that is not a breeding animal) if not already. Re-send copies `pet_id` and `recipient_email`. Returns the RecordTransfer plus the organisation and pet names and the sender's / recipient account's locale for the email.
+      - `rpc:get_transfer_by_token(p_token_hash)` (EP-60 get, `anon` + `authenticated`): `not_found`; expired → `invitation_expired`; accepted / declined are returned with their status.
+      - `rpc:get_transfer_copy_plan(p_token_hash)` and `rpc:accept_record_transfer(p_token_hash, p_new_pet_id, p_visit_id_map, p_key_map)` (EP-60 accept), `rpc:decline_record_transfer(p_token_hash)` (EP-60 decline).
+      - Read-only organisation copy: `transferred_copy_check_write` on `pets` (update / delete) and on `weight_entries`, `vaccinations`, `treatments`, `dose_logs`, `vet_visits`, `attachments` (insert / update / delete): a transferred pet → `forbidden_role` for the organisation team's client sessions.
+      - `public.set_created_by` and `public.attachments_enforce_free_limit` (Step 06) are recreated to honour `app.transfer_copy`.
+      - `npm run db:types` regenerated `lib/supabase/database.types.ts`.
+    - `lib/actions/org-requests.ts` (new): `listOrgRequests` (EP-57, for S21 filters and paging), `decideRequest` (EP-58; the applicant gets `adoption_request_accepted` / `_rejected` or `breeder_inquiry_accepted` / `_rejected` in their locale; accepted emails carry the organisation's phone and email, rejected ones link `NEXT_PUBLIC_SITE_URL/o/<slug>`), `submitOrgRequest` (EP-63; gates → Request checks → `withIdempotency` (operation `org_request`) → `checkRateLimit` (`org_requests.create`, 5 per hour) → RPC). Types AdoptionRequest / BreederInquiry (`OrgRequest`), RecordTransfer, OrgRequestsPage.
+    - `lib/actions/transfers.ts` (new): `sendRecordTransfer` / `resendRecordTransfer` (EP-59; `withIdempotency` operation `record_transfer`; token `signActionToken("tr", [transfer_id], now + 30 days)`, only `hashToken` stored; §9.1 `record_transfer` email to the recipient's account locale, else the sender's, link `NEXT_PUBLIC_SITE_URL/poziv/<token>`; a failed email → `internal_error`), `getTransfer`, `acceptTransfer`, `declineTransfer` (EP-60). Accept: copy plan → new pet id, visit ids and keys `u/<owner>/pets/<new_pet>/photo/<uuid>-<name>` and `…/visits/<new_visit>/<uuid>-<safe_file_name>` → R2 copies → `accept_record_transfer`; a failed copy or database step deletes the copied objects. `premium_required:transfer_slot` gets `details.slot_pet_id` / `slot_pet_name` from `Me.usage.free_slot_pet`.
+    - `lib/integrations/r2.ts`: `copy(sourceKey, targetKey)` (S3 CopyObject, `x-amz-copy-source`; throws unless R2 confirms).
+    - `lib/integrations/resend.ts`: the five §9.1 templates `record_transfer`, `adoption_request_accepted`, `adoption_request_rejected`, `breeder_inquiry_accepted`, `breeder_inquiry_rejected`.
+    - S21 `app/(org)/organizacija/zahtevi/page.tsx` + `org-requests-screen.tsx`: port of `org-requests.tsx` without the StateSwitchers. EP-53 heading line and EP-57 list; filter chips with `status_counts`; "Učitaj još" pages by 20; Prihvati (status notice) / Odbij (AlertDialog); "Pošalji karton" / "Pošalji ponovo" Dialog (prefilled email, inline validation, re-send when the address is unchanged, a new send otherwise); transfer lines sent / expired / declined / accepted. States: default, empty, read_only (Volunteer banner; pending / plan-less banners from S20), error (ErrorState), loading (Suspense fallback).
+    - S14 `invite-accept-screen.tsx` / `page.tsx`: a new `TransferAcceptScreen` export for tr_ tokens (page picks it by prefix). Variants transfer (animal card with plural counts, "{organisation} zadržava kopiju…", validity), accepted, declined, sign-in, expired, slot taken (PremiumLock; CTA → `/premium`), error; `invitation_used` / `forbidden_role` inline. The household and team variants are unchanged (two comments updated).
+    - `lib/i18n/sr.ts` / `en.ts`: new section `orgRequests`, transfer keys in `invitation`, and the five `messages.*` templates, with English translations.
+    - Tests:
+      - pgTAP: `org_requests.test.sql` (51), `record_transfers.test.sql` (57).
+      - Vitest: `tests/org-requests/submit-request.test.ts` (7), `decide-request.test.ts` (9), `org-requests-screen.test.tsx` (19), `tests/transfers/send-transfer.test.ts` (9), `accept-transfer.test.ts` (11), `transfer-variant.test.tsx` (13).
+  - **Owner decisions applied (2026-10-23):**
+    - The security definer functions `submit_org_request`, `decide_org_request` (returns the applicant locale and organisation contacts), `create_record_transfer`, `resend_record_transfer`, `get_transfer_by_token` (anon + authenticated), `get_transfer_copy_plan`, `accept_record_transfer`, `decline_record_transfer`, with the given signatures.
+    - Accept order: copy plan → pre-generated ids and new u/ keys → R2 copies → accept; the copied objects are deleted when the database step fails.
+    - `set_config('app.transfer_copy','on',true)` inside the copy; the Step 06 attachment-limit and created_by trigger functions recreated to skip the limit and keep the supplied `created_by`; copied `dose_logs.occurrence_id` is null.
+    - Slot error `premium_required:transfer_slot`; the action adds `slot_pet_id` and `slot_pet_name` from `Me.usage.free_slot_pet`.
+    - Read-only copy: `pet_is_transferred(p_pet)` (in `private`) and guard triggers on pets and the entry tables raising `forbidden_role`. `get_pet_record` and the EP-01 list were **not** recreated: they already return `can_edit = can_delete = false` on a transferred copy through `private.pet_access` / `private.is_transferred_copy` (Step 13), which `record_transfers.test.sql` asserts.
+    - S21 copy without gendered verbs (accept notice "{pet} — status: {statusLabel}. Poslali smo mejl: {name}.", reject dialog "…da zahtev nije prihvaćen (ljubimac: {pet}).", transfer dialog "…a status postaje: Udomljen/Prodato.", declined and accepted transfer lines).
+    - S14 transfer copy: "{organisation} zadržava kopiju kartona samo za čitanje.", `invitation_used` "Ovaj link je već iskorišćen", `forbidden_role` "Karton može da primi samo nalog vlasnika ljubimca.", plurals vakcina / pregled; prilog/priloga/priloga from Step 23.
+    - Applied from earlier decisions: server actions (httpOnly session); the existing Sonner Toaster and the 5xx text "Nešto nije u redu. Pokušaj ponovo."; sr-Latn / en-GB dates on the Belgrade calendar; Step 13 age plurals; unknown sex hidden from the detail line; English written in this step; the Step 24 "link no longer works" expired copy for non-household tokens; PremiumLock CTA → `/premium` (Step 22).
+  - **Database functions (pre-approved exception 6):** none beyond the owner-decided RPCs above (`rpc:list_org_requests` is already in the contract). **Follow-up:** add `rpc:decide_org_request`, `rpc:submit_org_request`, `rpc:create_record_transfer`, `rpc:resend_record_transfer`, `rpc:get_transfer_by_token`, `rpc:get_transfer_copy_plan`, `rpc:accept_record_transfer` and `rpc:decline_record_transfer` to `docs/product/05-api-integration-contract.md` (EP-58, EP-59, EP-60, EP-63).
+  - **Verification** (in order; all on the same code):
+    - `npm run typecheck` ✅ exit 0
+    - `npm run lint` ✅ exit 0 (0 errors; the 2 known warnings in the generated `cloudflare-env.d.ts`)
+    - `npm test` ✅ `Test Files 97 passed (97)`, `Tests 1053 passed (1053)`
+    - `npx supabase test db` ✅ `Files=69, Tests=2278`, `All tests successful.`, `Result: PASS` (after `npx supabase db reset`)
+    - `npm run build` ✅ exit 0. Routes include `ƒ /organizacija/zahtevi` and `ƒ /poziv/[token]`.
+  - **Deviations / decisions:**
+    - **S14 transfer as its own component:** `TransferAcceptScreen` lives in `invite-accept-screen.tsx` next to `InviteAcceptScreen`, so the household and team variants are untouched.
+    - **Copy without mockup text** (minimal variants of mockup copy, no new messages): the transfer intro without a city drops "iz mesta {city}" (`transferIntroNoCity`); the transfer sign-in variant uses the transfer title, the existing sign-in body and the animal card.
+    - **Accepted-email contacts:** `organisations.phone` / `email` are optional. `decide_org_request` falls back to the deciding Admin's account email when the organisation has none, and the action shows "—" for a missing phone.
+    - **Sentence-final dates:** the sr-Latn date ends with "." ("22. 11. 2026."), so the trailing dot is dropped where the copy ends with "{date}." (`record_transfer` email, S21 sent / accepted lines).
+    - **EP-59 status change for breeders:** `offspring_status = sold` is set only for an animal that is not a breeding animal (`breeding_status` null).
+    - **S21 dialog errors:** `validation_failed` → "Upiši ispravnu mejl adresu."; any other EP-59 error (`invitation_used`, …) → the generic error inline; EP-58 failures → the generic toast (and a reload on `already_decided`).
+    - **`listOrgRequests`** wraps EP-57 as a server action (the session is httpOnly), like `listOrgAnimals` in Step 24.
+    - **Accepted transfers by another user:** S14 shows the transfer card with "Ovaj link je već iskorišćen" and no buttons.
+  - **Follow-ups:**
+    - CR-24 emails not sent (no Design §9.1 template): the EP-63 notification to the organisation's admins about a new request / inquiry, and the EP-60 emails to the organisation's admins when a transfer is accepted or declined.
+    - Add the Step 25 RPCs listed above to `docs/product/05-api-integration-contract.md`.
+    - Step 26 wires `submitOrgRequest` into the S23 request Dialog. Step 30 expires pending transfers past 30 days (`get_transfer_by_token` already treats them as expired).
+    - Owner: R2 `CopyObject` needs the R2 token to have read + write on the bucket (it already has both for uploads).
 
 ---
 

@@ -1545,7 +1545,10 @@ isOneToOne: false
                 }
           }
           Functions: {
-            "cancel_account_deletion":
+            "accept_record_transfer":
+{ Args: { "p_key_map": Json,"p_new_pet_id": string,"p_token_hash": string,"p_visit_id_map": Json }; Returns: Json
+                           },
+"cancel_account_deletion":
 { Args: Record<PropertyKey, never>; Returns: undefined
                            },
 "claim_due_occurrences":
@@ -1566,11 +1569,20 @@ isOneToOne: false
 "create_organisation_invitation":
 { Args: { "p_email": string,"p_invitation_id": string,"p_role": string,"p_token_hash": string }; Returns: Json
                            },
+"create_record_transfer":
+{ Args: { "p_id": string,"p_pet_id": string,"p_recipient_email": string,"p_token_hash": string }; Returns: Json
+                           },
 "decide_household_invitation":
 { Args: { "p_decision": string,"p_token_hash": string }; Returns: Json
                            },
+"decide_org_request":
+{ Args: { "p_decision": string,"p_id": string,"p_kind": string }; Returns: Json
+                           },
 "decide_organisation_invitation":
 { Args: { "p_decision": string,"p_token_hash": string }; Returns: Json
+                           },
+"decline_record_transfer":
+{ Args: { "p_token_hash": string }; Returns: Json
                            },
 "dispatch_watchdog_due":
 { Args: Record<PropertyKey, never>; Returns: boolean
@@ -1605,11 +1617,20 @@ isOneToOne: false
 "get_reminder_settings":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
+"get_transfer_by_token":
+{ Args: { "p_token_hash": string }; Returns: Json
+                           },
+"get_transfer_copy_plan":
+{ Args: { "p_token_hash": string }; Returns: Json
+                           },
 "is_premium":
 { Args: { "user_id": string }; Returns: boolean
                            },
 "list_org_animals":
 { Args: { "p_limit"?: number,"p_offset"?: number,"p_q"?: string,"p_status"?: string }; Returns: Json
+                           },
+"list_org_requests":
+{ Args: { "p_limit"?: number,"p_offset"?: number,"p_status"?: string }; Returns: Json
                            },
 "list_reminder_occurrences":
 { Args: { "p_filter": string,"p_limit"?: number,"p_offset"?: number,"p_pet_id"?: string }; Returns: Json
@@ -1660,6 +1681,9 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"resend_record_transfer":
+{ Args: { "p_new_id": string,"p_token_hash": string,"p_transfer_id": string }; Returns: Json
+                           },
 "restore_pet_from_memorial":
 { Args: { "p_pet_id": string,"p_reenable_reminders"?: boolean }; Returns: Json
                            },
@@ -1688,6 +1712,9 @@ isOneToOne: false
       } },
 "set_meal_schedule":
 { Args: { "p_meal_times": (string)[],"p_meal_weekdays"?: (number)[],"p_pet_id": string }; Returns: Json
+                           },
+"submit_org_request":
+{ Args: { "p_email": string,"p_message": string,"p_name": string,"p_pet_id": string,"p_phone": string }; Returns: Json
                            }
           }
           Enums: {
