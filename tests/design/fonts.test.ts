@@ -14,6 +14,26 @@ vi.mock("next/font/google", () => {
 });
 vi.mock("../../app/globals.css", () => ({}));
 
+// Active locale (owner decision, Step 12): signed-in user → profiles.locale, else the ml_locale cookie, else sr.
+const session = vi.hoisted(() => ({
+  user: null as { id: string } | null,
+  profileLocale: null as string | null,
+  visitorLocale: "sr" as "sr" | "en",
+}));
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: async () => ({
+    auth: { getUser: async () => ({ data: { user: session.user } }) },
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: session.profileLocale ? { locale: session.profileLocale } : null }),
+        }),
+      }),
+    }),
+  }),
+}));
+vi.mock("@/lib/actions/registration", () => ({ getVisitorLocale: async () => session.visitorLocale }));
+
 const layout = await import("@/app/layout");
 
 describe("fonts (Design §4.2)", () => {
@@ -35,11 +55,27 @@ describe("fonts (Design §4.2)", () => {
     });
   });
 
-  it("applies both font variables on <html lang=sr-Latn>", () => {
-    const html = layout.default({ children: null }) as ReactElement<{ lang: string; className: string }>;
+  const render = async () =>
+    (await layout.default({ children: null })) as ReactElement<{ lang: string; className: string }>;
+
+  it("applies both font variables on <html lang=sr-Latn> by default", async () => {
+    Object.assign(session, { user: null, profileLocale: null, visitorLocale: "sr" });
+    const html = await render();
     expect(html.props.lang).toBe("sr-Latn");
     expect(html.props.className).toContain("var-Nunito");
     expect(html.props.className).toContain("var-Inter");
+  });
+
+  it("sets <html lang> from the visitor's ml_locale cookie", async () => {
+    Object.assign(session, { user: null, profileLocale: null, visitorLocale: "en" });
+    expect((await render()).props.lang).toBe("en");
+  });
+
+  it("sets <html lang> from profiles.locale for a signed-in user", async () => {
+    Object.assign(session, { user: { id: "u1" }, profileLocale: "en", visitorLocale: "sr" });
+    expect((await render()).props.lang).toBe("en");
+    Object.assign(session, { user: { id: "u1" }, profileLocale: "sr-Latn", visitorLocale: "en" });
+    expect((await render()).props.lang).toBe("sr-Latn");
   });
 
   it("serves the brand icons, 180 px as the Apple touch icon (Design §3)", () => {

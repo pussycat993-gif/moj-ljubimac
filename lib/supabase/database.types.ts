@@ -1123,7 +1123,10 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "is_premium":
+            "get_me":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"is_premium":
 { Args: { "user_id": string }; Returns: boolean
                            },
 "partners_nearby":

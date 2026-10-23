@@ -15,6 +15,8 @@ import {
   signInWithGoogle,
   signInWithPassword,
 } from "@/lib/actions/auth"
+import { interpolate, type Dictionary } from "@/lib/i18n"
+import { sr } from "@/lib/i18n/sr"
 
 // S16 — Prijava · /prijava · FR-34, EP-42. States: default, error (401 wrong credentials,
 // 403 email_not_verified with resend). "Zaboravljena lozinka?" opens the reset view on the
@@ -23,11 +25,23 @@ import {
 type View = "sign-in" | "reset" | "reset-sent"
 type SignInError = "credentials" | "not_verified" | "unexpected"
 
-function validateEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? undefined : "Upiši ispravnu mejl adresu."
+function validateEmail(value: string, message: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? undefined : message
 }
 
-export function SignInForm({ initialView, next }: { initialView: "sign-in" | "reset"; next: string | null }) {
+type SignInCopy = Pick<Dictionary, "signIn" | "common">
+
+export function SignInForm({
+  initialView,
+  next,
+  dict = { signIn: sr.signIn, common: sr.common },
+}: {
+  initialView: "sign-in" | "reset"
+  next: string | null
+  /** Copy of the active locale (lib/i18n); defaults to Serbian. */
+  dict?: SignInCopy
+}) {
+  const t = dict.signIn
   const router = useRouter()
   const [view, setView] = useState<View>(initialView)
   const [email, setEmail] = useState("")
@@ -47,7 +61,7 @@ export function SignInForm({ initialView, next }: { initialView: "sign-in" | "re
 
   async function onSubmit(ev: FormEvent) {
     ev.preventDefault()
-    const err = validateEmail(email)
+    const err = validateEmail(email, t.emailInvalid)
     setEmailError(err)
     if (err) return
     if (password.length === 0) {
@@ -92,7 +106,7 @@ export function SignInForm({ initialView, next }: { initialView: "sign-in" | "re
 
   async function onResetSubmit(ev: FormEvent) {
     ev.preventDefault()
-    const err = validateEmail(email)
+    const err = validateEmail(email, t.emailInvalid)
     setEmailError(err)
     if (err) return
     setPending(true)
@@ -105,15 +119,14 @@ export function SignInForm({ initialView, next }: { initialView: "sign-in" | "re
     return (
       <Card className="gap-6 p-4 md:p-6">
         <div className="space-y-1">
-          <h1 className="font-heading text-[28px] leading-9 font-bold">Nova lozinka</h1>
+          <h1 className="font-heading text-[28px] leading-9 font-bold">{t.resetTitle}</h1>
           {view === "reset" ? (
             <p className="text-sm text-muted-foreground">
-              Upiši mejl adresu naloga i poslaćemo ti link za novu lozinku.
+              {t.resetText}
             </p>
           ) : (
             <p role="status" className="text-sm text-muted-foreground">
-              Ako nalog sa adresom <span className="font-medium text-foreground">{email}</span> postoji, poslali smo
-              link za novu lozinku. Proveri i spam folder.
+              {interpolate(t.resetSent, { email: <span className="font-medium text-foreground">{email}</span> })}
             </p>
           )}
         </div>
@@ -121,7 +134,7 @@ export function SignInForm({ initialView, next }: { initialView: "sign-in" | "re
         {view === "reset" && (
           <form className="space-y-4" noValidate onSubmit={onResetSubmit}>
             <div className="space-y-2">
-              <Label htmlFor="reset-email">Mejl adresa</Label>
+              <Label htmlFor="reset-email">{t.email}</Label>
               <Input
                 id="reset-email"
                 type="email"
@@ -130,7 +143,7 @@ export function SignInForm({ initialView, next }: { initialView: "sign-in" | "re
                 aria-invalid={!!emailError}
                 aria-describedby={emailError ? "reset-email-error" : undefined}
                 onChange={(e) => setEmail(e.target.value)}
-                onBlur={() => setEmailError(validateEmail(email))}
+                onBlur={() => setEmailError(validateEmail(email, t.emailInvalid))}
               />
               {emailError && (
                 <p id="reset-email-error" className="text-sm text-destructive">
@@ -139,14 +152,14 @@ export function SignInForm({ initialView, next }: { initialView: "sign-in" | "re
               )}
             </div>
             <Button type="submit" className="h-11 w-full md:h-9" disabled={pending}>
-              Pošalji link
+              {t.sendLink}
             </Button>
           </form>
         )}
 
         <p className="text-center text-sm text-muted-foreground">
           <Link href="/prijava" className="font-medium text-primary hover:underline" onClick={() => openView("sign-in")}>
-            Nazad na prijavu
+            {t.backToSignIn}
           </Link>
         </p>
       </Card>
@@ -156,17 +169,17 @@ export function SignInForm({ initialView, next }: { initialView: "sign-in" | "re
   return (
     <Card className="gap-6 p-4 md:p-6">
       <div className="space-y-1">
-        <h1 className="font-heading text-[28px] leading-9 font-bold">Zdravo ponovo</h1>
-        <p className="text-sm text-muted-foreground">Prijavi se da vidiš kartone i podsetnike svojih ljubimaca.</p>
+        <h1 className="font-heading text-[28px] leading-9 font-bold">{t.title}</h1>
+        <p className="text-sm text-muted-foreground">{t.subtitle}</p>
       </div>
 
       {isError && (
         <div role="alert" className="flex items-start gap-3 rounded-sm bg-foreground/5 p-3">
           <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
           <div className="min-w-0 space-y-1">
-            <p className="text-sm font-medium text-destructive">Pogrešan mejl ili lozinka.</p>
+            <p className="text-sm font-medium text-destructive">{t.wrongTitle}</p>
             <p className="text-sm text-muted-foreground">
-              Proveri podatke ili resetuj lozinku. Ako koristiš Google nalog, prijavi se dugmetom ispod.
+              {t.wrongText}
             </p>
           </div>
         </div>
@@ -177,11 +190,11 @@ export function SignInForm({ initialView, next }: { initialView: "sign-in" | "re
           <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
           <div className="min-w-0 flex-1 space-y-3">
             <p className="text-sm font-medium text-destructive">
-              Mejl adresa još nije potvrđena. Otvori link iz mejla koji smo ti poslali.
+              {t.notVerified}
             </p>
             {resent ? (
               <p role="status" className="text-sm text-muted-foreground">
-                Poslali smo novi link za potvrdu na <span className="font-medium text-foreground">{email}</span>.
+                {interpolate(t.resent, { email: <span className="font-medium text-foreground">{email}</span> })}
               </p>
             ) : (
               <Button
@@ -191,7 +204,7 @@ export function SignInForm({ initialView, next }: { initialView: "sign-in" | "re
                 disabled={pending}
                 onClick={onResend}
               >
-                Pošalji link ponovo
+                {t.resend}
               </Button>
             )}
           </div>
@@ -202,24 +215,24 @@ export function SignInForm({ initialView, next }: { initialView: "sign-in" | "re
         <div role="alert" className="flex items-start gap-3 rounded-sm bg-foreground/5 p-3">
           <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
           <div className="min-w-0 space-y-1">
-            <p className="text-sm font-medium text-destructive">Nešto nije u redu. Pokušaj ponovo.</p>
+            <p className="text-sm font-medium text-destructive">{dict.common.error}</p>
           </div>
         </div>
       )}
 
       <Button type="button" variant="outline" className="h-11 w-full md:h-9" disabled={pending} onClick={onGoogle}>
-        Nastavi sa Google-om
+        {t.google}
       </Button>
 
       <div className="flex items-center gap-3">
         <Separator className="flex-1" />
-        <span className="shrink-0 text-xs font-medium text-muted-foreground">ili mejlom</span>
+        <span className="shrink-0 text-xs font-medium text-muted-foreground">{t.or}</span>
         <Separator className="flex-1" />
       </div>
 
       <form className="space-y-4" noValidate onSubmit={onSubmit}>
         <div className="space-y-2">
-          <Label htmlFor="signin-email">Mejl adresa</Label>
+          <Label htmlFor="signin-email">{t.email}</Label>
           <Input
             id="signin-email"
             type="email"
@@ -228,7 +241,7 @@ export function SignInForm({ initialView, next }: { initialView: "sign-in" | "re
             aria-invalid={!!emailError || isError}
             aria-describedby={emailError ? "signin-email-error" : undefined}
             onChange={(e) => setEmail(e.target.value)}
-            onBlur={() => setEmailError(validateEmail(email))}
+            onBlur={() => setEmailError(validateEmail(email, t.emailInvalid))}
           />
           {emailError && (
             <p id="signin-email-error" className="text-sm text-destructive">
@@ -238,13 +251,13 @@ export function SignInForm({ initialView, next }: { initialView: "sign-in" | "re
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <Label htmlFor="signin-password">Lozinka</Label>
+            <Label htmlFor="signin-password">{t.password}</Label>
             <Link
               href="/prijava?view=reset"
               className="shrink-0 text-sm font-medium text-primary hover:underline"
               onClick={() => openView("reset")}
             >
-              Zaboravljena lozinka?
+              {t.forgot}
             </Link>
           </div>
           <Input
@@ -257,14 +270,14 @@ export function SignInForm({ initialView, next }: { initialView: "sign-in" | "re
           />
         </div>
         <Button type="submit" className="h-11 w-full md:h-9" disabled={pending}>
-          Prijavi se
+          {t.submit}
         </Button>
       </form>
 
       <p className="text-center text-sm text-muted-foreground">
-        Nemaš nalog?{" "}
+        {t.noAccount}{" "}
         <Link href="/registracija" className="font-medium text-primary hover:underline">
-          Napravi nalog
+          {t.createAccount}
         </Link>
       </p>
     </Card>

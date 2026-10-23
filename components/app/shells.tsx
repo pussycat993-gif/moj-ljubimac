@@ -66,6 +66,79 @@ const adminNav: NavItem[] = [
   { key: "moderacija", label: "Moderacija", href: "/admin?tab=moderacija", icon: Flag, mobile: true },
 ]
 
+// labels:start — FR-35: every visible string and aria-label of AppShell and PublicShell, defaulting to today's
+// Serbian copy; the app passes the dictionary's labels. Nav labels are keyed by their Serbian text.
+export type NavLabel =
+  | "Ljubimci"
+  | "Podsetnici"
+  | "Šapa pomoći"
+  | "Šapa"
+  | "Partneri"
+  | "Domaćinstvo"
+  | "Podešavanja"
+  | "Profil"
+  | "Životinje"
+  | "Zahtevi"
+  | "Upiti"
+  | "Legla"
+  | "Tim"
+  | "Javni profil"
+  | "Azili na čekanju"
+  | "Statistika"
+  | "Kanali"
+  | "Moderacija"
+
+export type AppShellLabels = {
+  menu: string
+  navigation: string
+  messages: string
+  myAccount: string
+  /** Screen-reader suffix after a nav count badge ("3 novih"). */
+  newSuffix: string
+  /** Screen-reader suffix after the Poruke count ("2 nepročitanih"). */
+  unreadSuffix: string
+  nav: Record<NavLabel, string>
+}
+
+export const defaultAppShellLabels: AppShellLabels = {
+  menu: "Meni",
+  navigation: "Glavna navigacija",
+  messages: "Poruke",
+  myAccount: "Moj nalog",
+  newSuffix: "novih",
+  unreadSuffix: "nepročitanih",
+  nav: {
+    Ljubimci: "Ljubimci",
+    Podsetnici: "Podsetnici",
+    "Šapa pomoći": "Šapa pomoći",
+    Šapa: "Šapa",
+    Partneri: "Partneri",
+    Domaćinstvo: "Domaćinstvo",
+    Podešavanja: "Podešavanja",
+    Profil: "Profil",
+    Životinje: "Životinje",
+    Zahtevi: "Zahtevi",
+    Upiti: "Upiti",
+    Legla: "Legla",
+    Tim: "Tim",
+    "Javni profil": "Javni profil",
+    "Azili na čekanju": "Azili na čekanju",
+    Statistika: "Statistika",
+    Kanali: "Kanali",
+    Moderacija: "Moderacija",
+  },
+}
+
+export type PublicShellLabels = { signIn: string; createAccount: string; privacy: string; terms: string }
+
+export const defaultPublicShellLabels: PublicShellLabels = {
+  signIn: "Prijavi se",
+  createAccount: "Napravi nalog",
+  privacy: "Politika privatnosti",
+  terms: "Uslovi korišćenja",
+}
+// labels:end
+
 // Šapa pomoći messages (EP-80): owner and organisation shells only. Count = conversations with unread messages
 // (`counts.poruke`); shown in the sidebar footer area and as an icon button in the phone top bar.
 const MESSAGES_HREF = "/poruke"
@@ -87,6 +160,7 @@ export function AppShell({
   userInitials,
   counts,
   topBarExtra,
+  labels = defaultAppShellLabels,
   children,
 }: {
   variant?: "owner" | "organisation" | "admin"
@@ -100,6 +174,7 @@ export function AppShell({
    *  phone bottom nav. Zero or missing → no badge. */
   counts?: Record<string, number>
   topBarExtra?: ReactNode
+  labels?: AppShellLabels
   children: ReactNode
 }) {
   const items = variant === "owner" ? ownerNav : variant === "organisation" ? orgNav(orgType) : adminNav
@@ -117,9 +192,9 @@ export function AppShell({
           <LogoMark variant="full" className="w-36" />
         </div>
         <p className="px-6 pb-2 text-xs font-medium tracking-widest text-muted-foreground uppercase" aria-hidden>
-          Meni
+          {labels.menu}
         </p>
-        <nav aria-label="Glavna navigacija" className="flex-1 space-y-1 overflow-y-auto px-3">
+        <nav aria-label={labels.navigation} className="flex-1 space-y-1 overflow-y-auto px-3">
           {items.map((item) => {
             const Icon = item.icon
             const isActive = item.key === active
@@ -135,7 +210,7 @@ export function AppShell({
                 )}
               >
                 <Icon className="size-5 shrink-0" aria-hidden />
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                <span className="min-w-0 flex-1 truncate">{labels.nav[item.label as NavLabel]}</span>
                 {count ? (
                   <span
                     className={cn(
@@ -144,7 +219,7 @@ export function AppShell({
                     )}
                   >
                     {count}
-                    <span className="sr-only"> novih</span>
+                    <span className="sr-only"> {labels.newSuffix}</span>
                   </span>
                 ) : null}
               </Link>
@@ -162,7 +237,7 @@ export function AppShell({
               )}
             >
               <MessageCircle className="size-5 shrink-0" aria-hidden />
-              <span className="min-w-0 flex-1 truncate">Poruke</span>
+              <span className="min-w-0 flex-1 truncate">{labels.messages}</span>
               {unread ? (
                 <span
                   className={cn(
@@ -171,7 +246,7 @@ export function AppShell({
                   )}
                 >
                   {unread}
-                  <span className="sr-only"> nepročitanih</span>
+                  <span className="sr-only"> {labels.unreadSuffix}</span>
                 </span>
               ) : null}
             </Link>
@@ -185,7 +260,7 @@ export function AppShell({
             </Avatar>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium">{user.name}</span>
-              <span className="block truncate text-xs font-medium text-muted-foreground">Moj nalog</span>
+              <span className="block truncate text-xs font-medium text-muted-foreground">{labels.myAccount}</span>
             </span>
           </Link>
         </div>
@@ -199,7 +274,7 @@ export function AppShell({
           {showMessages && (
             <Link
               href={MESSAGES_HREF}
-              aria-label={unread ? `Poruke, ${unread} nepročitanih` : "Poruke"}
+              aria-label={unread ? `${labels.messages}, ${unread} ${labels.unreadSuffix}` : labels.messages}
               aria-current={messagesActive ? "page" : undefined}
               className={cn(
                 "relative flex size-11 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
@@ -229,7 +304,7 @@ export function AppShell({
 
       {/* Bottom navigation — phones */}
       <nav
-        aria-label="Glavna navigacija"
+        aria-label={labels.navigation}
         className="fixed inset-x-0 bottom-0 z-20 grid border-t border-border bg-card md:hidden"
         style={{ gridTemplateColumns: `repeat(${mobileItems.length}, minmax(0, 1fr))` }}
       >
@@ -242,7 +317,7 @@ export function AppShell({
               key={item.key}
               href={item.href}
               aria-current={isActive ? "page" : undefined}
-              aria-label={item.short ? item.label : undefined}
+              aria-label={item.short ? labels.nav[item.label as NavLabel] : undefined}
               className={cn(
                 "flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 px-1 text-xs font-medium",
                 isActive ? "text-primary" : "text-muted-foreground",
@@ -253,11 +328,11 @@ export function AppShell({
                 {count ? (
                   <span className="absolute -top-1 left-4 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-xs leading-none font-medium text-primary-foreground">
                     {count}
-                    <span className="sr-only"> novih</span>
+                    <span className="sr-only"> {labels.newSuffix}</span>
                   </span>
                 ) : null}
               </span>
-              <span className="max-w-full truncate">{item.short ?? item.label}</span>
+              <span className="max-w-full truncate">{labels.nav[(item.short ?? item.label) as NavLabel]}</span>
             </Link>
           )
         })}
@@ -268,7 +343,15 @@ export function AppShell({
 
 /** `wide` (v1.6): `max-w-5xl` content for public listing pages (Šapa pomoći S32, S33, S37) that show a card grid
  *  or detail + aside; every other public page keeps `max-w-3xl`. Signed-out visitors also get "Prijavi se". */
-export function PublicShell({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
+export function PublicShell({
+  children,
+  wide = false,
+  labels = defaultPublicShellLabels,
+}: {
+  children: ReactNode
+  wide?: boolean
+  labels?: PublicShellLabels
+}) {
   const width = wide ? "max-w-5xl" : "max-w-3xl"
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -278,10 +361,10 @@ export function PublicShell({ children, wide = false }: { children: ReactNode; w
           <div className="flex shrink-0 items-center gap-2">
             {wide && (
               <Button asChild size="sm" variant="ghost" className="hidden sm:inline-flex">
-                <Link href="/prijava">Prijavi se</Link>
+                <Link href="/prijava">{labels.signIn}</Link>
               </Button>
             )}
-            <Button size="sm">Napravi nalog</Button>
+            <Button size="sm">{labels.createAccount}</Button>
           </div>
         </div>
       </header>
@@ -289,10 +372,10 @@ export function PublicShell({ children, wide = false }: { children: ReactNode; w
       <footer className="border-t border-border">
         <div className={cn("mx-auto flex w-full flex-wrap gap-4 px-4 py-4 text-sm text-muted-foreground", width)}>
           <Link href="/privatnost" className="hover:text-foreground">
-            Politika privatnosti
+            {labels.privacy}
           </Link>
           <Link href="/uslovi" className="hover:text-foreground">
-            Uslovi korišćenja
+            {labels.terms}
           </Link>
         </div>
       </footer>

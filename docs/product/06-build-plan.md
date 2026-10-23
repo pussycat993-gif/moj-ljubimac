@@ -71,7 +71,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 09 | Schema: organisation workflows & partners | ✅ | 08 | — | 2026-10-20 |
 | 10 | Design foundation | ✅ | 01 | — | 2026-10-20 |
 | 11 | Authentication, gates & server utilities | ✅ | 04, 10 | — | 2026-10-21 |
-| 12 | Registration, profile, legal pages & i18n | ⬜ | 11, 05, 08 | — | |
+| 12 | Registration, profile, legal pages & i18n | ✅ | 11, 05, 08 | — | 2026-10-23 |
 | 13 | Pets: list, create, edit, delete | ⬜ | 12, 06 | — | |
 | 14 | Pet record: view, weight, vaccinations | ⬜ | 13, 08 | — | |
 | 15 | Treatments, doses, vet visits & attachments | ⬜ | 14 | — | |
@@ -1864,7 +1864,40 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+**2026-10-23** (built 2026-10-22, completed and committed 2026-10-23 after the owner's go-ahead)
+- **Built:** `lib/i18n/sr.ts`, `lib/i18n/en.ts` (typed as `Dictionary` = the type of `sr`, so a missing or extra key fails `npm run typecheck`), `lib/i18n/index.ts` (locale resolution, `parseLocale`, `toProfileLocale`/`fromProfileLocale`, `htmlLang`, `format`, `interpolate`; no i18n package); removed `lib/i18n/.gitkeep`. `lib/legal.ts` (`TERMS_VERSION`). Migration `20261022124053_get_me.sql`: `rpc:get_me()` per EP-43 and the `Me`/`Entitlements` schemas; the column grant on `profiles` (update only `full_name`, `city_id`, `locale`); the organisation registration insert policy and creator-admin trigger (see deviations). `lib/supabase/database.types.ts` regenerated with `npm run db:types`. `lib/actions/registration.ts` (server actions `signUp`, `completeRegistration` (EP-41, `ActionResult<Me>`, `terms_version` must equal `TERMS_VERSION` → otherwise `fields.terms_version = outdated`), `updateMe` (EP-43), `setVisitorLocale`/`getVisitorLocale`). `app/(auth)/auth/callback/route.ts` calls `complete_registration` from `user_metadata` when no profile exists. S15 `app/(auth)/registracija/page.tsx` + `register-client.tsx` (account type, organisation fields and city Select from EP-67, SR/EN switch, `email_sent` and inline field errors from real responses, the terms label linking to `/uslovi` and `/privatnost`, the Google completion step). S18 `app/(app)/profil/page.tsx` + `profile-client.tsx` (name, city, language; the locale switches the UI immediately; sign-out). `app/(app)/layout.tsx`, `app/(org)/layout.tsx` (AppShell `user` and labels from EP-43 / `profiles.locale`; no `counts`). S30 `app/(public)/privatnost/*`, S31 `app/(public)/uslovi/*` in the PublicShell with the Design headings, the placeholder "Tekst dostavlja vlasnik (OQ-15)." and S31's "Verzija {TERMS_VERSION}"; removed `app/(public)/.gitkeep`. S16/S28 strings moved into the dictionaries. `components/app/shells.tsx` (`labels` prop, owner decision), `components/app/signed-in-shell.tsx` (owner instruction), `app/layout.tsx` (`<html lang>`, owner instruction). Tests: `tests/i18n/dictionaries.test.ts`, `tests/i18n/locale-switch.test.tsx`, `tests/registration/register-form.test.tsx`, `tests/registration/complete-registration.test.ts`, `tests/profile/profile-form.test.tsx`, `tests/legal/legal-pages.test.tsx`, `supabase/tests/get_me.test.sql`, `e2e/registration.spec.ts`.
+- **Verification:**
+  - `npm run typecheck` ✅ exit 0
+  - `npm run lint` ✅ exit 0 (0 errors; the 2 known warnings in the generated `cloudflare-env.d.ts`)
+  - `npm test` ✅ 34 files / 384 tests passed
+  - `npx supabase test db` ✅ 34 files / 1172 tests, `All tests successful. Result: PASS` (includes `get_me.test.sql`)
+  - `npm run build` ✅ exit 0 (`ƒ /_not-found`, `/auth/callback`, `/prijava`, `/prijava/nova-lozinka`, `/privatnost`, `/profil`, `/registracija`, `/uslovi`, `ƒ Proxy (Middleware)`)
+  - `npm run e2e` ✅ `1 passed` — `[chromium] › e2e\registration.spec.ts › register with email and password; the product is usable only after verification` (sign up → "Proveri mejl" → `/ljubimci` refused → Mailpit verification link → `/ljubimci` → `/profil`). There is no `.env.local`; the run got `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_SITE_URL=http://localhost:3000` as environment variables from `npx supabase status -o env`. The first run had needed `npx playwright install chromium` (user cache only).
+- **Owner decisions:**
+  - **`TERMS_VERSION = '2026-10-20'`** (owner).
+  - **Shell labels (owner decision 1):** Step 12 may edit `components/app/shells.tsx`. `AppShell` and `PublicShell` each take one optional `labels` prop, a typed object of every visible string and aria-label they hardcoded, with today's Serbian strings as defaults; markup, classes and the docs mockups are unchanged. There is no separate OrgShell/AdminShell (they are `AppShell` variants). Nav labels are keyed by their Serbian text (`NavLabel`), so the nav arrays stay exactly as in the mockup. The app passes `dict.shell.app` / `dict.shell.public`. AuthShell is unchanged.
+  - **Visitor language (owner decision 2):** cookie `ml_locale` = `sr` | `en`, path `/`, one year, `SameSite=Lax`, httpOnly, set and read on the server only. The S15 SR/EN switch sets it; every auth-free page (S15, S16, S28, S30, S31) reads it; no cookie → sr. A signed-in user uses `profiles.locale`; a language change on S18 updates both `profiles.locale` and the cookie. No Accept-Language detection, no `?lang=`. The S30/S31 en test sets `ml_locale=en`.
+  - **Server-only auth:** sign-up, resend and Google sign-in from S15 run as server actions (`lib/actions/registration.ts`, `lib/actions/auth.ts`), never through the browser Supabase client (session cookies are httpOnly, Step 11).
+  - **Owner instructions for the resume run (2026-10-23):** (a) `tests/design/ui-overrides.test.ts` keeps the "ported unchanged" check for `shells` and strips only the `labels` prop before comparing with the docs mockup: the `// labels:start … // labels:end` block (types and defaults), the two prop declarations, and each `labels.*` usage replaced by its default value. A comment in the test explains why `labels` is ignored. (b) `SignedInShell` moved from `app/(app)/profil/profile-client.tsx` into `components/app/signed-in-shell.tsx`. (c) `<html lang>` in `app/layout.tsx` comes from the active locale: a signed-in user's `profiles.locale`, otherwise the `ml_locale` cookie, otherwise `sr-Latn`.
+  - **Exception 3, owner-approved:** (c) changes `app/layout.tsx`, so `tests/design/fonts.test.ts` (Step 10) now checks the new behaviour. `RootLayout` is async; the test awaits it and covers default `sr-Latn`, the visitor cookie `en`, and a signed-in `profiles.locale` that wins over the cookie. The font, icon and no-Toaster checks are unchanged.
+- **Deviations (all accepted by the owner, from the previous run's STOPPED report):**
+  - **Organisations at registration:** the `get_me` migration also adds a client insert policy on `organisations` (`organisations_insert_registration`, column grant on the insertable columns, `private.can_register_organisation`) and a trigger (`organisations_add_creator_admin` → `private.add_creator_admin`) that makes the creator its first admin. The Step 05 Session log said Step 12's `get_me` migration must add this.
+  - **`get_me` is security definer**, scoped to the caller (`auth.uid()`), so it can read `app_settings.viber_enabled` (Operator-only under RLS). `Me.display_name` and `Me.marketplace` are left for Step 28b.
+  - **Active nav item:** a layout cannot read the current path, so the `(app)` and `(org)` layouts render the client wrapper `SignedInShell`. It now lives in `components/app/signed-in-shell.tsx` (owner instruction b).
+  - `lib/actions/registration.ts` also holds `updateMe` (EP-43) and the locale cookie helpers.
+  - A member of a pending organisation can still change their profile (EP-43 lists no organisation gate).
+  - The Google completion step reuses the S15 form without the email and password fields.
+  - A rejected PIB turns its hint red, because there is no error copy for it.
+  - A general form error reuses "Nešto nije u redu. Pokušaj ponovo." in a small inline line.
+  - Users with no name show their email in the shell.
+  - The `ErrorState` button text stays Serbian (`components/app/error-state.tsx` was not on this step's list; Step 13 adds its `labels` prop).
+  - The seed users keep `terms_version = 'seed'`.
+- **Follow-ups:**
+  - Add the `ml_locale` cookie to `docs/product/03-technical-constraints.md`.
+  - Add the shells' `labels` prop to `docs/product/04-design-system.md` §6.
+  - Operator notification for pending shelters not sent — no Design §9.1 template (CR-24).
+  - S18 screen file for Step 23: `app/(app)/profil/profile-client.tsx` (rendered by `app/(app)/profil/page.tsx`).
+  - Local e2e needs the Supabase env vars (README: copy `.env.example` to `.env.local` and fill it from `npx supabase status`).
 
 ---
 

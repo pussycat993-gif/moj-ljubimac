@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { defaultAppShellLabels, defaultPublicShellLabels } from "@/components/app/shells";
 
 const path = (p: string) => join(process.cwd(), p);
 const read = (p: string) => readFileSync(path(p), "utf8").replace(/\r\n/g, "\n");
@@ -22,7 +23,37 @@ const COMPOSITES = [
 function unport(name: string, source: string) {
   let s = source.replace(/from "@\/components\/app\/([a-z-]+)"/g, 'from "./$1"');
   if (name === "logo-mark") s = s.replace("brand brown = the --primary token)", "brand brown #563218)");
+  if (name === "shells") s = stripShellLabels(s);
   return s;
+}
+
+// Owner decision (Step 12, FR-35): AppShell and PublicShell take one optional `labels` prop whose defaults are the
+// mockup's Serbian strings, so the app can pass the active dictionary. That prop is the only allowed change, so it
+// is ignored here: drop its types and defaults (the labels:start…labels:end block) and the prop declarations, and
+// put each default value back where `labels.*` is used. Everything else must still equal the docs mockup.
+function stripShellLabels(source: string) {
+  const values: Record<string, string> = {
+    ...Object.fromEntries(Object.entries(defaultAppShellLabels).filter(([key]) => key !== "nav")),
+    ...defaultPublicShellLabels,
+  };
+  const value = (key: string) => {
+    if (!(key in values)) throw new Error(`unknown shell label: ${key}`);
+    return values[key];
+  };
+  return source
+    .replace(/\/\/ labels:start[\s\S]*?\/\/ labels:end\n\n/, "")
+    .replace("  topBarExtra,\n  labels = defaultAppShellLabels,\n", "  topBarExtra,\n")
+    .replace("  topBarExtra?: ReactNode\n  labels?: AppShellLabels\n", "  topBarExtra?: ReactNode\n")
+    .replace(
+      "export function PublicShell({\n  children,\n  wide = false,\n  labels = defaultPublicShellLabels,\n}: {\n  children: ReactNode\n  wide?: boolean\n  labels?: PublicShellLabels\n}) {",
+      "export function PublicShell({ children, wide = false }: { children: ReactNode; wide?: boolean }) {",
+    )
+    .replace(/labels\.nav\[\((.+?)\) as NavLabel\]/g, "$1")
+    .replace(/labels\.nav\[(.+?) as NavLabel\]/g, "$1")
+    .replace(/\$\{labels\.(\w+)\}/g, (_, k: string) => value(k))
+    .replace(/=\{labels\.(\w+)\}/g, (_, k: string) => `="${value(k)}"`)
+    .replace(/\{labels\.(\w+)\}/g, (_, k: string) => value(k))
+    .replace(/labels\.(\w+)/g, (_, k: string) => `"${value(k)}"`);
 }
 
 describe("shadcn primitives (Design §6, ADR-14)", () => {
