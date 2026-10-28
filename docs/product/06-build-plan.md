@@ -87,7 +87,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 25 | Requests, inquiries & record transfers | ✅ | 24, 22 | — | 2026-10-23 |
 | 26 | Litters & public organisation pages | ✅ | 25 | — | 2026-10-23 |
 | 27 | Partners directory & vet suggestion | ✅ | 09, 12, 14 | — | 2026-10-23 |
-| 28 | Operator admin | ⬜ | 27, 24, 19 | — | |
+| 28 | Operator admin | ✅ | 27, 24, 19 | — | 2026-10-28 |
 | 28a | Schema: Šapa pomoći | ⬜ | 28 | — | |
 | 28b | Listings, public pages, profiles & donation info | ⬜ | 28a, 21, 19 | — | |
 | 28c | Messaging, notifications, report/block & moderation | ⬜ | 28b, 19 | — | |
@@ -4818,7 +4818,66 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-28** — Step 28 built (unattended overnight run).
+  - **Built:**
+    - Migration `20261028000000_operator_admin.sql` (no table, column, enum or constraint changes):
+      - `private.is_operator()` and `private.assert_operator()` (the Operator, or the service role used by `lib/actions/admin.ts` after its own `is_operator` check; anyone else → `forbidden_role`).
+      - View `admin_pending_organisations` (EP-68 list, PendingOrganisation columns, `city` as the City object, `contact_email` = the creator's `profiles.email`). It has `security_invoker = false` and `WHERE exists(… profiles.is_operator)`, so everyone else gets `[]`. Revoked from anon, select granted to authenticated.
+      - `rpc:decide_organisation(p_organisation_id, p_decision, p_rejection_reason)`: security definer, one transaction. It returns `{ organisation: PendingOrganisation, creator_locale }`. Errors: `not_found`, `already_decided`, and `validation_failed` (a reason with approve, or a reason over 500 characters).
+      - `rpc:admin_list_partners(p_city_id, p_type, p_limit, p_offset)` → `{ items: (Partner & { featured_count })[], total }`. Hidden partners are included, sorted by name, and logo keys are not exposed.
+      - `rpc:save_partner(p_id, p_fields jsonb, p_hours jsonb)`: one transaction. It upserts `partners` (on update only the keys sent change) and replaces `partner_hours` when `p_hours` is not null. It queues a replaced or removed `logo_r2_key` in `r2_deletion_queue` (the Step 09 follow-up). BR-41 stays with the Step 09 trigger.
+      - `rpc:admin_partner_click_stats(p_period, p_limit, p_offset)` → `{ period, available_periods, items, total }`. Months are Europe/Belgrade calendar months. Results are sorted by total desc, then name.
+      - `admin_list_partners` and `admin_partner_click_stats` are security definer with `set search_path = public`. Their first check raises `forbidden_role` for non-Operators. Revoked from public/anon, granted to authenticated.
+      - EP-71 uses the Step 04 `app_settings` RLS unchanged.
+      - `npm run db:types` regenerated `lib/supabase/database.types.ts`.
+    - `lib/integrations/nominatim.ts`: fetch only. It calls `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=rs&q=<address, city, Serbia>` with User-Agent `MojLjubimac/1.0 (+${NEXT_PUBLIC_SITE_URL})`. Calls are serialised, and a module-level last-call timestamp waits until 1 s has passed. No retry. No result, an HTTP error or a network error → `geocoding_failed`. The city is not appended when the address already ends with it.
+    - `lib/actions/admin.ts`: each action runs the API §4.1 gates, then an explicit `profiles.is_operator` check, and only then writes with the service role.
+      - `decideOrganisation`: emails `shelter_approved` (button → `${NEXT_PUBLIC_SITE_URL}/organizacija`) or `shelter_rejected` in the creator's `profiles.locale`. A failed email is logged and does not undo the decision.
+      - `geocodeAddress`.
+      - `createPartnerLogoUpload`: `image/*`, ≤ 10 MB, existing partner. Key `p/<id>/logo-<uuid>.<ext>`.
+      - `savePartner`: full Request validation. It geocodes when both coordinates are null: on create, and on update only when both are sent as null. The logo key must start with `p/<id>/`, and R2 HEAD checks it exists (skipped when R2 credentials are empty). It returns the Partner with a presigned `logo_url`.
+      - `setAppSettings`.
+    - `lib/integrations/resend.ts`: templates `shelter_approved` and `shelter_rejected`. The rejected email appends "Razlog: {reason}." / "Reason: {reason}." when a reason was given.
+    - S26: `app/admin/layout.tsx` (Operator gate + Toaster), `app/admin/page.tsx` (all reads with the Operator's session, Suspense loading), `app/admin/admin-screen.tsx` (port of `admin.tsx` without the StateSwitcher, rendering the Admin `AppShell` itself with `active` = `?tab=`).
+      - Azili: cards, approve, reject AlertDialog with reason (≤ 500), and the mockup's role=status notice.
+      - Partneri: table, Istaknut Switch "n / 3" / "3 / 3 — limit" from `featured_count`, status badges, and the add/edit Dialog. The Dialog has every EP-69 field, "Pronađi koordinate", the latitude / longitude Inputs, the hours editor, the logo file and the city Select from EP-67.
+      - Statistika: Period Select from `available_periods` ∪ the current period, labelled "Oktobar 2026." / "October 2026".
+      - Kanali: Viber Switch; switching on goes through the cost-warning AlertDialog. The WhatsApp card shows `{cap}` from AppSettings.
+      - States: loading (Suspense fallback and transitions), default, empty, error (retry = `router.refresh()`).
+      - "Učitaj još" raises the row count in the URL (`?azili=` / `?partneri=` / `?statistika=`), read in pages of ≤ 50 (API §3.4).
+    - `lib/i18n/sr.ts` / `en.ts`: a new `admin` section and `messages.shelter_approved` / `shelter_rejected`. English written in this step.
+    - Tests:
+      - pgTAP `admin_access.test.sql` (27): FR-42 #1 before/after, FR-57 #1, the view `[]` for non-Operators and the shelter itself, the anon 42501, EP-71 Operator-only, the service-role path.
+      - pgTAP `admin_partners.test.sql` (34): FR-57 #2 incl. `partners_nearby`, BR-41 on create and update, E-23, `featured_count`, the logo queue, FR-58 periods.
+      - Vitest `tests/admin/decide-organisation.test.ts` (9): includes the gate-4 before/after check through the real `checkGates`, and the real `renderEmail` output.
+      - Vitest `tests/admin/save-partner.test.ts` (12), `tests/admin/admin-screen.test.tsx` (16), `tests/integrations/nominatim.test.ts` (7).
+  - **Owner decisions applied (2026-10-24):**
+    - `app/admin/layout.tsx`: no session → `/prijava?next=/admin`; signed in without `is_operator` → `/ljubimci` (this settles the STOP condition on what a non-Operator sees). `proxy.ts` is unchanged.
+    - Partner logo order: create → ticket → PUT → `savePartner({ id, logo_r2_key })`. The key must start with `p/<id>/` and R2 HEAD checks it (skipped without R2 credentials).
+    - `shelter_rejected` appends "Razlog: {reason}." / "Reason: {reason}."; the `shelter_approved` button goes to `/organizacija`.
+    - The latitude / longitude Inputs and the toasts `geocoding_failed`, `featured_limit_reached` and "Partner sačuvan" / "Partner saved".
+    - The Nominatim User-Agent, rate limit and URL as given.
+    - The view and the two RPCs as specified.
+    - `?tab=moderacija` falls back to Azili, and no moderacija count is passed. The mockup types shop / hotel map to `pet_shop` / `pet_hotel`.
+    - Applied from earlier decisions: the 5xx text "Nešto nije u redu. Pokušaj ponovo."; unmapped 422 field codes show the screen's form-level message; sr-Latn / en-GB date formats via Intl.
+  - **Database functions (pre-approved exception 6):** `rpc:decide_organisation` and `rpc:save_partner`, the functions the prompt allows for `decideOrganisation` / `savePartner` atomicity. Follow-up: add both, with their signatures, to `docs/product/05-api-integration-contract.md` EP-68 / EP-69.
+  - **Verification** (in order, on the final code):
+    - `npm run typecheck` ✅ exit 0
+    - `npm run lint` ✅ exit 0 (0 errors; the 2 known warnings in the generated `cloudflare-env.d.ts`)
+    - `npm test` ✅ `Test Files 110 passed (110)`, `Tests 1179 passed (1179)`
+    - `npx supabase test db` ✅ `Files=74, Tests=2444`, `Result: PASS`. Ran after `npx supabase db reset`. The first run failed only `get_me` #14 and `subscription_read` #9: the seed subscription's `current_period_end` (`now() + 1 month` at seed time, days earlier) no longer fell in the expected 28–32 day window. This step does not touch those files.
+    - `npm run build` ✅ exit 0. Route `ƒ /admin`.
+  - **Deviations / decisions:**
+    - **`r2_key` on the logo ticket:** `createPartnerLogoUpload` returns `UploadTicket & { r2_key }`, because EP-69 says `logo_r2_key` comes "from the UploadTicket" and API §10 step 3 lists `r2_key` in the ticket, but §6 UploadTicket has no such field. There is no confirm step for partner logos (owner decision), so the `upload_token` (HMAC over purpose, key, mime, size and expiry, signed with ACTION_TOKEN_SECRET as in `uploads.ts`) is issued but not consumed.
+    - **Reads in `page.tsx`:** the reads run in the server page with the Operator's session rather than through extra actions. A period change or "Učitaj još" is a URL change. A tab click only rewrites `?tab=` (`history.replaceState`).
+    - **Mockup details not carried over:** the mockup line "Istaknuti veterinari u Novom Sadu: n / 3" is dropped, because it named one fixed city and type; the per-row "n / 3" carries the count. The pending-shelter note shows "PIB {tax_id}" (the S15 label) and `registration_note`. The mockup's "Grooming salon" label is kept in the Dialog type Select, "Grooming" in the table.
+    - **Validation details:** a partner website is accepted with or without a scheme (stored as typed; Step 27 adds `https://` when displaying). An Instagram handle loses a leading "@". Hours must have `opens < closes` (`closes = "24:00"` allowed); a duplicate weekday is invalid.
+    - **Viber state:** the switch updates locally from the EP-71 response; app_settings is not re-read.
+  - **Follow-ups:**
+    - Add `rpc:decide_organisation`, `rpc:save_partner` and the `r2_key` field of the partner-logo ticket to `docs/product/05-api-integration-contract.md`.
+    - `lib/actions/files.ts` (EP-15) still answers `url = null` for `partner_logo`. The edit Dialog shows no current logo preview (none in the mockup).
+    - The partner logo has no confirm step, so an uploaded object whose save failed is left for the EP-52 orphan scan (Step 30).
+    - Step 28c adds the Moderacija tab and the shell's moderacija count.
 
 ---
 

@@ -493,6 +493,12 @@ isOneToOne: false
       foreignKeyName: "litters_organisation_id_fkey"
       columns: ["organisation_id"]
 isOneToOne: false
+      referencedRelation: "admin_pending_organisations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "litters_organisation_id_fkey"
+      columns: ["organisation_id"]
+isOneToOne: false
       referencedRelation: "organisations"
       referencedColumns: ["id"]
     }
@@ -641,6 +647,12 @@ isOneToOne: false
       foreignKeyName: "organisation_invitations_organisation_id_fkey"
       columns: ["organisation_id"]
 isOneToOne: false
+      referencedRelation: "admin_pending_organisations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "organisation_invitations_organisation_id_fkey"
+      columns: ["organisation_id"]
+isOneToOne: false
       referencedRelation: "organisations"
       referencedColumns: ["id"]
     }
@@ -658,6 +670,12 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
+      foreignKeyName: "organisation_memberships_organisation_id_fkey"
+      columns: ["organisation_id"]
+isOneToOne: false
+      referencedRelation: "admin_pending_organisations"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "organisation_memberships_organisation_id_fkey"
       columns: ["organisation_id"]
 isOneToOne: false
@@ -837,6 +855,12 @@ isOneToOne: false
       foreignKeyName: "pets_organisation_id_fkey"
       columns: ["organisation_id"]
 isOneToOne: false
+      referencedRelation: "admin_pending_organisations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "pets_organisation_id_fkey"
+      columns: ["organisation_id"]
+isOneToOne: false
       referencedRelation: "organisations"
       referencedColumns: ["id"]
     },{
@@ -952,6 +976,12 @@ isOneToOne: false
       columns: ["accepted_by"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "record_transfers_from_organisation_id_fkey"
+      columns: ["from_organisation_id"]
+isOneToOne: false
+      referencedRelation: "admin_pending_organisations"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "record_transfers_from_organisation_id_fkey"
@@ -1360,7 +1390,15 @@ isOneToOne: false
                 }
           }
           Views: {
-            "feeding_entries_api": {
+            "admin_pending_organisations": {
+                  Row: {
+                    "approval_status": Database["public"]['Enums']["approval_status"] | null,"city": Json | null,"contact_email": string | null,"contact_full_name": string | null,"email": string | null,"id": string | null,"name": string | null,"phone": string | null,"registered_at": string | null,"registration_note": string | null,"rejection_reason": string | null,"tax_id": string | null,"type": Database["public"]['Enums']["organisation_type"] | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    
+                  ]
+                },"feeding_entries_api": {
                   Row: {
                     "access": Json | null,"amount_g": number | null,"brand": string | null,"created_at": string | null,"created_by": string | null,"created_by_name": string | null,"fed_at": string | null,"id": string | null,"note": string | null,"pet_id": string | null,"type": Database["public"]['Enums']["feeding_type"] | null
                   }
@@ -1460,6 +1498,12 @@ isOneToOne: false
       foreignKeyName: "pets_organisation_id_fkey"
       columns: ["organisation_id"]
 isOneToOne: false
+      referencedRelation: "admin_pending_organisations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "pets_organisation_id_fkey"
+      columns: ["organisation_id"]
+isOneToOne: false
       referencedRelation: "organisations"
       referencedColumns: ["id"]
     }
@@ -1548,6 +1592,12 @@ isOneToOne: false
             "accept_record_transfer":
 { Args: { "p_key_map": Json,"p_new_pet_id": string,"p_token_hash": string,"p_visit_id_map": Json }; Returns: Json
                            },
+"admin_list_partners":
+{ Args: { "p_city_id"?: string,"p_limit"?: number,"p_offset"?: number,"p_type"?: Database["public"]['Enums']["partner_type"] }; Returns: Json
+                           },
+"admin_partner_click_stats":
+{ Args: { "p_limit"?: number,"p_offset"?: number,"p_period"?: string }; Returns: Json
+                           },
 "cancel_account_deletion":
 { Args: Record<PropertyKey, never>; Returns: undefined
                            },
@@ -1580,6 +1630,9 @@ isOneToOne: false
                            },
 "decide_org_request":
 { Args: { "p_decision": string,"p_id": string,"p_kind": string }; Returns: Json
+                           },
+"decide_organisation":
+{ Args: { "p_decision": string,"p_organisation_id": string,"p_rejection_reason"?: string }; Returns: Json
                            },
 "decide_organisation_invitation":
 { Args: { "p_decision": string,"p_token_hash": string }; Returns: Json
@@ -1698,6 +1751,9 @@ isOneToOne: false
                            },
 "restore_pet_from_memorial":
 { Args: { "p_pet_id": string,"p_reenable_reminders"?: boolean }; Returns: Json
+                           },
+"save_partner":
+{ Args: { "p_fields": Json,"p_hours"?: Json,"p_id": string }; Returns: Json
                            },
 "set_auto_renew":
 { Args: { "p_auto_renew": boolean }; Returns: {

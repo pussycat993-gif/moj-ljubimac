@@ -85,6 +85,19 @@ export type OrgRequestRejectedEmailVariables = {
   url: string;
 };
 
+export type ShelterApprovedEmailVariables = {
+  /** organisations.name. */
+  organisation: string;
+  /** NEXT_PUBLIC_SITE_URL/organizacija (owner decision, Step 28). */
+  url: string;
+};
+
+export type ShelterRejectedEmailVariables = {
+  organisation: string;
+  /** organisations.rejection_reason; when given, "Razlog: {reason}." is appended (owner decision, Step 28). */
+  reason: string | null;
+};
+
 /** Template ids of Design §9.1 this adapter renders. Later steps add theirs here. */
 export type EmailTemplate =
   | { id: "reminder_email"; variables: ReminderEmailVariables }
@@ -95,7 +108,9 @@ export type EmailTemplate =
   | { id: "adoption_request_accepted"; variables: OrgRequestAcceptedEmailVariables }
   | { id: "adoption_request_rejected"; variables: OrgRequestRejectedEmailVariables }
   | { id: "breeder_inquiry_accepted"; variables: OrgRequestAcceptedEmailVariables }
-  | { id: "breeder_inquiry_rejected"; variables: OrgRequestRejectedEmailVariables };
+  | { id: "breeder_inquiry_rejected"; variables: OrgRequestRejectedEmailVariables }
+  | { id: "shelter_approved"; variables: ShelterApprovedEmailVariables }
+  | { id: "shelter_rejected"; variables: ShelterRejectedEmailVariables };
 
 export type RenderedEmail = { subject: string; html: string; text: string };
 
@@ -184,6 +199,20 @@ const RENDERERS: { [K in EmailTemplate["id"]]: (t: Dictionary, v: Extract<EmailT
   },
   breeder_inquiry_rejected(t, v) {
     return simple(t.messages.breeder_inquiry_rejected, { organisation: v.organisation, pet: v.pet }, v.url);
+  },
+  shelter_approved(t, v) {
+    return simple(t.messages.shelter_approved, { organisation: v.organisation }, v.url);
+  },
+  shelter_rejected(t, v) {
+    const copy = t.messages.shelter_rejected;
+    const reason = v.reason?.trim() ? ` ${format(copy.reason, { reason: v.reason.trim() })}` : "";
+    return {
+      subject: format(copy.subject, { organisation: v.organisation }),
+      bodyHtml: format(escapeHtml(copy.body), { organisation: escapeHtml(v.organisation) }) + escapeHtml(reason),
+      bodyText: format(copy.body, { organisation: v.organisation }) + reason,
+      buttons: [],
+      note: null,
+    };
   },
   reminder_email(t, v) {
     const copy = t.messages.reminder_email;
