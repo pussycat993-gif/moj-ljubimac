@@ -16,7 +16,7 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     command: "npm run dev",
-    // Wait for the port, not a URL: `/` is a 404 until a route exists.
+    // Wait for the port, not a URL: `/` only redirects (to /prijava or the user home).
     port: PORT,
     reuseExistingServer: !process.env.CI,
   },

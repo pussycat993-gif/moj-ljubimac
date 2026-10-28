@@ -4698,6 +4698,10 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
     - Add `rpc:get_partner` (with its signature) to `docs/product/05-api-integration-contract.md` EP-65.
     - `lib/actions/files.ts` (EP-15) still answers `url = null` for `partner_logo`. S25 signs the logo in `getPartner`, so nothing needs it yet; Step 28 (admin partner logo) may want EP-15 to serve it.
     - The logo is shown with shadcn `AvatarImage` inside the existing Avatar (OQ-10 `LogoAvatar` not approved).
+- **2026-10-28 — Root route fix (owner request, 2026-10-28).** Not a plan step; §3 unchanged. QA found that `/` returned 404 (no `app/page.tsx`).
+  - **Built:** `app/page.tsx`, a server component with no UI. With no session it redirects to `/prijava`. With a session it redirects to the existing `postSignInPath(supabase, user, null)` from `lib/server/gates.ts`, the same EP-42 matrix that `app/(auth)/auth/callback/route.ts` uses: no profile → `/registracija`, deletion pending → `/profil/podaci`, organisation member → `/organizacija`, otherwise `/ljubimci`. No helper had to be extracted, and no behaviour changed. `/` is not a signed-in prefix, so the proxy passes it through unchanged. `playwright.config.ts`: only the webServer comment changed (it said `/` is a 404).
+  - **Tests:** `tests/auth/root-redirect.test.ts` (3): visitor → `/prijava`; signed-in owner → `/ljubimci`; the EP-42 cases (no profile, pending deletion, organisation member).
+  - **Verification:** `npm run typecheck` ✅ exit 0. `npm run lint` ✅ 0 errors (the 2 known warnings in `cloudflare-env.d.ts`). `npm test` ✅ `Test Files 106 passed (106)`, `Tests 1135 passed (1135)`. The first run had 1 failure in `tests/reminders/reminder-form.test.tsx` ("too_long"). It passed alone (12/12) and on the full rerun, so it was load flake unrelated to this change. `npm run build` ✅ exit 0, route `ƒ /`.
 
 ---
 
