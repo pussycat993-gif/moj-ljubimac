@@ -1,4 +1,5 @@
--- BR-48: every new profile gets six reminder_preferences rows with the stated defaults;
+-- BR-48: every new profile gets six reminder_preferences rows with the stated defaults, plus the
+-- message row {email, push} (FR-69; Step 28a owner decision: preference_type = reminder_type);
 -- BR-13 doses and meals stored at the exact time; EP-28 channel rules (premium_required,
 -- whatsapp_not_connected, channel_disabled). Step 18: the EP-28 upsert regenerates future pending
 -- occurrences (FR-22), doses and meals stay exact, several channels are stored and returned by
@@ -15,7 +16,7 @@ values ('da000000-0000-4000-8000-000000000001', 'owner', 'novi@mojljubimac.test'
 
 select is(
   (select count(*)::int from public.reminder_preferences where user_id = 'da000000-0000-4000-8000-000000000001'),
-  6, 'a new profile gets six preference rows (BR-48)'
+  7, 'a new profile gets six reminder preference rows and the message row (BR-48, FR-69)'
 );
 select results_eq(
   $$select type::text, lead_minutes, delivery_time, channels::text[]
@@ -28,17 +29,18 @@ select results_eq(
     ('vet_follow_up', '{1440,0}'::integer[], '09:00'::time, '{email,push}'::text[]),
     ('meal', '{0}'::integer[], null::time, '{email,push}'::text[]),
     ('birthday', '{0}'::integer[], '09:00'::time, '{email,push}'::text[]),
-    ('manual', '{0}'::integer[], '09:00'::time, '{email,push}'::text[])$$,
-  'vaccinations 7 days + on the day at 09:00; follow-ups 1 day + on the day at 09:00; birthdays and manual on the day at 09:00; doses and meals exact; email + push (BR-48)'
+    ('manual', '{0}'::integer[], '09:00'::time, '{email,push}'::text[]),
+    ('message', '{0}'::integer[], null::time, '{email,push}'::text[])$$,
+  'vaccinations 7 days + on the day at 09:00; follow-ups 1 day + on the day at 09:00; birthdays and manual on the day at 09:00; doses and meals exact; email + push (BR-48); message email + push (FR-69)'
 );
 select is(
   (select count(*)::int from public.profiles p
-   where (select count(*) from public.reminder_preferences r where r.user_id = p.id) <> 6),
-  0, 'every seeded profile has its six rows'
+   where (select count(*) from public.reminder_preferences r where r.user_id = p.id) <> 7),
+  0, 'every seeded profile has its six rows and the message row'
 );
 select is(
   (select count(*)::int from public.reminder_preferences where user_id = 'a1000000-0000-4000-8000-000000000004'),
-  6, 'shelter accounts get the defaults too'
+  7, 'shelter accounts get the defaults too'
 );
 
 -- BR-13: doses and meals keep lead 0 and no delivery time --------------------------------------
@@ -229,7 +231,7 @@ select throws_ok(
 );
 select is(
   (select count(*)::int from public.reminder_preferences),
-  6, 'a user sees only own preferences'
+  7, 'a user sees only own preferences'
 );
 
 -- As Ivana (Premium, no WhatsApp number) ------------------------------------------------------

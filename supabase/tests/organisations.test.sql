@@ -14,8 +14,9 @@ select enum_has_labels('public', 'organisation_role', array['admin', 'volunteer'
 select columns_are('public', 'organisations', array[
   'id', 'type', 'name', 'slug', 'city_id', 'approval_status', 'rejection_reason', 'tax_id',
   'registration_note', 'description', 'phone', 'email', 'website', 'logo_r2_key', 'created_by',
+  'donation_bank_account', 'donation_url', 'dropoff_address', 'dropoff_hours',
   'created_at', 'updated_at'
-], 'organisations has the TC §5.2 columns');
+], 'organisations has the TC §5.2 columns (CAP-08 donation columns from Step 28a)');
 select col_not_null('public', 'organisations', 'type', 'type is not null');
 select col_not_null('public', 'organisations', 'name', 'name is not null');
 select col_is_unique('public', 'organisations', 'slug', 'slug is unique');

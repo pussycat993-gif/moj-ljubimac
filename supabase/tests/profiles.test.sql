@@ -21,8 +21,8 @@ select throws_ok(
 select columns_are('public', 'profiles', array[
   'id', 'account_type', 'full_name', 'locale', 'city_id', 'email', 'is_operator', 'trial_used',
   'deletion_requested_at', 'deletion_due_at', 'terms_accepted_at', 'terms_version',
-  'created_at', 'updated_at'
-], 'profiles has exactly the TC §5.1 columns');
+  'display_name', 'marketplace_suspended_at', 'created_at', 'updated_at'
+], 'profiles has exactly the TC §5.1 columns (CAP-08 columns from Step 28a)');
 select col_default_is('public', 'profiles', 'locale', 'sr-Latn', 'locale defaults to sr-Latn');
 select col_default_is('public', 'profiles', 'is_operator', 'false', 'is_operator defaults to false');
 select fk_ok('public', 'profiles', 'city_id', 'public', 'cities', 'id', 'city_id references cities');

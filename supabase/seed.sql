@@ -273,3 +273,133 @@ union all select 'e1000000-0000-4000-8000-000000000001', 6, time '09:00', time '
 union all select 'e1000000-0000-4000-8000-000000000002', d, time '09:00', time '20:00' from generate_series(1, 6) d
 union all select 'e1000000-0000-4000-8000-000000000003', d, time '10:00', time '18:00' from generate_series(2, 6) d
 union all select 'e1000000-0000-4000-8000-000000000004', d, time '00:00', time '24:00' from generate_series(1, 7) d;
+
+-- Šapa pomoći (Step 28a) ------------------------------------------------------------------
+-- One more test user (same local-only password as above):
+--   dragana.kovacevic@mojljubimac.test shelter, admin of the approved shelter
+--                                      Azil „Druga šansa“ (with donation info) — Novi Sad
+-- (Milica's shelter stays pending.) Listings per Design §12 S32: a need by the shelter, a gift
+-- by Marko (Free, Bečej), a sale with a price (Ivana) and one "po dogovoru" (Jelena), a search
+-- (Jelena), one expired (Marko) and one resolved (Ivana). Ivana asked Marko about the gift and he
+-- answered (unread); Jelena blocked Nikola; Marko has one open report.
+
+with seed_users (id, email, full_name, account_type, city) as (
+  values
+    ('a1000000-0000-4000-8000-000000000007'::uuid, 'dragana.kovacevic@mojljubimac.test',
+     'Dragana Kovačević', 'shelter'::public.account_type, 'Novi Sad')
+),
+new_auth_users as (
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+    raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+    confirmation_token, recovery_token, email_change_token_new, email_change
+  )
+  select
+    '00000000-0000-0000-0000-000000000000', id, 'authenticated', 'authenticated', email,
+    extensions.crypt('MojLjubimac123!', extensions.gen_salt('bf')), now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    jsonb_build_object('full_name', full_name), now(), now(),
+    '', '', '', ''
+  from seed_users
+  returning id
+),
+new_identities as (
+  insert into auth.identities (
+    id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at
+  )
+  select
+    gen_random_uuid(), su.id, su.id::text,
+    jsonb_build_object('sub', su.id::text, 'email', su.email, 'email_verified', true),
+    'email', now(), now(), now()
+  from seed_users su
+  join new_auth_users au on au.id = su.id
+  returning user_id
+)
+insert into public.profiles (
+  id, account_type, full_name, locale, city_id, email, terms_accepted_at, terms_version
+)
+select su.id, su.account_type, su.full_name, 'sr-Latn', c.id, su.email, now(), 'seed'
+from seed_users su
+join new_identities ni on ni.user_id = su.id
+join public.cities c on c.name_sr = su.city;
+
+insert into public.organisations (
+  id, type, name, slug, city_id, created_by, description, phone, email,
+  donation_bank_account, donation_url, dropoff_address, dropoff_hours
+)
+select 'b2000000-0000-4000-8000-000000000003', 'shelter', 'Azil „Druga šansa“', 'azil-druga-sansa',
+       c.id, 'a1000000-0000-4000-8000-000000000007',
+       'Udomljavamo napuštene pse i mačke iz Novog Sada i okoline.', '+381 21 400 200',
+       'kontakt@drugasansa.rs', '160-0000012345678-90', 'https://drugasansa.rs/doniraj',
+       'Primorska 12, Novi Sad', 'pon–pet 10–16h'
+from public.cities c where c.name_sr = 'Novi Sad';
+
+-- Shelters start pending (BR-32); the Operator approved this one.
+update public.organisations set approval_status = 'approved'
+where id = 'b2000000-0000-4000-8000-000000000003';
+
+insert into public.organisation_memberships (organisation_id, user_id, role) values
+  ('b2000000-0000-4000-8000-000000000003', 'a1000000-0000-4000-8000-000000000007', 'admin');
+
+insert into public.listings (
+  id, author_id, organisation_id, type, title, description, category, species, city_id,
+  price_minor, price_negotiable, status, resolved_outcome, published_at
+)
+select l.id, l.author_id, l.organisation_id, l.type, l.title, l.description, l.category, l.species,
+       c.id, l.price_minor, l.price_negotiable, l.status, l.resolved_outcome, l.published_at
+from (
+  values
+    ('f3000000-0000-4000-8000-000000000001'::uuid, 'a1000000-0000-4000-8000-000000000007'::uuid,
+     'b2000000-0000-4000-8000-000000000003'::uuid, 'need'::public.listing_type,
+     'Potrebno 20 kg granula za odrasle pse',
+     'Imamo 34 psa i hrane nam ponestaje. Bilo koja granula za odrasle pse dobro dođe.',
+     'food'::public.listing_category, 'dog'::public.listing_species, 'Novi Sad',
+     null::integer, false, 'active'::public.listing_status, null::public.listing_outcome,
+     now() - interval '2 days'),
+    ('f3000000-0000-4000-8000-000000000002', 'a1000000-0000-4000-8000-000000000002', null, 'giving',
+     'Poklanjam grebalicu za mačke',
+     'Grebalica sa dva nivoa, malo korišćena. Preuzimanje u Bečeju.',
+     'equipment_toys', 'cat', 'Bečej', null, false, 'active', null, now() - interval '1 day'),
+    ('f3000000-0000-4000-8000-000000000003', 'a1000000-0000-4000-8000-000000000001', null, 'selling',
+     'Prodajem transporter za psa',
+     'Plastični transporter za pse do 15 kg, kao nov.',
+     'carriers', 'dog', 'Novi Sad', 250000, false, 'active', null, now() - interval '3 days'),
+    ('f3000000-0000-4000-8000-000000000004', 'a1000000-0000-4000-8000-000000000003', null, 'selling',
+     'Prodajem krevet za psa',
+     'Ortopedski krevet 90 × 70 cm, presvlaka se pere.',
+     'furniture', 'dog', 'Novi Sad', null, true, 'active', null, now() - interval '5 days'),
+    ('f3000000-0000-4000-8000-000000000005', 'a1000000-0000-4000-8000-000000000003', null, 'seeking',
+     'Tražim kavez za zeca',
+     'Treba mi veći kavez ili ograda za patuljastog zeca.',
+     'equipment_toys', 'other', 'Subotica', null, false, 'active', null, now() - interval '6 days'),
+    ('f3000000-0000-4000-8000-000000000006', 'a1000000-0000-4000-8000-000000000002', null, 'giving',
+     'Poklanjam povodnik i ogrlicu',
+     'Povodnik od 2 m i ogrlica za male pse.',
+     'equipment_toys', 'dog', 'Beograd', null, false, 'expired', null, now() - interval '40 days'),
+    ('f3000000-0000-4000-8000-000000000007', 'a1000000-0000-4000-8000-000000000001', null, 'giving',
+     'Poklanjam činije za hranu',
+     'Dve keramičke činije, za mačke ili male pse.',
+     'equipment_toys', 'cat', 'Novi Sad', null, false, 'resolved', 'given', now() - interval '12 days')
+) as l (id, author_id, organisation_id, type, title, description, category, species, city,
+        price_minor, price_negotiable, status, resolved_outcome, published_at)
+join public.cities c on c.name_sr = l.city;
+
+insert into public.conversations (id, listing_id, starter_id, owner_id, last_message_at) values (
+  'f3100000-0000-4000-8000-000000000001', 'f3000000-0000-4000-8000-000000000002',
+  'a1000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000002', now()
+);
+
+insert into public.messages (conversation_id, sender_id, body, created_at, read_at) values
+  ('f3100000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001',
+   'Zdravo! Da li je grebalica još dostupna?', now() - interval '20 hours', now() - interval '19 hours'),
+  ('f3100000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000002',
+   'Jeste, možeš da je preuzmeš u subotu pre podne.', now() - interval '18 hours', null);
+
+insert into public.user_blocks (blocker_id, blocked_id) values (
+  'a1000000-0000-4000-8000-000000000003', 'a1000000-0000-4000-8000-000000000005'
+);
+
+insert into public.reports (reporter_id, listing_id, reason, note) values (
+  'a1000000-0000-4000-8000-000000000002', 'f3000000-0000-4000-8000-000000000004', 'scam',
+  'Traži uplatu unapred pre nego što pokaže krevet.'
+);

@@ -88,7 +88,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 26 | Litters & public organisation pages | ✅ | 25 | — | 2026-10-23 |
 | 27 | Partners directory & vet suggestion | ✅ | 09, 12, 14 | — | 2026-10-23 |
 | 28 | Operator admin | ✅ | 27, 24, 19 | — | 2026-10-28 |
-| 28a | Schema: Šapa pomoći | ⬜ | 28 | — | |
+| 28a | Schema: Šapa pomoći | ✅ | 28 | — | 2026-10-28 |
 | 28b | Listings, public pages, profiles & donation info | ⬜ | 28a, 21, 19 | — | |
 | 28c | Messaging, notifications, report/block & moderation | ⬜ | 28b, 19 | — | |
 | 29 | WhatsApp channel | ⬜ | 19 | — | |
@@ -5047,7 +5047,57 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-28** — Step 28a built (unattended overnight run).
+  - **Already existing from Steps 04 / 05 / 08:** none of the CAP-08 items. `profiles` had no `display_name` / `marketplace_suspended_at`, `organisations` had no donation columns, and there was no `preference_type` enum, no `message` value and no default `message` row. Step 08 typed `reminder_preferences.type` with `public.reminder_type` (see the owner decision below). The Step 12 `get_me` and Step 18 `reminder_settings_rpcs` migrations already noted that these parts were left to Steps 28a–28c (invariant 11).
+  - **Built:**
+    - `20261028222712_preference_type_message.sql`: `alter type public.reminder_type add value if not exists 'message'`, alone in its own migration.
+    - `20261028222714_sapa_columns.sql`:
+      - `profiles.display_name` (check 2–40), `profiles.marketplace_suspended_at`, and `grant update (display_name)` to authenticated. `profiles_before_write` is recreated so `display_name` joins the `account_pending_deletion` guard (EP-43).
+      - `organisations.donation_bank_account`, `donation_url` (check `^https://`), `dropoff_address`, `dropoff_hours`. The table-level SELECT of authenticated is replaced by a column grant without the four donation columns (owner decision for Step 28a; anon had none). `grant update` on the four columns for the existing Admin-only update policy (FR-72) — Step 28b no longer needs to ship that grant.
+      - Owner-decision guards for `message` (below): `reminders_type_not_message_check`; on `reminder_preferences`, `reminder_preferences_channels_check` (type = message or ≥ 1 channel), `reminder_preferences_message_channels_check` (channels <@ {email, push}) and `reminder_preferences_delivery_time_check` (null for treatment_dose, meal and message).
+      - `reminder_preferences_before_write` resets lead / delivery time for message too, and skips the WhatsApp / Viber channel rules for message rows so the subset check answers (23514).
+      - `profiles_create_reminder_preferences` (the Step 08 mechanism) adds the message row `{email, push}`. Every existing profile got the row.
+      - `get_reminder_settings` is recreated with the same body plus `where t.type <> 'message'`.
+    - `20261028222717_sapa_listings.sql`:
+      - The seven TC §5.10 enums, then `listings` and `listing_photos` exactly per TC: checks for title, description, category (medicine_care only for need), price (BR-57), need ⇔ organisation_id, resolved ⇔ outcome and photo position 1–5; unique (listing_id, position); the five TC indexes.
+      - Triggers: `listings_set_expires_at` (insert: published_at + 30 days), `listings_active_limit` (insert / status update to active; non-need, not is_premium, not account_type shelter, ≥ 3 active non-need rows → `premium_required:listings`; every writer), `listings_need_shelter_only` (insert, and updates by the author → `listing_type_not_allowed`), `listings_status_guard` (owner decision), `marketplace_not_suspended` (listing insert, update by the author; also attached to messages), `listing_photos_max` (> 5 → `validation_failed`), `listing_photos_queue_r2_key` (after delete, so listing and account deletion queue keys through the cascade), plus the shared `set_updated_at`.
+      - `public.marketplace_author_ok(uuid)` (owner decision).
+      - RLS: public select (anon + authenticated) on status active and author not suspended; author and Operator select; insert / update / delete by the author; Operator update for hide / restore. Column grants: insert without `id` / `author_id` / `published_at` / `expires_at`; update of the content, status, outcome, `expires_at`, `expiry_notice_sent_at`. Photos follow their listing's visibility (subquery under listings RLS); the author inserts / reorders (position) / deletes them.
+    - `20261028222719_sapa_messaging.sql`:
+      - `conversations` (listing_id on delete set null; starter / owner cascade; check starter ≠ owner; unique (listing_id, starter_id); both inbox indexes) and `messages` (no updated_at; body check; both indexes).
+      - Triggers: `conversations_listing_active` (`listing_not_active` / `cannot_message_self`; sets `owner_id` from the author), `messages_sender_is_party` (→ `not_found`, the EP-82 code), `messages_not_blocked`, `marketplace_not_suspended`, `messages_touch_conversation`.
+      - RLS: the two parties select; conversations insert with starter = caller (grant on `listing_id` only); messages insert with sender = caller and a party; `read_at` update only by the recipient (column grant); no Operator access.
+    - `20261028222721_sapa_safety.sql`:
+      - `user_blocks` (check not self, unique pair, index blocked_id; RLS blocker select / insert / delete).
+      - `reports`: note ≤ 500, note required for `other`, both unique partial indexes, index (status, created_at). `reports_before_insert` enforces at creation: reporter = caller when not given and not null, a listing or a user, and the listing's author as `reported_user_id`. RLS: insert as self, the reporter selects own, the Operator selects / updates all.
+    - `supabase/seed.sql` (appended): Dragana Kovačević (`dragana.kovacevic@mojljubimac.test`, shelter, same local password) with the approved Azil „Druga šansa“ (Novi Sad, donation info). Listings: a need by the shelter; Marko's gift (Bečej); Ivana's sale for 2.500 RSD; Jelena's sale "po dogovoru"; Jelena's search (Subotica); Marko's expired gift; Ivana's resolved gift. Ivana ↔ Marko conversation with 2 messages, the newest unread. Jelena blocks Nikola. Marko has an open report on Jelena's sale.
+    - `npm run db:types` regenerated `lib/supabase/database.types.ts`.
+    - pgTAP: `sapa_columns` (45), `sapa_listings` (78), `sapa_listing_rls` (36), `sapa_messaging` (47), `sapa_safety` (47) — every row of the Tests to ship table.
+  - **Owner decisions applied:**
+    - **preference_type gap (2026-10-28, option 1 with guards):** (a) `reminder_type` gets `message`; the docs' `preference_type` reads `reminder_type`. (b) Check `reminders.type <> 'message'`. (c) Only `get_reminder_settings` is recreated, skipping message until Step 28c; the S12 client and `reminder-type-icon` are untouched. (d) Message rows may have empty channels; delivery_time is null for treatment_dose, meal and message; the before-write reset includes message. (e) The default message row for existing and new profiles. **Follow-up:** align `docs/product/03-technical-constraints.md` §5.5 and API §6 (preference_type = reminder_type).
+    - Step 28a decisions of 2026-10-24: `marketplace_author_ok`; `messages_not_blocked` and `messages_touch_conversation` as security definer with `set search_path = public`; `listings_status_guard`; the organisations SELECT column grant without the donation columns.
+  - **Owner-approved exceptions:**
+    - Pre-approved exception 1 (earlier tests that asserted the exact column list now grown by this step): `supabase/tests/profiles.test.sql` and `supabase/tests/organisations.test.sql` `columns_are` lists gained the CAP-08 columns.
+    - Pre-approved exception 3 (owner decision on reminder_type): `supabase/tests/reminders.test.sql` enum labels include `message`. `supabase/tests/reminder_preferences.test.sql` expects 7 rows per profile (six + message) and the message defaults. `app/(app)/podesavanja/podsetnici/page.tsx` `savePreference` returns the validated input `type` instead of `data.type`. The regenerated enum includes `message`, which no longer fit the S12 `ReminderType`, so typecheck failed. This is a one-token change with the same runtime value; the S12 client is untouched.
+  - **Verification** (in order, on the final code):
+    - `npx supabase db reset` ✅ exit 0 (all migrations + seed)
+    - `npm run db:types` ✅ exit 0
+    - `npm run typecheck` ✅ exit 0 (after the page.tsx change above; it failed before with TS2322 on `data.type`)
+    - `npm run lint` ✅ exit 0 (0 errors; the 2 known warnings in the generated `cloudflare-env.d.ts`)
+    - `npm test` ✅ `Test Files 110 passed (110)`, `Tests 1179 passed (1179)`
+    - `npx supabase test db` ✅ `Files=79, Tests=2697`, `Result: PASS`
+    - `npm run build` ✅ exit 0
+  - **Deviations / decisions:**
+    - `messages_body_check` uses `btrim(body, E' \t\r\n')` rather than plain `btrim(body)`. Plain `btrim` strips spaces only, which would let a newline-only message through (FR-68 #7 "empty message").
+    - `listings_need_shelter_only` checks on insert and on updates by the author only. The expiry job and moderation (service role / Operator) are not blocked when the author has since left the shelter.
+    - `messages_sender_is_party` raises `not_found` (EP-82: "conversation not the caller's"). It fires before RLS, so a non-party also gets `not_found` rather than 42501.
+    - Client inserts never carry `id` (same convention as the other tables). Clients may update `expires_at`. Extend (`now() + 30 days`) is enforced by the Step 28b action, not by a trigger.
+    - `reports.reporter_id` is nullable (on delete set null). TC's "listing_id or reported_user_id" rule is checked "at creation" in `reports_before_insert` (`validation_failed`), not as a check constraint, because both columns are set to null by deletions.
+  - **Follow-ups:**
+    - TC §5.5 / API §6: preference_type = reminder_type (above).
+    - **TC §5.10 index collision (for the owner):** reporter R has an open listing report on listing L of author A and also an open user report on A. If A deletes L, `listing_id → null` turns the listing report into a second open (R, A, listing_id null) row. `reports_open_user_key` then fails with 23505, and the listing delete fails. Not triggered by the seed or tests; built as specified. The fix needs a TC change, e.g. a report kind column used in the index predicate.
+    - Step 28b: `listing_photo` uploads by a suspended author, and photo adds on a non-active listing, are refused in the EP-13 action (TC has no trigger for them). The donation-column update grant already exists.
+    - Step 28c: the seventh `get_reminder_settings` row, the S12 Poruke card and `ReminderType` / icon for message.
 
 ---
 

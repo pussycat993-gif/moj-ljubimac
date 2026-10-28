@@ -9,7 +9,8 @@ select plan(41);
 
 -- Enums ---------------------------------------------------------------------------------------
 select enum_has_labels('public', 'reminder_type',
-  array['vaccination', 'treatment_dose', 'vet_follow_up', 'meal', 'birthday', 'manual'], 'reminder types');
+  array['vaccination', 'treatment_dose', 'vet_follow_up', 'meal', 'birthday', 'manual', 'message'],
+  'reminder types, plus message for reminder_preferences only (Step 28a owner decision)');
 select enum_has_labels('public', 'reminder_recurrence',
   array['none', 'hourly_interval', 'daily', 'weekly', 'monthly', 'yearly'], 'recurrences');
 select enum_has_labels('public', 'delivery_channel', array['email', 'push', 'whatsapp', 'viber'],

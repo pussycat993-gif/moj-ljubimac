@@ -85,7 +85,7 @@ async function savePreference(input: PreferenceInput): Promise<ActionResult<Remi
     .single()
   if (error) return { ok: false, error: fromPreferenceError(error) }
   return ok({
-    type: data.type,
+    type,
     lead_minutes: data.lead_minutes,
     delivery_time: data.delivery_time ? data.delivery_time.slice(0, 5) : null,
     channels: data.channels,
