@@ -1,0 +1,73 @@
+name: Prijava greške
+description: Greška pronađena ručnim ili automatskim testiranjem
+title: "[Bug] "
+labels: ["bug"]
+assignees: ["pussycat993-gif"]
+body:
+  - type: input
+    id: scenario
+    attributes:
+      label: Scenario ID
+      description: ID iz docs/qa/test-scenariji (npr. TS-PET-005) ili ime e2e fajla. Ako greška nije iz scenarija, napiši „van scenarija".
+    validations:
+      required: true
+  - type: dropdown
+    id: prioritet
+    attributes:
+      label: Prioritet
+      description: Objašnjenje u docs/qa/03-sablon-prijave-greske.md
+      options:
+        - P1 — kritično (ne radi, gubitak podataka, tuđi podaci vidljivi)
+        - P2 — važno (funkcija radi pogrešno, postoji zaobilaznica)
+        - P3 — sitno (tekst, izgled, kozmetika)
+    validations:
+      required: true
+  - type: dropdown
+    id: okruzenje
+    attributes:
+      label: Okruženje
+      options:
+        - Lokalno (localhost:3000)
+        - Produkcija
+    validations:
+      required: true
+  - type: input
+    id: nalog
+    attributes:
+      label: Nalog
+      description: Koji nalog si koristila (npr. marko.jovanovic@mojljubimac.test) i njegova uloga
+  - type: textarea
+    id: koraci
+    attributes:
+      label: Koraci
+      placeholder: |
+        1. Prijavi se kao ...
+        2. Otvori ...
+        3. Klikni ...
+    validations:
+      required: true
+  - type: textarea
+    id: ocekivano
+    attributes:
+      label: Očekivani rezultat
+    validations:
+      required: true
+  - type: textarea
+    id: dobijeno
+    attributes:
+      label: Dobijeni rezultat
+      description: Šta se stvarno desilo. Prevuci snimak ekrana, video ili trace.zip ovde.
+    validations:
+      required: true
+  - type: input
+    id: uredjaj
+    attributes:
+      label: Browser i uređaj
+      placeholder: Chrome 131, Windows 11 / iPhone 15, Safari
+  - type: dropdown
+    id: jezik
+    attributes:
+      label: Jezik aplikacije
+      options:
+        - srpski
+        - engleski

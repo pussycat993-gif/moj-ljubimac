@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: QA dokumentacija
+    url: https://github.com/pussycat993-gif/moj-ljubimac/tree/main/docs/qa
+    about: Vodič, slučajevi korišćenja i test scenariji

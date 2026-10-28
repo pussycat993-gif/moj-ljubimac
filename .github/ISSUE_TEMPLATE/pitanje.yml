@@ -1,0 +1,17 @@
+name: Pitanje ili predlog
+description: Nejasan zahtev, predlog poboljšanja ili pitanje za vlasnicu proizvoda
+title: "[Pitanje] "
+labels: ["question"]
+assignees: ["pussycat993-gif"]
+body:
+  - type: input
+    id: gde
+    attributes:
+      label: Ekran ili scenario
+      placeholder: S03 karton / TS-REM-012
+  - type: textarea
+    id: pitanje
+    attributes:
+      label: Pitanje ili predlog
+    validations:
+      required: true
