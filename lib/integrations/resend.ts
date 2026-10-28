@@ -98,6 +98,25 @@ export type ShelterRejectedEmailVariables = {
   reason: string | null;
 };
 
+export type ListingExpiringEmailVariables = {
+  /** listings.title. */
+  listing: string;
+  /** listings.expires_at as a Europe/Belgrade date in the recipient's date format. */
+  date: string;
+  /** NEXT_PUBLIC_SITE_URL/sapa-pomoci/moje?produzi=<listing_id> — S35 extends after sign-in (EP-77). */
+  extend_url: string;
+  /** NEXT_PUBLIC_SITE_URL/sapa-pomoci/moje — S35. */
+  manage_url: string;
+};
+
+export type ListingExpiredEmailVariables = {
+  listing: string;
+  /** listings.expires_at as a Europe/Belgrade date in the recipient's date format. */
+  date: string;
+  /** NEXT_PUBLIC_SITE_URL/sapa-pomoci/moje — S35 (Objavi ponovo). */
+  url: string;
+};
+
 /** Template ids of Design §9.1 this adapter renders. Later steps add theirs here. */
 export type EmailTemplate =
   | { id: "reminder_email"; variables: ReminderEmailVariables }
@@ -110,7 +129,9 @@ export type EmailTemplate =
   | { id: "breeder_inquiry_accepted"; variables: OrgRequestAcceptedEmailVariables }
   | { id: "breeder_inquiry_rejected"; variables: OrgRequestRejectedEmailVariables }
   | { id: "shelter_approved"; variables: ShelterApprovedEmailVariables }
-  | { id: "shelter_rejected"; variables: ShelterRejectedEmailVariables };
+  | { id: "shelter_rejected"; variables: ShelterRejectedEmailVariables }
+  | { id: "listing_expiring"; variables: ListingExpiringEmailVariables }
+  | { id: "listing_expired"; variables: ListingExpiredEmailVariables };
 
 export type RenderedEmail = { subject: string; html: string; text: string };
 
@@ -199,6 +220,32 @@ const RENDERERS: { [K in EmailTemplate["id"]]: (t: Dictionary, v: Extract<EmailT
   },
   breeder_inquiry_rejected(t, v) {
     return simple(t.messages.breeder_inquiry_rejected, { organisation: v.organisation, pet: v.pet }, v.url);
+  },
+  listing_expiring(t, v) {
+    const date = v.date;
+    const copy = t.messages.listing_expiring;
+    // A Serbian date already ends with a full stop ("19. 10. 2026."), and the sentence ends right after {date}.
+    const body = date.endsWith(".") ? copy.body.replace("{date}.", "{date}") : copy.body;
+    return {
+      subject: format(copy.subject, { listing: v.listing }),
+      bodyHtml: format(escapeHtml(body), { listing: `<strong>${escapeHtml(v.listing)}</strong>`, date: escapeHtml(date) }),
+      bodyText: format(body, { listing: v.listing, date }),
+      buttons: [
+        { label: copy.extend, url: v.extend_url, primary: true },
+        { label: copy.resolve, url: v.manage_url, primary: false },
+      ],
+      note: null,
+    };
+  },
+  listing_expired(t, v) {
+    const copy = t.messages.listing_expired;
+    return {
+      subject: format(copy.subject, { listing: v.listing }),
+      bodyHtml: format(escapeHtml(copy.body), { listing: `<strong>${escapeHtml(v.listing)}</strong>`, date: escapeHtml(v.date) }),
+      bodyText: format(copy.body, { listing: v.listing, date: v.date }),
+      buttons: [{ label: copy.button, url: v.url, primary: true }],
+      note: null,
+    };
   },
   shelter_approved(t, v) {
     return simple(t.messages.shelter_approved, { organisation: v.organisation }, v.url);

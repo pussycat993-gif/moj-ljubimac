@@ -1823,14 +1823,25 @@ isOneToOne: false
 "dispatch_watchdog_due":
 { Args: Record<PropertyKey, never>; Returns: boolean
                            },
+"expire_listings":
+{ Args: { "p_limit"?: number }; Returns: {
+              "author_id": string,"email": string,"expires_at": string,"listing_id": string,"locale": Database["public"]['Enums']["app_locale"],"notify": boolean,"title": string
+            }[]
+                           },
 "get_channel_usage":
 { Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"get_donation_info":
+{ Args: { "p_listing_id": string }; Returns: Json
                            },
 "get_household":
 { Args: { "p_household_id"?: string }; Returns: Json
                            },
 "get_household_invitation":
 { Args: { "p_token_hash": string }; Returns: Json
+                           },
+"get_listing":
+{ Args: { "p_listing_id": string }; Returns: Json
                            },
 "get_me":
 { Args: Record<PropertyKey, never>; Returns: Json
@@ -1856,6 +1867,9 @@ isOneToOne: false
 "get_public_org_page":
 { Args: { "p_limit"?: number,"p_offset"?: number,"p_slug": string }; Returns: Json
                            },
+"get_public_profile":
+{ Args: { "p_limit"?: number,"p_offset"?: number,"p_user_id": string }; Returns: Json
+                           },
 "get_reminder_settings":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
@@ -1868,8 +1882,14 @@ isOneToOne: false
 "is_premium":
 { Args: { "user_id": string }; Returns: boolean
                            },
+"list_listings":
+{ Args: { "p_category"?: string,"p_city_id"?: string,"p_limit"?: number,"p_offset"?: number,"p_species"?: string,"p_type"?: string }; Returns: Json
+                           },
 "list_litters":
 { Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"list_my_listings":
+{ Args: { "p_group": string,"p_limit"?: number,"p_offset"?: number }; Returns: Json
                            },
 "list_org_animals":
 { Args: { "p_limit"?: number,"p_offset"?: number,"p_q"?: string,"p_status"?: string }; Returns: Json
@@ -1880,8 +1900,16 @@ isOneToOne: false
 "list_reminder_occurrences":
 { Args: { "p_filter": string,"p_limit"?: number,"p_offset"?: number,"p_pet_id"?: string }; Returns: Json
                            },
+"listings_expiry_notice_candidates":
+{ Args: { "p_limit"?: number }; Returns: {
+              "author_id": string,"email": string,"expires_at": string,"listing_id": string,"locale": Database["public"]['Enums']["app_locale"],"title": string
+            }[]
+                           },
 "log_dose":
 { Args: { "p_given_at"?: string,"p_occurrence_id"?: string,"p_treatment_id": string }; Returns: Json
+                           },
+"mark_listing_notices_sent":
+{ Args: { "p_listing_ids": (string)[] }; Returns: number
                            },
 "mark_missed_occurrences":
 { Args: Record<PropertyKey, never>; Returns: number
@@ -1897,6 +1925,14 @@ isOneToOne: false
                            },
 "move_pet_to_memorial":
 { Args: { "p_date": string,"p_note"?: string,"p_pet_id": string,"p_reason"?: Database["public"]['Enums']["memorial_reason"] }; Returns: Json
+                           },
+"my_listing_moderation":
+{ Args: { "p_listing": string }; Returns: {
+              "hidden_at": string,"reason": Database["public"]['Enums']["report_reason"]
+            }[]
+                           },
+"org_has_donation_info":
+{ Args: { "p_org": string }; Returns: boolean
                            },
 "partners_nearby":
 { Args: { "p_city_id"?: string,"p_lat"?: number,"p_limit"?: number,"p_lng"?: number,"p_type"?: Database["public"]['Enums']["partner_type"] }; Returns: Json
@@ -1934,6 +1970,12 @@ isOneToOne: false
                            },
 "restore_pet_from_memorial":
 { Args: { "p_pet_id": string,"p_reenable_reminders"?: boolean }; Returns: Json
+                           },
+"sapa_author_card":
+{ Args: { "p_author": string,"p_org": string }; Returns: Json
+                           },
+"save_listing":
+{ Args: { "p_category": Database["public"]['Enums']["listing_category"],"p_city_id": string,"p_description": string,"p_id": string,"p_organisation_id"?: string,"p_photo_ids"?: (string)[],"p_price_minor": number,"p_price_negotiable": boolean,"p_species": Database["public"]['Enums']["listing_species"],"p_title": string,"p_type": Database["public"]['Enums']["listing_type"] }; Returns: string
                            },
 "save_partner":
 { Args: { "p_fields": Json,"p_hours"?: Json,"p_id": string }; Returns: Json

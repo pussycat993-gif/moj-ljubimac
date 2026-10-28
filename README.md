@@ -63,3 +63,7 @@ Lokalno:
 - VAPID ključevi za push: `npx @pushforge/builder vapid` (javni ključ u `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, privatni JWK u `VAPID_PRIVATE_KEY_JWK`, plus `VAPID_SUBJECT`). Bez njih se push preskače; bez `RESEND_API_KEY` mejl se samo ispiše u konzolu.
 - Ako želiš da lokalni pg_cron zove `next dev`, u Vault upiši `dispatch_url` = `http://host.docker.internal:3000` i `dispatch_secret` = tvoj `DISPATCH_SECRET` (`select vault.create_secret('<vrednost>', '<ime>');`). Job se gasi sa `select cron.unschedule('reminder-dispatch');`.
 - Ručno pokretanje (kad je lokalni pg_cron isključen ili bez tajni): `curl -X POST http://localhost:3000/api/internal/dispatch -H "X-Dispatch-Secret: <DISPATCH_SECRET>"`
+
+Šapa pomoći — istek oglasa (EP-87, Step 28b): job `listings-daily` (`0 7,8 * * *`, UTC) poziva `private.call_internal_route('/api/internal/listings-daily')` sa istim Vault tajnama `dispatch_url` / `dispatch_secret`. Ruta radi samo kad je u Beogradu 9 sati (09:00 Europe/Belgrade leti i zimi); drugi poziv tog dana vraća nule. Šalje `listing_expiring` 3 dana pre isteka (jednom po periodu) i prebacuje istekle oglase u `expired` uz mejl `listing_expired`.
+
+- Ručno pokretanje lokalno (radi samo u 09:xx po beogradskom vremenu; u ostalo vreme odgovor su nule): `curl -X POST http://localhost:3000/api/internal/listings-daily -H "X-Dispatch-Secret: <DISPATCH_SECRET>"`. Job se gasi sa `select cron.unschedule('listings-daily');`.

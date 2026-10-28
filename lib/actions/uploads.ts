@@ -7,11 +7,14 @@ import { fail, fromDatabaseError, ok, type ActionResult } from "@/lib/server/res
 import { r2, safeFileName } from "@/lib/integrations/r2";
 import type { Pet } from "@/lib/actions/pets";
 import type { Attachment } from "@/lib/actions/vet-visits";
+import type { ListingPhoto } from "@/lib/actions/listings";
 import { getMyOrganisation, type Organisation } from "@/lib/actions/organisation";
 
 // EP-13 request_upload / confirm_upload (API §10). Step 13 handles purpose `pet_photo`, Step 15
 // `attachment` (vet visit files, FR-08), Step 24 `organisation_logo` (S29, EP-72: OrgAdmin only, JPEG /
-// PNG / WebP, key o/<org_id>/logo-<uuid>.<ext>); `listing_photo` (Step 28b) follows. The upload_token is
+// PNG / WebP, key o/<org_id>/logo-<uuid>.<ext>); Step 28b `listing_photo` (S34, FR-63: the listing's author only,
+// active or expired listing, at most 5 photos, JPEG / PNG / WebP / HEIC, key
+// u/<author_id>/listings/<listing_id>/<uuid>-<safe_file_name>; suspended → marketplace_suspended). The upload_token is
 // stateless: HMAC-SHA256 over purpose, target, r2_key, mime, size and expiry, signed with
 // ACTION_TOKEN_SECRET (TC §8.1, the app's token signing key).
 // No row is written until confirm.
@@ -35,7 +38,9 @@ export type UploadRequest = {
   size_bytes: number;
 };
 
-type HandledPurpose = "pet_photo" | "attachment" | "organisation_logo";
+type HandledPurpose = "pet_photo" | "attachment" | "organisation_logo" | "listing_photo";
+const PURPOSES: HandledPurpose[] = ["pet_photo", "attachment", "organisation_logo", "listing_photo"];
+const MAX_LISTING_PHOTOS = 5; // BR-55
 
 const MAX_BYTES = 10_485_760; // BR-05
 const PET_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"];
@@ -51,7 +56,7 @@ type TokenPayload = { p: HandledPurpose; t: string; k: string; m: string; s: num
 /** EP-13 Request mime_type: images or PDF for attachments; JPEG/PNG/WebP/HEIC for pet photos (BR-05). */
 function typeAllowed(purpose: HandledPurpose, mime: unknown): mime is string {
   if (typeof mime !== "string") return false;
-  if (purpose === "pet_photo") return PET_PHOTO_TYPES.includes(mime);
+  if (purpose === "pet_photo" || purpose === "listing_photo") return PET_PHOTO_TYPES.includes(mime);
   if (purpose === "organisation_logo") return mime in LOGO_TYPES;
   return /^image\/[a-z0-9.+-]+$/.test(mime) || mime === "application/pdf";
 }
@@ -93,7 +98,7 @@ async function readToken(token: unknown): Promise<TokenPayload | null> {
   if (diff !== 0) return null;
   try {
     const payload = JSON.parse(new TextDecoder().decode(fromBase64url(body))) as TokenPayload;
-    if (payload.p !== "pet_photo" && payload.p !== "attachment" && payload.p !== "organisation_logo") return null;
+    if (!PURPOSES.includes(payload.p)) return null;
     if (typeof payload.e !== "number" || payload.e < Date.now()) return null;
     return payload;
   } catch {
@@ -154,6 +159,42 @@ async function logoTarget(supabase: Supabase, caller: Caller, organisationId: st
   return ok(data.organisation_id);
 }
 
+type ListingTarget = { id: string; author_id: string; photo_count: number; free_position: number | null };
+
+/**
+ * The listing a photo is for (EP-13 target_id = listings.id): its author only (someone else's visible listing →
+ * forbidden_role, not visible → not_found), a need of a pending shelter → gate 4, status active or expired (else
+ * listing_not_active), the author not suspended from Šapa pomoći (marketplace_suspended, BR-60). TC has no
+ * trigger for the last two (Step 28a follow-up), so they are checked here.
+ */
+async function listingTarget(supabase: Supabase, caller: Caller, listingId: string): Promise<ActionResult<ListingTarget>> {
+  const { data, error } = await supabase.from("listings").select("id, author_id, status, type").eq("id", listingId).maybeSingle();
+  if (error) {
+    if (error.code === "22P02") return fail("not_found");
+    return { ok: false, error: fromDatabaseError(error) };
+  }
+  if (!data) return fail("not_found");
+  if (data.author_id !== caller.user.id) return fail("forbidden_role");
+  if (data.type === "need" && caller.organisations.some((o) => o.approval_status === "pending")) {
+    return fail("organisation_pending_approval");
+  }
+  if (data.status !== "active" && data.status !== "expired") return fail("listing_not_active");
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("marketplace_suspended_at")
+    .eq("id", caller.user.id)
+    .maybeSingle();
+  if (profileError) return { ok: false, error: fromDatabaseError(profileError) };
+  if (profile?.marketplace_suspended_at) return fail("marketplace_suspended");
+
+  const { data: photos, error: photoError } = await supabase.from("listing_photos").select("position").eq("listing_id", data.id);
+  if (photoError) return { ok: false, error: fromDatabaseError(photoError) };
+  const taken = new Set((photos ?? []).map((p) => Number(p.position)));
+  const free = [1, 2, 3, 4, 5].find((n) => !taken.has(n)) ?? null;
+  return ok({ id: data.id, author_id: data.author_id, photo_count: taken.size, free_position: free });
+}
+
 /**
  * BR-01 / E-04 at ticket time: a Free owner's pet holds at most 10 attachments (the insert
  * trigger checks again at confirm). Organisation animals have no limit, as in the trigger.
@@ -184,12 +225,13 @@ function fileKey(pet: PhotoTarget, kind: string, fileName: string): string {
 /** EP-13 request_upload — the presigned PUT for one file. */
 export async function requestUpload(input: UploadRequest): Promise<ActionResult<UploadTicket>> {
   const supabase = await createClient();
-  const caller = await checkGates(supabase, { access: "write" });
+  // Listing photos are personal writes: gate 4 only for needs (API §5.9 conventions, in listingTarget).
+  const caller = await checkGates(supabase, { access: input?.purpose === "listing_photo" ? "read" : "write" });
   if (!caller.ok) return caller;
 
   const fields: Record<string, string> = {};
   const purpose = input?.purpose;
-  if (purpose !== "pet_photo" && purpose !== "attachment" && purpose !== "organisation_logo") fields.purpose = "invalid";
+  if (!PURPOSES.includes(purpose as HandledPurpose)) fields.purpose = "invalid";
   if (typeof input?.target_id !== "string" || input.target_id === "") fields.target_id = "required";
   const fileName = typeof input?.file_name === "string" ? input.file_name.trim() : "";
   if (!fileName) fields.file_name = "required";
@@ -204,7 +246,17 @@ export async function requestUpload(input: UploadRequest): Promise<ActionResult<
 
   let key: string;
   let targetId: string;
-  if (handled === "pet_photo") {
+  let position: number | null = null;
+  if (handled === "listing_photo") {
+    const target = await listingTarget(supabase, caller.data, input.target_id);
+    if (!target.ok) return target;
+    // BR-55 / E-30 at ticket time; the listing_photos_max trigger backs it at confirm.
+    if (target.data.photo_count >= MAX_LISTING_PHOTOS || target.data.free_position === null) return fail("too_many_photos");
+    // API §10 step 6: always under the author's u/ prefix, also for shelter needs.
+    key = `u/${target.data.author_id}/listings/${target.data.id}/${crypto.randomUUID()}-${safeFileName(fileName)}`;
+    targetId = target.data.id;
+    position = target.data.free_position;
+  } else if (handled === "pet_photo") {
     const target = await photoTarget(supabase, caller.data, input.target_id);
     if (!target.ok) return target;
     key = fileKey(target.data, "photo", fileName);
@@ -242,7 +294,7 @@ export async function requestUpload(input: UploadRequest): Promise<ActionResult<
     headers: { "Content-Type": input.mime_type, "Content-Length": String(input.size_bytes) },
     expires_at: presigned.expires_at,
     file_name: fileName,
-    position: null,
+    position,
   });
 }
 
@@ -252,16 +304,19 @@ export async function requestUpload(input: UploadRequest): Promise<ActionResult<
  * R2 cleanup, or for `attachment` insert the attachments row (pet_id from the visit; the Free
  * limit trigger answers premium_required:attachments).
  */
-export async function confirmUpload(input: { upload_token: string }): Promise<ActionResult<Pet | Attachment | Organisation>> {
+export async function confirmUpload(input: {
+  upload_token: string;
+}): Promise<ActionResult<Pet | Attachment | Organisation | ListingPhoto>> {
   const supabase = await createClient();
-  const caller = await checkGates(supabase, { access: "write" });
-  if (!caller.ok) return caller;
-
   const token = await readToken(input?.upload_token);
+  const caller = await checkGates(supabase, { access: token?.p === "listing_photo" ? "read" : "write" });
+  if (!caller.ok) return caller;
   if (!token) return fail("validation_failed", { fields: { upload_token: "invalid" } });
 
   const target =
-    token.p === "pet_photo"
+    token.p === "listing_photo"
+      ? await listingTarget(supabase, caller.data, token.t)
+      : token.p === "pet_photo"
       ? await photoTarget(supabase, caller.data, token.t)
       : token.p === "organisation_logo"
         ? await logoTarget(supabase, caller.data, token.t)
@@ -278,6 +333,39 @@ export async function confirmUpload(input: { upload_token: string }): Promise<Ac
   if ((head.content_type ?? "").split(";")[0].trim().toLowerCase() !== token.m.toLowerCase()) {
     await storage.remove(token.k);
     return fail("file_type_not_allowed");
+  }
+
+  if (token.p === "listing_photo") {
+    // listing_photos { listing_id, r2_key, position = lowest free 1–5 }; > 5 → the listing_photos_max trigger.
+    const listing = target.data as ListingTarget;
+    if (listing.free_position === null) {
+      await storage.remove(token.k);
+      return fail("too_many_photos");
+    }
+    const { data, error } = await supabase
+      .from("listing_photos")
+      .insert({ listing_id: listing.id, r2_key: token.k, position: listing.free_position })
+      .select("id, listing_id, position")
+      .single();
+    if (error) {
+      if (error.code === "42501") return fail("not_found");
+      return { ok: false, error: fromDatabaseError(error) };
+    }
+    let url: ListingPhoto["url"] = { kind: "listing_photo", id: data.id, url: null, expires_at: null, mime_type: null };
+    try {
+      const signed = await storage.presignGet(token.k);
+      url = { kind: "listing_photo", id: data.id, url: signed.url, expires_at: signed.expires_at, mime_type: token.m };
+    } catch (error) {
+      console.error("[uploads] listing photo presign failed:", error instanceof Error ? error.message : error);
+    }
+    return ok({
+      id: data.id,
+      listing_id: data.listing_id,
+      position: Number(data.position),
+      // ListingPhoto.file_name: the last key segment without its "<uuid>-" prefix.
+      file_name: (token.k.split("/").pop() ?? "").replace(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i, ""),
+      url,
+    } satisfies ListingPhoto);
   }
 
   if (token.p === "organisation_logo") {

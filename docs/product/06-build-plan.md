@@ -89,7 +89,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 27 | Partners directory & vet suggestion | ✅ | 09, 12, 14 | — | 2026-10-23 |
 | 28 | Operator admin | ✅ | 27, 24, 19 | — | 2026-10-28 |
 | 28a | Schema: Šapa pomoći | ✅ | 28 | — | 2026-10-28 |
-| 28b | Listings, public pages, profiles & donation info | ⬜ | 28a, 21, 19 | — | |
+| 28b | Listings, public pages, profiles & donation info | ✅ | 28a, 21, 19 | — | 2026-10-29 |
 | 28c | Messaging, notifications, report/block & moderation | ⬜ | 28b, 19 | — | |
 | 29 | WhatsApp channel | ⬜ | 19 | — | |
 | 30 | Nightly jobs | ⬜ | 23, 25, 29 | — | |
@@ -5376,7 +5376,105 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-29** — Step 28b built (unattended overnight run).
+  - **Built:**
+    - `20261028233000_sapa_listings_api.sql`:
+      - Reads: `list_listings` (EP-73) and `get_listing` (EP-74) as security invoker, readable by anon and authenticated; `list_my_listings` (EP-76, invoker); `get_donation_info` (EP-78, definer, authenticated only); `get_public_profile` (EP-79, definer, anon + authenticated, only the TC fields, never email or phone).
+      - `save_listing` (EP-75, invoker, one transaction) with `private.reorder_listing_photos` (definer). The latter deletes omitted photos, whose keys are queued by the 28a trigger, and renumbers the kept ones. `(listing_id, position)` is unique and not deferrable, so kept rows are re-inserted with the same id, key and created_at, and the queue rows written by their delete trigger are removed again.
+      - Owner-decision helpers `sapa_author_card`, `org_has_donation_info` (definer, anon + authenticated) and `my_listing_moderation` (definer, authenticated); `private.marketplace_status`, `private.donation_info_json`, `private.listing_days_left`, `private.listing_summary_json`.
+      - `get_me` was replaced: the same body plus `display_name` and `marketplace`.
+      - `get_my_organisation` was replaced: the same body plus `organisation.donation`, for shelters only.
+      - The anon paths (`list_listings`, `get_listing`) inline City, days_left and the photo file name, and read `user_blocks` / `conversations` only inside signed-in branches. Visitors have no usage on the `private` schema and no grant on those tables.
+    - `20261028233005_listings_daily.sql`: `listings_expiry_notice_candidates`, `mark_listing_notices_sent` and `expire_listings` (definer, service_role only, ≤ 200 rows, `FOR UPDATE SKIP LOCKED`; suspended or deletion-pending authors are not notified). pg_cron `listings-daily` `0 7,8 * * *` → `private.call_internal_route('/api/internal/listings-daily')` (same Vault secrets as Step 19).
+    - `lib/actions/listings.ts`:
+      - `saveListing` (EP-75) and `changeListing` (EP-77).
+      - Server wrappers `listMyListings` (EP-76) and `getDonationInfo` (EP-78), since the session lives in httpOnly cookies.
+      - Gate 4 is applied only to need listings.
+      - Types for ListingSummary, Listing, ListingPhoto, ListingAuthor, MyListing, MarketplaceStatus and PublicProfile.
+    - `lib/actions/uploads.ts`: EP-13 `listing_photo`. Author only; listing active or expired; caller not suspended (checked in the action, per the 28a follow-up); `too_many_photos` at ticket time; key `u/<author_id>/listings/<listing_id>/<uuid>-<safe>`; confirm inserts at the lowest free position and returns ListingPhoto with a signed URL.
+    - `lib/actions/files.ts`: EP-15 `listing_photo`.
+    - `lib/actions/organisation.ts`: `updateDonationInfo` (EP-88) and the DonationInfo type; `Organisation.donation` is typed.
+    - `lib/server/result.ts`: SQLSTATE 23514 on `listings_category_check` → `category_not_allowed` (the row was missing). `premium_required:listings` was already covered generically.
+    - `lib/integrations/resend.ts`: `listing_expiring` and `listing_expired` in the recipient's locale, with the footer. The Serbian date already ends with a full stop, so it is not doubled.
+    - Route handlers EP-73 / EP-74 / EP-79: the caller's session, `Cache-Control: no-store` on every answer, cover photos and photos signed for 10 minutes with internal keys dropped, no X-Robots-Tag, no purge.
+    - EP-87 `app/api/internal/listings-daily/route.ts`:
+      - Constant-time secret check.
+      - Runs only when the Europe/Belgrade hour is 9; otherwise it answers zero counts.
+      - Marks the notice only for emails Resend accepted.
+      - Answers `{ notices_sent, expired, emails_failed, duration_ms }`.
+    - `app/(sapa)/layout.tsx`: PublicShell wide, or the organisation / owner AppShell, with the owner's Podsetnici badge from the same source as `(app)/layout.tsx` and the Toaster.
+    - `lib/supabase/middleware.ts` (where Step 11's log says prefixes go): `/sapa-pomoci/nova`, `/sapa-pomoci/moje` and the pattern `/sapa-pomoci/<id>/izmeni`.
+    - Screens: S32 `sapa-pomoci-client.tsx`, S33 `listing-detail-client.tsx`, S34 `listing-form-client.tsx` (create and edit), S35 `my-listings-client.tsx`, S37 `user-profile-client.tsx`, each with its page.tsx, and the S29 Donacije card in `org-profile-screen.tsx`, with `page.tsx` passing `updateDonationInfo`.
+    - Composites `components/app/listing-type-tag.tsx` and `listing-card.tsx`. `shells.tsx` already equalled the v1.6 mock plus the Step 12 labels, so it is unchanged; `--info-soft` is present in globals.css.
+    - i18n `sapa.*`, `orgProfile.donation` and `messages.listing_expiring` / `listing_expired` (sr + en).
+    - README Scheduled jobs: the listings-daily job and the manual curl.
+    - Tests: pgTAP `sapa_listings_api` (71), `sapa_profile_donation` (27), `sapa_expiry_job` (25), `get_me_marketplace` (19). Vitest: 14 files from the Tests to ship table (`tests/sapa/*`, `tests/organisation/org-donation-card.test.tsx`, `tests/components/listing-card.test.tsx`).
+  - **Owner decisions applied (2026-10-23):**
+    - `sapa_author_card` / `org_has_donation_info` are definer and called by the invoker reads; `my_listing_moderation` is definer.
+    - Display-name fallback "Korisnik" / "User"; report reasons in `sapa.common.reportReason.*`.
+    - The S35 hidden-card copy, without the reason part when there is none.
+    - The 09:00 job as `0 7,8 * * *` with the Belgrade-hour check in the route.
+    - Organisation actions file = `lib/actions/organisation.ts`.
+    - General rules: Intl date formats, plurals with _one / _few / _other keys, unmapped 422 field codes show the form-level message.
+  - **OQ-17 interim mappings applied:**
+    - (a) `resolved_at` = `listings.updated_at` (S33, S35).
+    - (b) S35 hidden card = `handled_at` / `reason` of the latest actioned report, via `my_listing_moderation`.
+    - (c) Doniraj recipient = `organisations.name`, purpose "Donacija — <title>".
+    - (d) Description limit 2,000; title 5–80 client-side and 1–80 on the server.
+    - (e) Bank account `^\d{3}-\d{1,13}-\d{2}$` in `updateDonationInfo`.
+    - (f) No screen edits `display_name`.
+    - (g) A resolved listing opened by a non-author → 404 / unavailable.
+    - OQ-16: `active_listing_limit` = 3 unless owner Premium or a shelter account; a breeder plan does not lift it (proved in `get_me_marketplace`).
+  - **Owner-approved exceptions:**
+    - Pre-approved exception 1: `supabase/tests/occurrence_schedule.test.sql` asserted that no cron job other than `reminder-dispatch` and the nightly generation exists. It now also excludes `listings-daily`, which this step adds; only that assertion changed.
+  - **Verification** (in order, on the final code):
+    - `npx supabase db reset` ✅ exit 0
+    - `npm run db:types` ✅ exit 0
+    - `npm run typecheck` ✅ exit 0
+    - `npm run lint` ✅ exit 0 (0 errors; the 2 known warnings in the generated `cloudflare-env.d.ts`)
+    - `npm test` ✅ `Test Files 124 passed (124)`, `Tests 1420 passed (1420)`
+    - `npx supabase test db` ✅ `Files=83, Tests=2839`, `Result: PASS`
+    - `npm run build` ✅ exit 0
+  - **Deviations / decisions:**
+    - **Composites:**
+      - `ListingCard` gained an optional `labels` prop (Serbian defaults, in a `labels:start` / `labels:end` block, the FR-35 pattern of shells / error-state / pet-header / reminder-row) and an optional `coverUrl`, which shows the signed cover photo instead of the placeholder.
+      - `ListingTypeTag` gained an optional `label`.
+      - Without these, English screens would show Serbian card text and no photos. Markup and classes are otherwise the mock's.
+      - Follow-up: add both composites to `tests/design/ui-overrides.test.ts` COMPOSITES with a strip function (that file was not on this step's list).
+    - **S33 and S37 message / report buttons:** "Pošalji poruku" and "Pošalji poruku azilu" (on S33 and in the Doniraj Dialog) are rendered as the mockup shows them for non-authors, without an action. The ⋯ menus, ReportDialog / BlockDialog and the S37 blocked-state actions are not built (Step 28c).
+    - **Client-side reads:** S32, S33 and S37 load through their public route handlers (fetch, no-store). S34 edit preloads with `rpc:get_listing` in page.tsx and signs thumbnails with EP-15. S35 uses `listMyListings` with EP-15 thumbnails.
+    - **S33:**
+      - Delete is added to the own-listing card (FR-62 #4; the mock has none), using the S34 / S35 delete copy.
+      - The resolve dialog title uses the S35 wording, which fits every type.
+      - The author's expired / hidden variants reuse S35 copy.
+      - Signed out, Doniraj links to `/prijava?next=/sapa-pomoci/<id>`.
+    - **S34:**
+      - The usage line is hidden for unlimited non-shelter users.
+      - Photo errors turn the existing hint red (no mockup copy).
+      - A photo upload failing after a successful create keeps the form on the saved listing, so a resave updates it.
+      - No toast after delete.
+    - **S35:**
+      - "Izmeni" is hidden for hidden listings and "Označi kao rešeno" while suspended, because the API refuses both.
+      - The delete notice is a toast.
+      - "Ističe za 1 dan" is a singular plural form.
+      - Donation save in S29 shows the existing status card and a toast (EP-88).
+    - **S37:** Serbian genitive month names ("septembra") come from the dictionary, because Intl sr-Latn gives the nominative. Listings load with limit 50 and no pagination, as the mockup has none.
+    - **S32:** pagination also shows with filters.
+    - **Request interception:**
+      - The middleware redirect still drops `next` (unchanged behaviour). A signed-out author opening the `listing_expiring` "Produži" link (`/sapa-pomoci/moje?produzi=<id>`) lands on `/prijava` and then S01; opening the link again while signed in extends.
+      - Follow-up: pass `next` in the interception redirect for the Šapa pomoći prefixes.
+    - **Grants:** `save_listing`, `list_my_listings` and `my_listing_moderation` revoke execute from anon explicitly (Supabase default privileges grant anon EXECUTE on new public functions); pgTAP asserts 42501.
+    - **Manual EP-87 call:** the route answers zeros outside 09:xx Belgrade, so a manual local curl does real work only then (README says so).
+  - **Files Step 28c will extend:**
+    - `app/(sapa)/sapa-pomoci/[id]/listing-detail-client.tsx` (the Pošalji poruku Dialog, the ⋯ menu, the Doniraj Dialog's "Pošalji poruku azilu").
+    - `app/(sapa)/korisnik/[id]/user-profile-client.tsx` (the ⋯ menu, the B state).
+    - `app/(sapa)/layout.tsx` (`counts.poruke` = `Me.marketplace.unread_conversations`).
+    - The S35 "Razgovora" footer already links to `/poruke`.
+  - **Follow-ups:**
+    - The `ui-overrides` composites entry (above).
+    - `next` in the interception redirect (above).
+    - TC §5.10 / API: `listing_photos` position renumbering needs a re-insert, because the unique constraint is not deferrable. A deferrable constraint would simplify `reorder_listing_photos`.
+    - Carried over: the 28a TC §5.10 report index collision and preference_type = reminder_type.
 
 ---
 

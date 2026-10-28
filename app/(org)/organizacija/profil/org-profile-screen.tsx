@@ -3,7 +3,21 @@
 import { useRef, useState, type FormEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Check, ExternalLink, Globe, ImageIcon, Mail, Phone, Upload, X } from "lucide-react"
+import {
+  Check,
+  Clock,
+  ExternalLink,
+  Globe,
+  HandHeart,
+  ImageIcon,
+  Landmark,
+  Link2,
+  Mail,
+  MapPin,
+  Phone,
+  Upload,
+  X,
+} from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -13,7 +27,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/sonner"
 import { ErrorState } from "@/components/app/error-state"
 import { ReadOnlyBanner } from "@/components/app/read-only-banner"
-import type { MyOrganisation, Organisation } from "@/lib/actions/organisation"
+import type { DonationInfo, DonationInfoInput, MyOrganisation, Organisation } from "@/lib/actions/organisation"
 import type { UploadRequest, UploadTicket } from "@/lib/actions/uploads"
 import type { ActionResult } from "@/lib/server/result"
 import { format, type Dictionary, type Locale } from "@/lib/i18n"
@@ -41,6 +55,31 @@ export type OrgProfileActions = {
   }) => Promise<ActionResult<Organisation>>
   requestUpload: (input: UploadRequest) => Promise<ActionResult<UploadTicket>>
   confirmUpload: (input: { upload_token: string }) => Promise<ActionResult<unknown>>
+}
+
+/** EP-88 (Step 28b, FR-72): the Shelter Admin saves the Donacije card. */
+export type UpdateDonationInfoAction = (input: DonationInfoInput) => Promise<ActionResult<DonationInfo>>
+
+type Donation = { bank_account: string; payment_url: string; dropoff_address: string; dropoff_hours: string }
+type DonationErrors = Partial<Record<keyof Donation, string>>
+
+const DROPOFF_MAX = 200
+
+function donationOf(d: DonationInfo | null | undefined): Donation {
+  return {
+    bank_account: d?.bank_account ?? "",
+    payment_url: d?.payment_url ?? "",
+    dropoff_address: d?.dropoff_address ?? "",
+    dropoff_hours: d?.dropoff_hours ?? "",
+  }
+}
+
+function validateDonation(d: Donation, t: Dictionary["orgProfile"]["donation"]): DonationErrors {
+  const e: DonationErrors = {}
+  if (d.bank_account.trim() && !/^\d{3}-\d{1,13}-\d{2}$/.test(d.bank_account.trim())) e.bank_account = t.errBankAccount
+  if (d.payment_url.trim() && (!/^https:\/\/[^\s.]+\.[^\s]+$/.test(d.payment_url.trim()) || d.payment_url.trim().length > 500))
+    e.payment_url = t.errPaymentUrl
+  return e
 }
 
 type Fields = { description: string; phone: string; email: string; website: string }
@@ -98,16 +137,21 @@ export function OrgProfileScreen({
   locale,
   copy,
   actions,
+  updateDonationInfo,
 }: {
   initial: ActionResult<MyOrganisation>
   locale: Locale
   copy: OrgProfileCopy
   actions: OrgProfileActions
+  updateDonationInfo?: UpdateDonationInfoAction
 }) {
   const t = copy.orgProfile
   const router = useRouter()
   const view = initial.ok ? initial.data : null
   const [organisation, setOrganisation] = useState<Organisation | null>(view?.organisation ?? null)
+  const [savedDonation, setSavedDonation] = useState<Donation>(() => donationOf(view?.organisation.donation))
+  const [donation, setDonation] = useState<Donation>(savedDonation)
+  const [donationErrors, setDonationErrors] = useState<DonationErrors>({})
   const [profile, setProfile] = useState<Fields>(() => (view ? fieldsOf(view.organisation) : fieldsOf({} as Organisation)))
   const [logo, setLogo] = useState<Logo>(() => (view ? logoOf(view.organisation) : null))
   const [removeLogo, setRemoveLogo] = useState(false)
@@ -129,6 +173,10 @@ export function OrgProfileScreen({
       ? organisation.city.name_en || organisation.city.name_sr
       : organisation.city.name_sr
     : null
+  // FR-72: the Donacije card is for shelters only (breeders never see it); the Shelter Admin edits it.
+  const isShelter = organisation.type === "shelter"
+  const canEditDonation = isShelter && canEdit && view.access.role === "org_admin" && !!updateDonationInfo
+  const td = t.donation
   const shownLogo = removeLogo ? null : logo
   const initials = organisation.name
     .replace(/[„“”"]/g, "")
@@ -150,6 +198,38 @@ export function OrgProfileScreen({
     setRemoveLogo(false)
     setErrors({})
     setSaved(false)
+    setDonation(savedDonation)
+    setDonationErrors({})
+  }
+
+  function setDonationField<K extends keyof Donation>(key: K, value: string) {
+    setDonation((d) => ({ ...d, [key]: value }))
+    setSaved(false)
+  }
+
+  /** EP-88 after the profile save, only when a donation field changed. false = stop (inline errors or failure). */
+  async function saveDonation(): Promise<boolean> {
+    if (!canEditDonation || !updateDonationInfo) return true
+    const changed = (Object.keys(donation) as (keyof Donation)[]).filter((k) => donation[k].trim() !== savedDonation[k].trim())
+    if (changed.length === 0) return true
+    const input: DonationInfoInput = {}
+    for (const k of changed) input[k] = donation[k].trim() === "" ? null : donation[k].trim()
+    const result = await updateDonationInfo(input)
+    if (!result.ok) {
+      const fields = result.error.code === "validation_failed" ? (result.error.fields ?? {}) : {}
+      const mapped: DonationErrors = {}
+      if (fields.bank_account) mapped.bank_account = td.errBankAccount
+      if (fields.payment_url) mapped.payment_url = td.errPaymentUrl
+      if (Object.keys(mapped).length > 0) setDonationErrors(mapped)
+      else toast.error(copy.common.error)
+      return false
+    }
+    const next = donationOf(result.data)
+    setSavedDonation(next)
+    setDonation(next)
+    setDonationErrors({})
+    toast.success(t.saved)
+    return true
   }
 
   async function uploadLogo(file: File) {
@@ -188,9 +268,11 @@ export function OrgProfileScreen({
     ev.preventDefault()
     if (!organisation) return
     const e = validate(profile, t)
+    const de = canEditDonation ? validateDonation(donation, td) : {}
     setErrors(e)
+    setDonationErrors(de)
     setSaved(false)
-    if (Object.keys(e).length > 0) return
+    if (Object.keys(e).length > 0 || Object.keys(de).length > 0) return
     setBusy(true)
     const result = await actions.updateOrganisationProfile({
       organisation_id: organisation.id,
@@ -218,6 +300,10 @@ export function OrgProfileScreen({
       setLogo(null)
       setRemoveLogo(false)
     }
+    setBusy(true)
+    const donationSaved = await saveDonation()
+    setBusy(false)
+    if (!donationSaved) return
     setSaved(true)
   }
 
@@ -399,6 +485,93 @@ export function OrgProfileScreen({
             </div>
           </Card>
 
+          {isShelter && canEditDonation && (
+            <Card className="gap-4 p-4 md:p-6">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-foreground/5">
+                  <HandHeart className="size-5 text-primary" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                  <h2 className="font-heading text-lg font-bold">{td.title}</h2>
+                  <p className="text-sm text-muted-foreground">{td.intro}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="min-w-0 space-y-2">
+                  <Label htmlFor="org-don-account">{td.bankAccount}</Label>
+                  <Input
+                    id="org-don-account"
+                    inputMode="numeric"
+                    placeholder={td.bankAccountPlaceholder}
+                    value={donation.bank_account}
+                    onChange={(e) => setDonationField("bank_account", e.target.value)}
+                    onBlur={() =>
+                      setDonationErrors((er) => ({ ...er, bank_account: validateDonation(donation, td).bank_account }))
+                    }
+                    aria-invalid={!!donationErrors.bank_account}
+                    aria-describedby={donationErrors.bank_account ? "org-don-account-error" : undefined}
+                    className="h-11 md:h-9"
+                  />
+                  {donationErrors.bank_account && (
+                    <p id="org-don-account-error" className="text-sm text-destructive">
+                      {donationErrors.bank_account}
+                    </p>
+                  )}
+                </div>
+                <div className="min-w-0 space-y-2">
+                  <Label htmlFor="org-don-url">{td.paymentUrl}</Label>
+                  <Input
+                    id="org-don-url"
+                    type="url"
+                    placeholder="https://"
+                    maxLength={500}
+                    value={donation.payment_url}
+                    onChange={(e) => setDonationField("payment_url", e.target.value)}
+                    onBlur={() =>
+                      setDonationErrors((er) => ({ ...er, payment_url: validateDonation(donation, td).payment_url }))
+                    }
+                    aria-invalid={!!donationErrors.payment_url}
+                    aria-describedby={donationErrors.payment_url ? "org-don-url-error" : "org-don-url-hint"}
+                    className="h-11 md:h-9"
+                  />
+                  {donationErrors.payment_url ? (
+                    <p id="org-don-url-error" className="text-sm text-destructive">
+                      {donationErrors.payment_url}
+                    </p>
+                  ) : (
+                    <p id="org-don-url-hint" className="text-sm text-muted-foreground">
+                      {td.paymentUrlHint}
+                    </p>
+                  )}
+                </div>
+                <div className="min-w-0 space-y-2 md:col-span-2">
+                  <Label htmlFor="org-dropoff-address">{td.dropoffAddress}</Label>
+                  <Input
+                    id="org-dropoff-address"
+                    autoComplete="street-address"
+                    placeholder={td.dropoffAddressPlaceholder}
+                    maxLength={DROPOFF_MAX}
+                    value={donation.dropoff_address}
+                    onChange={(e) => setDonationField("dropoff_address", e.target.value)}
+                    className="h-11 md:h-9"
+                  />
+                </div>
+                <div className="min-w-0 space-y-2 md:col-span-2">
+                  <Label htmlFor="org-dropoff-hours">{td.dropoffHours}</Label>
+                  <Textarea
+                    id="org-dropoff-hours"
+                    rows={2}
+                    placeholder={td.dropoffHoursPlaceholder}
+                    maxLength={DROPOFF_MAX}
+                    value={donation.dropoff_hours}
+                    onChange={(e) => setDonationField("dropoff_hours", e.target.value)}
+                  />
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground">{td.note}</p>
+            </Card>
+          )}
+
           <div className="flex flex-col-reverse gap-2 md:flex-row md:justify-end">
             <Button type="button" variant="outline" className="h-11 md:h-9" onClick={reset}>
               {t.reset}
@@ -430,6 +603,17 @@ export function OrgProfileScreen({
             <ReadOnlyField label={t.website} value={organisation.website ?? ""} icon={Globe} />
             <ReadOnlyField label={t.logo} value={logo ? logo.name : t.logoNotAdded} icon={ImageIcon} />
           </dl>
+          {isShelter && (
+            <div className="space-y-3">
+              <h2 className="font-heading text-lg font-bold">{td.title}</h2>
+              <dl className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <ReadOnlyField label={td.bankAccount} value={savedDonation.bank_account} icon={Landmark} />
+                <ReadOnlyField label={td.paymentUrl} value={savedDonation.payment_url} icon={Link2} />
+                <ReadOnlyField label={td.dropoffAddress} value={savedDonation.dropoff_address} icon={MapPin} />
+                <ReadOnlyField label={td.dropoffHours} value={savedDonation.dropoff_hours} icon={Clock} />
+              </dl>
+            </div>
+          )}
         </Card>
       )}
     </div>

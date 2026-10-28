@@ -14,10 +14,20 @@ export const SIGNED_IN_PREFIXES = [
   "/partneri",
   "/organizacija",
   "/admin",
+  // Šapa pomoći (Step 28b, CR-27): only the signed-in pages; /sapa-pomoci, /sapa-pomoci/<id> and /korisnik/<id>
+  // stay public. /sapa-pomoci/<id>/izmeni is matched below.
+  "/sapa-pomoci/nova",
+  "/sapa-pomoci/moje",
 ] as const;
 
+/** Signed-in pages under a public prefix (S34 edit). */
+const SIGNED_IN_PATTERNS = [/^\/sapa-pomoci\/[^/]+\/izmeni\/?$/] as const;
+
 export function isSignedInSurface(pathname: string) {
-  return SIGNED_IN_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  return (
+    SIGNED_IN_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) ||
+    SIGNED_IN_PATTERNS.some((pattern) => pattern.test(pathname))
+  );
 }
 
 /**

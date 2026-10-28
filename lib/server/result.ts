@@ -97,6 +97,10 @@ function internal(original: string): ApiError {
  * code outside the §7.2 catalog, is internal_error with the original message logged.
  */
 export function fromDatabaseError(error: { code?: string; message: string }): ApiError {
+  // API v1.3 §7.1: the BR-54 check on listings.category (medicine and care only for needs).
+  if (error.code === "23514" && error.message.includes("listings_category_check")) {
+    return apiError("category_not_allowed", { message: error.message });
+  }
   if (error.code !== undefined && error.code !== "P0001") return internal(error.message);
   const separator = error.message.indexOf(":");
   const code = separator === -1 ? error.message : error.message.slice(0, separator);

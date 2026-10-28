@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import type { Me } from "@/lib/actions/registration"
-import { getMyOrganisation, updateOrganisationProfile } from "@/lib/actions/organisation"
+import { getMyOrganisation, updateDonationInfo, updateOrganisationProfile } from "@/lib/actions/organisation"
 import { confirmUpload, requestUpload } from "@/lib/actions/uploads"
 import { fromProfileLocale, getDictionary } from "@/lib/i18n"
 import { OrgProfileScreen } from "./org-profile-screen"
@@ -8,7 +8,8 @@ import { OrgProfileScreen } from "./org-profile-screen"
 // S29 Javni profil organizacije · /organizacija/profil · EP-53 (getMyOrganisation, with the presigned logo URL)
 // and EP-43 (language) on the server. The Admin saves through EP-72 (updateOrganisationProfile) and uploads the
 // logo through EP-13 (requestUpload / confirmUpload, purpose organisation_logo); a Volunteer gets the read-only
-// view (access.can_edit = false). A failed read → ErrorState.
+// view (access.can_edit = false). A failed read → ErrorState. Step 28b: the Shelter Admin saves the Donacije
+// card through EP-88 (updateDonationInfo; FR-72).
 
 export const dynamic = "force-dynamic"
 
@@ -27,6 +28,7 @@ export default async function OrganisationProfilePage() {
       locale={locale}
       copy={{ orgProfile: dict.orgProfile, orgAnimals: dict.orgAnimals, common: dict.common }}
       actions={actions}
+      updateDonationInfo={updateDonationInfo}
     />
   )
 }

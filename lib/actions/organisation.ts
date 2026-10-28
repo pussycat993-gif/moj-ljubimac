@@ -17,7 +17,28 @@ import type { FileUrl } from "@/lib/actions/files";
 /** API §6 Access (organisation roles). */
 export type OrganisationAccess = { role: "org_admin" | "volunteer"; can_edit: boolean; can_delete: boolean };
 
-/** API §6 Organisation. `donation` is filled from Step 28b (FR-72); null until then. */
+/** API §6 DonationInfo (FR-66, FR-72). `payment_purpose` only from EP-78; null from EP-53 / EP-88. */
+export type DonationInfo = {
+  organisation_id: string;
+  organisation_name: string;
+  city: City | null;
+  bank_account: string | null;
+  payment_url: string | null;
+  dropoff_address: string | null;
+  dropoff_hours: string | null;
+  payment_purpose: string | null;
+  has_any: boolean;
+};
+
+/** EP-88 Request: every field optional, null clears it, only fields sent change. */
+export type DonationInfoInput = {
+  bank_account?: string | null;
+  payment_url?: string | null;
+  dropoff_address?: string | null;
+  dropoff_hours?: string | null;
+};
+
+/** API §6 Organisation. `donation` (Step 28b, FR-72): shelters only, null for breeders. */
 export type Organisation = {
   id: string;
   type: "shelter" | "breeder";
@@ -34,7 +55,7 @@ export type Organisation = {
   email: string | null;
   website: string | null;
   logo_url: FileUrl | null;
-  donation: null;
+  donation: DonationInfo | null;
   member_count: number;
   member_limit: number;
   created_at: string;
@@ -362,4 +383,65 @@ export async function updateOrganisationProfile(
   const view = await readMyOrganisation(supabase);
   if (!view.ok) return view;
   return ok(view.data.organisation);
+}
+
+/** API §5.9 EP-88 / OQ-17 interim mapping (e): bank account format NNN-N…N-NN. */
+const BANK_ACCOUNT = /^\d{3}-\d{1,13}-\d{2}$/;
+
+/** EP-88 Request checks with field codes (the database checks donation_url again). */
+function validateDonation(input: DonationInfoInput): Record<string, string> {
+  const fields: Record<string, string> = {};
+  if (input.bank_account && !BANK_ACCOUNT.test(input.bank_account)) fields.bank_account = "invalid";
+  if (input.payment_url) {
+    let valid = input.payment_url.length <= 500 && HTTPS_URL.test(input.payment_url);
+    try {
+      valid = valid && new URL(input.payment_url).protocol === "https:";
+    } catch {
+      valid = false;
+    }
+    if (!valid) fields.payment_url = "invalid";
+  }
+  if (input.dropoff_address && input.dropoff_address.length > 200) fields.dropoff_address = "too_long";
+  if (input.dropoff_hours && input.dropoff_hours.length > 200) fields.dropoff_hours = "too_long";
+  return fields;
+}
+
+/**
+ * EP-88 updateDonationInfo — the Shelter Admin saves the four donation fields (FR-72). Volunteer and breeder
+ * organisations → forbidden_role; no organisation → not_found; pending → organisation_pending_approval (gate 4).
+ * Returns DonationInfo (payment_purpose = null). No money is collected or processed (BR-58).
+ */
+export async function updateDonationInfo(input: DonationInfoInput): Promise<ActionResult<DonationInfo>> {
+  const supabase = await createClient();
+  const caller = await checkGates(supabase, { access: "write" });
+  if (!caller.ok) return caller;
+
+  const view = await readMyOrganisation(supabase);
+  if (!view.ok) return view;
+  const { organisation, access } = view.data;
+  if (organisation.type !== "shelter" || access.role !== "org_admin") return fail("forbidden_role");
+
+  const change: Partial<Record<"donation_bank_account" | "donation_url" | "dropoff_address" | "dropoff_hours", string | null>> = {};
+  const values: DonationInfoInput = {};
+  if (input?.bank_account !== undefined) values.bank_account = change.donation_bank_account = trimmed(input.bank_account);
+  if (input?.payment_url !== undefined) values.payment_url = change.donation_url = trimmed(input.payment_url);
+  if (input?.dropoff_address !== undefined) values.dropoff_address = change.dropoff_address = trimmed(input.dropoff_address);
+  if (input?.dropoff_hours !== undefined) values.dropoff_hours = change.dropoff_hours = trimmed(input.dropoff_hours);
+  const fields = validateDonation(values);
+  if (Object.keys(fields).length > 0) return fail("validation_failed", { fields });
+
+  if (Object.keys(change).length > 0) {
+    const { data, error } = await supabase.from("organisations").update(change).eq("id", organisation.id).select("id");
+    if (error) {
+      if (error.code === "23514") return fail("validation_failed", { fields: { payment_url: "invalid" } });
+      return { ok: false, error: fromWriteError(error) };
+    }
+    if (!data || data.length === 0) return fail("not_found");
+  }
+
+  const fresh = await readMyOrganisation(supabase);
+  if (!fresh.ok) return fresh;
+  const donation = fresh.data.organisation.donation;
+  if (!donation) return fail("not_found");
+  return ok(donation);
 }

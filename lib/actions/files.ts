@@ -6,10 +6,11 @@ import { fail, fromDatabaseError, ok, type ActionResult } from "@/lib/server/res
 import { r2 } from "@/lib/integrations/r2";
 
 // EP-15 get_file_urls — presigned R2 GET URLs (10 minutes, API §10 step 5). Step 13 serves kind
-// `pet_photo`, Step 15 `attachment`, Step 21 `moment_photo`; the other kinds arrive with their
-// screens (Steps 24, 27, 28b) and answer url = null until then. Visibility is the caller's relation
-// to the pet (RLS on pets, attachments and moment_photos): an item the caller may not see, or one
-// without a file, gets url = null — the batch never fails.
+// `pet_photo`, Step 15 `attachment`, Step 21 `moment_photo`, Step 28b `listing_photo`; the other kinds arrive
+// with their screens (Steps 24, 27) and answer url = null until then. Visibility is the caller's relation
+// to the pet (RLS on pets, attachments and moment_photos) or, for listing photos, whether the caller may
+// read the listing (RLS on listing_photos: publicly visible, the author in any status, the Operator any):
+// an item the caller may not see, or one without a file, gets url = null — the batch never fails.
 
 export type FileKind = "attachment" | "pet_photo" | "moment_photo" | "organisation_logo" | "partner_logo" | "listing_photo";
 
@@ -70,6 +71,15 @@ export async function getFileUrls(input: { items: { kind: FileKind; id: string }
     if (error) return { ok: false, error: fromDatabaseError(error) };
     for (const row of data ?? []) {
       files.set(`moment_photo:${row.id}`, { key: row.r2_key, fileName: row.r2_key.split("/").pop() ?? null, mimeType: null });
+    }
+  }
+
+  const listingPhotoIds = idsOf("listing_photo");
+  if (listingPhotoIds.length > 0) {
+    const { data, error } = await supabase.from("listing_photos").select("id, r2_key").in("id", listingPhotoIds);
+    if (error) return { ok: false, error: fromDatabaseError(error) };
+    for (const row of data ?? []) {
+      files.set(`listing_photo:${row.id}`, { key: row.r2_key, fileName: row.r2_key.split("/").pop() ?? null, mimeType: null });
     }
   }
 
