@@ -2,25 +2,33 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { checkGates } from "@/lib/server/gates";
-import { fail, fromDatabaseError, type ActionResult } from "@/lib/server/result";
+import { withIdempotency } from "@/lib/server/idempotency";
+import { fail, fromDatabaseError, ok, type ActionResult } from "@/lib/server/result";
 import type { Money, SubscriptionPlan } from "@/lib/actions/subscription";
 
-// EP-45 startCheckout — the provider-neutral stub until OQ-11 is answered (Step 23). It runs the EP-45
-// Request validation and then always answers 503 payment_provider_unavailable: no provider call, no checkout
-// session, no subscriptions row and nothing stored in idempotency_keys (there is no result to replay until
-// Step 31). The plan check reads the active plans rows; migrations and seed keep plans empty (OQ-03), so the
-// 503 path is reached only with a test fixture row.
+// EP-45 startCheckout — the Paddle.js overlay inputs (TC ADR-09 v1.8, API EP-45 v1.4). The EP-45 Request
+// validation runs first, in the Step 23 order (idempotency_key, plan, role, active plan of the account's family,
+// trial_already_used, subscription_already_active). Then, while PADDLE_API_KEY is empty (local mode), the answer
+// is 503 payment_provider_unavailable and nothing is written. Otherwise the CheckoutSession (API §6) is built:
+// BR-07 — the trial price id when trial_applied (premium_* and profiles.trial_used = false), else the plain price
+// id; breeder plans never get a trial (BR-51). A needed price id that is null is a deployment error → 500
+// internal_error, logged. The session is stored in idempotency_keys (API §3.3), so a repeat with the same key
+// within 24 h returns the same session. No Paddle API call and no subscriptions row: rows come only from EP-46.
 
-/** API §6 CheckoutSession (returned once a provider exists, Step 31). */
+const TRIAL_DAYS = 7;
+
+/** API §6 CheckoutSession. */
 export type CheckoutSession = {
-  checkout_url: string;
-  provider_session_id: string;
+  price_id: string;
+  customer_email: string;
+  custom_data: { user_id: string; plan: SubscriptionPlan; idempotency_key: string };
+  environment: "sandbox" | "production";
+  client_token: string;
   plan: SubscriptionPlan;
   trial_applied: boolean;
   trial_ends_at: string | null;
   amount: Money;
   first_charge_at: string;
-  expires_at: string;
 };
 
 export type StartCheckoutInput = {
@@ -55,7 +63,7 @@ export async function startCheckout(input: StartCheckoutInput): Promise<ActionRe
   // and volunteers → forbidden_role.
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("account_type, trial_used")
+    .select("account_type, trial_used, email")
     .eq("id", userId)
     .maybeSingle();
   if (profileError) return { ok: false, error: fromDatabaseError(profileError) };
@@ -76,7 +84,7 @@ export async function startCheckout(input: StartCheckoutInput): Promise<ActionRe
   // Plan: an active plans row whose family matches the account type.
   const { data: planRow, error: planError } = await supabase
     .from("plans")
-    .select("code")
+    .select("code, price_minor, currency, provider_price_id, provider_trial_price_id")
     .eq("code", plan as SubscriptionPlan)
     .eq("active", true)
     .maybeSingle();
@@ -96,6 +104,32 @@ export async function startCheckout(input: StartCheckoutInput): Promise<ActionRe
   if (runningError) return { ok: false, error: fromDatabaseError(runningError) };
   if ((running ?? []).some((s) => familyOf(s.plan) === accountFamily)) return fail("subscription_already_active");
 
-  // OQ-11: no payment provider yet.
-  return fail("payment_provider_unavailable");
+  // Local mode: payments are not configured — after validation, nothing written.
+  if (!process.env.PADDLE_API_KEY) return fail("payment_provider_unavailable");
+
+  const code = plan as SubscriptionPlan;
+  return withIdempotency(supabase, { userId, key, operation: "start_checkout" }, async () => {
+    const trialApplied = accountFamily === "premium" && !profile.trial_used;
+    const priceId = trialApplied ? planRow.provider_trial_price_id : planRow.provider_price_id;
+    if (!priceId) {
+      console.error(
+        `[lib/actions/checkout] ${trialApplied ? "provider_trial_price_id" : "provider_price_id"} is not set for ${code}`,
+      );
+      return fail("internal_error", { message: `price id missing for ${code}` });
+    }
+    const now = new Date();
+    const trialEndsAt = trialApplied ? new Date(now.getTime() + TRIAL_DAYS * 86_400_000).toISOString() : null;
+    return ok<CheckoutSession>({
+      price_id: priceId,
+      customer_email: profile.email,
+      custom_data: { user_id: userId, plan: code, idempotency_key: key },
+      environment: process.env.NEXT_PUBLIC_PADDLE_ENV === "production" ? "production" : "sandbox",
+      client_token: process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN ?? "",
+      plan: code,
+      trial_applied: trialApplied,
+      trial_ends_at: trialEndsAt,
+      amount: { amount_minor: planRow.price_minor, currency: planRow.currency },
+      first_charge_at: trialEndsAt ?? now.toISOString(),
+    });
+  });
 }

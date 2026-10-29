@@ -26,6 +26,10 @@ const APPLICATION_NAMES = [
   "DISPATCH_SECRET",
   "ACTION_TOKEN_SECRET",
   "OPERATOR_ALERT_EMAIL",
+  "PADDLE_API_KEY",
+  "PADDLE_WEBHOOK_SECRET",
+  "NEXT_PUBLIC_PADDLE_CLIENT_TOKEN",
+  "NEXT_PUBLIC_PADDLE_ENV",
 ];
 
 const entries = readFileSync(join(process.cwd(), ".env.example"), "utf8")

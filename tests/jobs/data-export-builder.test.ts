@@ -39,7 +39,17 @@ function seed(): Record<string, Row[]> {
       { id: USER, full_name: "Marko Marković", email: "marko@example.com", locale: "sr-Latn", account_type: "owner" },
       { id: OTHER, full_name: "Ivana", email: "ivana@example.com", locale: "en", account_type: "owner" },
     ],
-    subscriptions: [{ id: "s1", user_id: USER, plan: "premium_monthly", status: "active", monri_token_ref: "tok_x", monri_cit_id: "cit_x" }],
+    subscriptions: [
+      {
+        id: "s1",
+        user_id: USER,
+        plan: "premium_monthly",
+        status: "active",
+        provider_customer_id: "ctm_test_1",
+        provider_subscription_id: "sub_test_1",
+        card_brand: "visa",
+      },
+    ],
     pets: [
       { id: PET, owner_id: USER, name: "Kiki", photo_r2_key: PET_PHOTO, lifecycle: "active" },
       { id: OTHER_PET, owner_id: OTHER, name: "Tuđi", photo_r2_key: null, lifecycle: "active" },
@@ -212,10 +222,11 @@ describe("data export builder (FR-41, EP-50)", () => {
     expect(data.messages).toHaveLength(1);
     expect(data.reports).toHaveLength(1);
     expect(data.user_blocks).toHaveLength(1);
-    // Nothing of other users' own records, and no provider payment tokens.
+    // Nothing of other users' own records, and no provider ids (Step 31: the Paddle customer / subscription ids).
     expect(data.weight_entries.map((w) => w.id)).toEqual(["w1"]);
-    expect(data.subscriptions[0]).not.toHaveProperty("monri_token_ref");
-    expect(data.subscriptions[0]).not.toHaveProperty("monri_cit_id");
+    expect(data.subscriptions[0]).not.toHaveProperty("provider_customer_id");
+    expect(data.subscriptions[0]).not.toHaveProperty("provider_subscription_id");
+    expect(data.subscriptions[0]).toMatchObject({ plan: "premium_monthly", status: "active", card_brand: "visa" });
   });
 
   it("marks the row ready with r2_key, size_bytes, ready_at and expires_at = ready_at + 7 days", async () => {

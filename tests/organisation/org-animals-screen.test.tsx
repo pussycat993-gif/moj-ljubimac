@@ -270,6 +270,31 @@ describe("S20 states", () => {
     expect(screen.getByRole("button", { name: "Dostupno · 1" })).toBeInTheDocument()
   })
 
+  it("FR-42 (Step 31, Design v1.7 S20): the breeder banner links Admins to the breeder plan; Volunteers get no link", () => {
+    const breederAnimals = () =>
+      animals([row({ status_kind: "offspring", status: "available", since_date: "2026-08-15" })], {
+        available: 1,
+        reserved: 0,
+        sold: 0,
+        breeding_active: 0,
+        breeding_retired: 0,
+      })
+    const { unmount } = renderScreen(org({ type: "breeder" }), breederAnimals())
+    const banner = screen.getByRole("status")
+    expect(within(banner).getByRole("link", { name: "Aktiviraj odgajivački plan" })).toHaveAttribute("href", "/premium")
+    unmount()
+
+    renderScreen(org({ type: "breeder", role: "volunteer" }), breederAnimals())
+    expect(screen.getByText("Odgajivački plan nije aktivan — sve možeš samo da pregledaš.")).toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "Aktiviraj odgajivački plan" })).not.toBeInTheDocument()
+  })
+
+  it("a breeder with an active plan → no banner", () => {
+    renderScreen(org({ type: "breeder", plan: true }), animals([], { available: 0, reserved: 0, sold: 0, breeding_active: 0, breeding_retired: 0 }))
+    expect(screen.queryByText("Odgajivački plan nije aktivan — sve možeš samo da pregledaš.")).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "Aktiviraj odgajivački plan" })).not.toBeInTheDocument()
+  })
+
   it("no animals at all → the empty state with Novi prijem", () => {
     renderScreen(org(), animals([], { ...shelterCounts, intake: 0, available: 0 }))
     expect(screen.getByRole("heading", { name: "Još nema životinja" })).toBeInTheDocument()

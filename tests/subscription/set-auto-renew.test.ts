@@ -8,6 +8,10 @@ vi.mock("server-only", () => ({}));
 // auto_renew false, current_period_end unchanged and Premium still active (BR-08); true resumes (trialing
 // while the trial runs); no running row → 409 subscription_not_active; shelter accounts → 403 forbidden_role.
 // The database behaviour itself is proven in supabase/tests/subscription_read.test.sql.
+// Step 31 (BR-08, EP-48 v1.4): a running row with a provider_subscription_id goes to Paddle first — false → POST
+// /subscriptions/{id}/cancel {effective_from: next_billing_period}, true → PATCH {scheduled_change: null} — then
+// set_auto_renew; a Paddle error or an empty PADDLE_API_KEY → 503 payment_provider_unavailable with the row unchanged;
+// a row without a provider id (seed data) changes in the database only, with no fetch. Paddle is a mocked fetch.
 
 type Row = Record<string, unknown>;
 
@@ -50,6 +54,7 @@ function subscriptionView() {
     trial_available: true,
     card_brand: s?.card_brand ?? null,
     card_last4: s?.card_last4 ?? null,
+    manage_billing_available: !!s?.provider_customer_id,
     over_limits: [],
   };
 }
@@ -75,8 +80,17 @@ function query(table: string) {
   const api = {
     select: () => api,
     eq: () => api,
+    in: () => api,
+    gt: () => api,
+    order: () => api,
+    limit: () => api,
     maybeSingle: async () => ({
-      data: table === "profiles" ? { id: state.user, deletion_requested_at: state.deletionRequestedAt } : null,
+      data:
+        table === "profiles"
+          ? { id: state.user, deletion_requested_at: state.deletionRequestedAt }
+          : table === "subscriptions" && running(state.subscription)
+            ? { id: state.subscription!.id, provider_subscription_id: state.subscription!.provider_subscription_id ?? null }
+            : null,
       error: null,
     }),
     then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(resolve),
@@ -97,7 +111,19 @@ function client() {
   };
 }
 
+const fetchCalls: { url: string; method: string; body: unknown }[] = [];
+let paddleStatus = 200;
+
 beforeEach(() => {
+  fetchCalls.length = 0;
+  paddleStatus = 200;
+  vi.unstubAllEnvs();
+  vi.stubEnv("PADDLE_API_KEY", "pdl_test_key");
+  vi.stubEnv("NEXT_PUBLIC_PADDLE_ENV", "sandbox");
+  vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+    fetchCalls.push({ url, method: String(init.method), body: init.body ? JSON.parse(String(init.body)) : undefined });
+    return new Response(JSON.stringify(paddleStatus === 200 ? { data: {} } : { error: { code: "x" } }), { status: paddleStatus });
+  });
   Object.assign(state, {
     user: IVANA,
     accountType: "owner",
@@ -173,5 +199,56 @@ describe("EP-48 setAutoRenew", () => {
     state.user = null;
     expect(await setAutoRenew({ auto_renew: false })).toMatchObject({ ok: false, error: { code: "unauthenticated" } });
     expect(state.rpcCalls.filter((c) => c.name === "set_auto_renew")).toHaveLength(0);
+  });
+});
+
+describe("EP-48 setAutoRenew — Paddle (BR-08)", () => {
+  beforeEach(() => {
+    Object.assign(state.subscription!, { provider_subscription_id: "sub_test_ivana", provider_customer_id: "ctm_test_ivana" });
+  });
+
+  it("false → Paddle cancel at the end of the billing period, then cancelled", async () => {
+    const result = await setAutoRenew({ auto_renew: false });
+    expect(fetchCalls).toEqual([
+      {
+        url: "https://sandbox-api.paddle.com/subscriptions/sub_test_ivana/cancel",
+        method: "POST",
+        body: { effective_from: "next_billing_period" },
+      },
+    ]);
+    expect(result).toMatchObject({ ok: true, data: { status: "cancelled", auto_renew: false } });
+    expect(state.rpcCalls.map((c) => c.name)).toEqual(["set_auto_renew", "get_my_subscription"]);
+  });
+
+  it("true → Paddle resume (scheduled_change: null), then active", async () => {
+    Object.assign(state.subscription!, { status: "cancelled", auto_renew: false });
+    const result = await setAutoRenew({ auto_renew: true });
+    expect(fetchCalls).toEqual([
+      { url: "https://sandbox-api.paddle.com/subscriptions/sub_test_ivana", method: "PATCH", body: { scheduled_change: null } },
+    ]);
+    expect(result).toMatchObject({ ok: true, data: { status: "active", auto_renew: true } });
+  });
+
+  it("a Paddle error → 503 payment_provider_unavailable, row unchanged", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    paddleStatus = 500;
+    const result = await setAutoRenew({ auto_renew: false });
+    expect(result).toMatchObject({ ok: false, error: { code: "payment_provider_unavailable" } });
+    expect(httpStatus("payment_provider_unavailable")).toBe(503);
+    expect(state.subscription).toMatchObject({ status: "active", auto_renew: true });
+    expect(state.rpcCalls.filter((c) => c.name === "set_auto_renew")).toHaveLength(0);
+  });
+
+  it("PADDLE_API_KEY empty with a provider row → 503, no fetch, nothing changed", async () => {
+    vi.stubEnv("PADDLE_API_KEY", "");
+    expect(await setAutoRenew({ auto_renew: false })).toMatchObject({ ok: false, error: { code: "payment_provider_unavailable" } });
+    expect(fetchCalls).toEqual([]);
+    expect(state.subscription).toMatchObject({ status: "active", auto_renew: true });
+  });
+
+  it("provider id null (seed data) → database only, no fetch", async () => {
+    Object.assign(state.subscription!, { provider_subscription_id: null });
+    expect(await setAutoRenew({ auto_renew: false })).toMatchObject({ ok: true, data: { status: "cancelled" } });
+    expect(fetchCalls).toEqual([]);
   });
 });

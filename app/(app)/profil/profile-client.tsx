@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Bell, ChevronRight, Database, LogOut, Sparkles } from "lucide-react"
+import { Bell, ChevronRight, Database, ExternalLink, LogOut, Sparkles } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,7 +28,7 @@ import { ErrorState } from "@/components/app/error-state"
 import { StatusBadge } from "@/components/app/status-badge"
 import { signOut } from "@/lib/actions/auth"
 import { updateMe, type City, type Me } from "@/lib/actions/registration"
-import type { Subscription } from "@/lib/actions/subscription"
+import { getBillingPortalUrl, type Subscription } from "@/lib/actions/subscription"
 import type { ActionResult } from "@/lib/server/result"
 import { format, fromProfileLocale, toProfileLocale, type Dictionary, type Locale } from "@/lib/i18n"
 
@@ -38,7 +38,8 @@ type CardCopy = Pick<Dictionary, "common" | "subscription">
 type Errors = { city?: string; form?: string }
 
 // S18 — Profil · /profil · FR-25, FR-35, FR-38, FR-39 · EP-43 (get, update), EP-67 (cities), EP-42 (sign out),
-// EP-47 (Premium card) and EP-48 (cancel / resume auto-renew). Card states from EP-47 (API §7.3): is_active
+// EP-47 (Premium card), EP-48 (cancel / resume auto-renew) and EP-89 ("Upravljaj plaćanjem" opens the Paddle
+// customer portal in a new tab when manage_billing_available; an error → the generic error toast). Card states from EP-47 (API §7.3): is_active
 // with auto_renew → default; auto_renew = false while the period runs → cancelled; a row that is no longer
 // active → expired with the over_limits summary; never subscribed → "Free plan" with "Pogledaj Premium"
 // (owner decision, Step 23). The card is shown to owner accounts only (owner decision). Loading is
@@ -56,14 +57,15 @@ function formatDate(iso: string, locale: Locale) {
   }).format(new Date(iso))
 }
 
-/** "499 RSD" · "4.990 RSD" (Design §9). */
+/** Design §9 plan prices: Intl EUR, no decimals for whole euros, two otherwise — "3 €" · "€3" · "2,50 €". */
 function formatMoney(money: { amount_minor: number; currency: string }, locale: Locale) {
   const fractional = money.amount_minor % 100 !== 0
-  const amount = new Intl.NumberFormat(intlLocale(locale), {
+  return new Intl.NumberFormat(intlLocale(locale), {
+    style: "currency",
+    currency: money.currency,
     minimumFractionDigits: fractional ? 2 : 0,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: fractional ? 2 : 0,
   }).format(money.amount_minor / 100)
-  return `${amount} ${money.currency}`
 }
 
 /** `{base}_one|_few|_other` by Intl.PluralRules (owner decision, Step 13). */
@@ -109,7 +111,7 @@ function SubscriptionCard({
   const cancelled = !expired && !neverSubscribed && (sub.auto_renew === false || sub.status === "cancelled")
   const endsOn = sub.current_period_end ? formatDate(sub.current_period_end, locale) : ""
   const planLabel = sub.plan?.endsWith("_yearly") ? t.planYearly : t.planMonthly
-  const price = sub.price ? formatMoney(sub.price, locale) /* placeholder price — OQ-03 */ : null
+  const price = sub.price ? formatMoney(sub.price, locale) : null
   const daysLeft = sub.current_period_end ? daysUntil(sub.current_period_end) : 0
   const periodDays = sub.period_days && sub.period_days > 0 ? sub.period_days : Math.max(daysLeft, 1)
   const pct = Math.min(100, Math.round((daysLeft / periodDays) * 100))
@@ -129,6 +131,30 @@ function SubscriptionCard({
     }
     toast.error(copy.common.error)
   }
+
+  /** EP-89: the short-lived portal URL opens in a new tab (opened before the await, so it is not blocked). */
+  async function onManageBilling() {
+    const tab = window.open("", "_blank")
+    setBusy(true)
+    const result = await getBillingPortalUrl()
+    setBusy(false)
+    if (result.ok) {
+      if (tab) {
+        tab.opener = null
+        tab.location.href = result.data.url
+      } else window.open(result.data.url, "_blank", "noopener")
+      return
+    }
+    tab?.close()
+    toast.error(copy.common.error)
+  }
+
+  const manageBilling = sub.manage_billing_available && (
+    <Button variant="outline" className="h-11 w-full md:h-9 md:w-auto" disabled={busy} onClick={() => void onManageBilling()}>
+      <ExternalLink className="size-5" aria-hidden />
+      {t.manageBilling}
+    </Button>
+  )
 
   return (
     <Card className="gap-4 p-4 md:p-6">
@@ -190,6 +216,7 @@ function SubscriptionCard({
               </Button>
             )}
           </div>
+          {manageBilling}
         </>
       )}
 
@@ -220,12 +247,15 @@ function SubscriptionCard({
               })}
             </ul>
           )}
-          <Button className="h-11 w-full md:h-9 md:w-auto" asChild>
-            <Link href="/premium">
-              <Sparkles className="size-5" aria-hidden />
-              {t.renew}
-            </Link>
-          </Button>
+          <div className="flex flex-col gap-3 md:flex-row">
+            <Button className="h-11 w-full md:h-9 md:w-auto" asChild>
+              <Link href="/premium">
+                <Sparkles className="size-5" aria-hidden />
+                {t.renew}
+              </Link>
+            </Button>
+            {manageBilling}
+          </div>
         </div>
       )}
 

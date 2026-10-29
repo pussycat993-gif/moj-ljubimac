@@ -39,7 +39,7 @@ const states: { value: ViewState; label: string }[] = [
 
 const subscription = {
   plan: "Mesečni plan",
-  price: "499 RSD" /* placeholder price — OQ-03 */,
+  price: "3 €",
   periodDays: 30,
   daysLeft: 23,
   endsOn: "11. 11. 2026.",

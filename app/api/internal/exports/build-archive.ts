@@ -89,12 +89,12 @@ function uniqueRows(rows: Row[], key = "id"): Row[] {
 
 const ids = (rows: Row[], key = "id") => rows.map((row) => row[key]);
 
-/** Provider payment references are credentials, not personal data the user can use (Step 30a deviation). */
+/** Paddle customer and subscription ids are provider references, not personal data the user can use (Step 31). */
 function withoutPaymentTokens(rows: Row[]): Row[] {
   return rows.map((row) => {
     const rest = { ...row };
-    delete rest.monri_token_ref;
-    delete rest.monri_cit_id;
+    delete rest.provider_customer_id;
+    delete rest.provider_subscription_id;
     return rest;
   });
 }

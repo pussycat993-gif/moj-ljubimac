@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Subscription } from "@/lib/actions/subscription"
@@ -7,12 +7,16 @@ import type { Subscription } from "@/lib/actions/subscription"
 // Progress and value computed from current_period_end on the Europe/Belgrade calendar. FR-38: "Otkaži obnovu"
 // AlertDialog → EP-48 false → cancelled variant; "Uključi obnovu" → EP-48 true. FR-39: the expired variant shows
 // the over_limits summary and "Obnovi Premium". Never subscribed → "Free plan" + "Pogledaj Premium" (owner
-// decision). The name/city/language form is covered by tests/profile/profile-form.test.tsx.
+// decision). The name/city/language form is covered by tests/profile/profile-form.test.tsx. Step 31: the EUR price
+// (Design §9) and EP-89 "Upravljaj plaćanjem" — shown only when manage_billing_available, it opens the Paddle portal
+// URL in a new tab; an error shows the generic error toast.
 
 const refresh = vi.fn()
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh }) }))
 vi.mock("@/lib/actions/registration", () => ({ updateMe: vi.fn() }))
 vi.mock("@/lib/actions/auth", () => ({ signOut: vi.fn() }))
+const getBillingPortalUrl = vi.fn()
+vi.mock("@/lib/actions/subscription", () => ({ getBillingPortalUrl }))
 const toast = Object.assign(vi.fn(), { error: vi.fn() })
 vi.mock("@/components/ui/sonner", () => ({ toast }))
 
@@ -52,6 +56,7 @@ function subscription(extra: Partial<Subscription> = {}): Subscription {
     trial_available: false,
     card_brand: "visa",
     card_last4: "4821",
+    manage_billing_available: false,
     over_limits: [],
     ...extra,
   }
@@ -67,6 +72,8 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] })
   vi.setSystemTime(new Date("2026-10-23T10:00:00Z"))
   setAutoRenew.mockReset()
+  getBillingPortalUrl.mockReset()
+  toast.error.mockReset()
   refresh.mockReset()
 })
 afterEach(() => vi.useRealTimers())
@@ -91,9 +98,41 @@ describe("S18 Premium card", () => {
     expect(screen.getByText("Sledeća naplata 24. 10. 2026.")).toBeInTheDocument()
   })
 
-  it("shows a price only when Subscription.price is set (owner decision)", () => {
-    renderCard(subscription({ price: { amount_minor: 49900, currency: "RSD" } }))
-    expect(screen.getByText("Mesečni plan · 499 RSD")).toBeInTheDocument()
+  it("shows a price only when Subscription.price is set (owner decision), in EUR per Design §9", () => {
+    renderCard(subscription({ price: { amount_minor: 300, currency: "EUR" } }))
+    // Intl puts a no-break space between the amount and "€" (Design §9 "3 €").
+    const paragraph = (value: string) => screen.getByText((_, el) => el?.tagName === "P" && el.textContent === value)
+    expect(paragraph("Mesečni plan · 3\u00a0€")).toBeInTheDocument()
+    expect(paragraph("Sledeća naplata 16. 11. 2026. · 3\u00a0€ · Visa •••• 4821")).toBeInTheDocument()
+  })
+
+  it("EP-89: Upravljaj plaćanjem only when manage_billing_available; opens the portal in a new tab", async () => {
+    const user = userEvent.setup()
+    renderCard(subscription())
+    expect(screen.queryByRole("button", { name: "Upravljaj plaćanjem" })).not.toBeInTheDocument()
+    cleanup()
+
+    const tab = { opener: {}, location: { href: "" }, close: vi.fn() }
+    const open = vi.spyOn(window, "open").mockReturnValue(tab as never)
+    getBillingPortalUrl.mockResolvedValue({ ok: true, data: { url: "https://customer-portal.paddle.com/cpl_test" } })
+    renderCard(subscription({ manage_billing_available: true }))
+    await user.click(screen.getByRole("button", { name: "Upravljaj plaćanjem" }))
+    expect(getBillingPortalUrl).toHaveBeenCalled()
+    expect(open).toHaveBeenCalledWith("", "_blank")
+    expect(tab.location.href).toBe("https://customer-portal.paddle.com/cpl_test")
+    expect(tab.opener).toBeNull()
+
+    getBillingPortalUrl.mockResolvedValue({ ok: false, error: { code: "payment_provider_unavailable", message: "x" } })
+    await user.click(screen.getByRole("button", { name: "Upravljaj plaćanjem" }))
+    expect(tab.close).toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith(dictionaries.sr.common.error)
+    open.mockRestore()
+  })
+
+  it("EP-89: the expired variant also offers Upravljaj plaćanjem with a Paddle customer", () => {
+    renderCard(subscription({ status: "expired", is_active: false, auto_renew: false, manage_billing_available: true }))
+    expect(screen.getByRole("link", { name: "Obnovi Premium" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Upravljaj plaćanjem" })).toBeInTheDocument()
   })
 
   it("FR-38: Otkaži obnovu → AlertDialog → EP-48 false → cancelled; Uključi obnovu → EP-48 true", async () => {

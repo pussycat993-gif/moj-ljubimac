@@ -114,8 +114,10 @@ reset role;
 update public.subscriptions set last_notice_days = null;
 update public.subscriptions set status = 'cancelled', current_period_end = now() - interval '1 hour'
 where user_id = 'a1000000-0000-4000-8000-000000000001';
--- Renewal pending (auto_renew on, no provider yet, OQ-11): not expired.
-update public.subscriptions set status = 'active', auto_renew = true, current_period_end = now() - interval '1 hour'
+-- Renewal pending (auto_renew on, a Paddle subscription): not expired — Paddle decides and the EP-49 step 1
+-- reconciliation mirrors it (Step 31).
+update public.subscriptions set status = 'active', auto_renew = true, current_period_end = now() - interval '1 hour',
+  provider_subscription_id = 'sub_test_billing_job', provider_customer_id = 'ctm_test_billing_job'
 where user_id = 'a1000000-0000-4000-8000-000000000002';
 -- Auto-renew on, but the account deletion is pending: expired (EP-51).
 update public.subscriptions set status = 'active', auto_renew = true, current_period_end = now() - interval '1 hour'

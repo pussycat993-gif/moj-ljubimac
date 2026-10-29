@@ -95,7 +95,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 29 | WhatsApp channel | ✅ | 19 | — | 2026-10-29 |
 | 30 | Nightly jobs | ✅ | 23, 25, 29 | — | 2026-10-29 |
 | 30a | Backups & data export archives | ✅ | 30, 23 | — | 2026-10-29 |
-| 31 | Payments & pricing | ⬜ | 30a | — (OQ-11, OQ-03 resolved 2026-10-29) | |
+| 31 | Payments & pricing | ✅ | 30a | — (OQ-11, OQ-03 resolved 2026-10-29) | 2026-10-29 |
 | 32 | Release verification | ⬜ | 30a, 28c, 31 | — (checklist item 4 open until OQ-15) | |
 
 ---
@@ -6456,7 +6456,33 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-29** — Step 31 built (unattended overnight run; resumed after a STOPPED run whose only failure was a Vitest timeout under full parallel load).
+  - **Built:**
+    - Migration `20261029140000_payments.sql`: `subscriptions` drops `monri_token_ref` / `monri_cit_id` and adds `provider_customer_id`, `provider_subscription_id` (unique), `provider_event_at`, `renewal_paused_for_deletion`; `subscription_payments.monri_transaction_id` → `provider_transaction_id` with `unique (provider_transaction_id, result)` and currency default `EUR`; `plans` currency default `EUR`, `provider_price_id`, `provider_trial_price_id` (check: Premium codes only) and the four BR-62 EUR rows (300 / 3000 / 1100 / 11000, provider ids null). Types regenerated with `npm run db:types`.
+    - `lib/integrations/paddle.ts` (server only): fetch client (base URL by `NEXT_PUBLIC_PADDLE_ENV`, Bearer `PADDLE_API_KEY`, env read at call time) with `cancelSubscription`, `resumeSubscription`, `getSubscription`, `createPortalSession`, `paddleConfigured`; `verifyPaddleSignature` (Web Crypto HMAC-SHA256, constant-time, any `h1`, ±300 s); `mapPaddleEvent` → the neutral EP-46 event.
+    - `app/api/webhooks/payments/route.ts` (EP-46): raw body → verify → map → `rpc:apply_payment_event` (service role); `duplicate_subscription` → immediate Paddle cancel + `console.error` for an Operator refund; unknown event types → `200` ignored.
+    - EP-45 `startCheckout` (Step 23 validation order, then local-mode `503` or the CheckoutSession with trial / plain price id, stored through `lib/server/idempotency.ts`); EP-48 `setAutoRenew` (Paddle first, then `set_auto_renew`; `503` and nothing changed on failure or without a key; rows without a provider id → database only); EP-89 `getBillingPortalUrl`; EP-51 Paddle cancel / resume with `set_renewal_paused_for_deletion`; EP-49 step 1 reconciliation (`getSubscription` → `apply_payment_event(p_record_event = false)`, response field `reconciled`); EP-52 immediate Paddle cancel before deletion (failure skips the account for the night); the archive omits `provider_customer_id` / `provider_subscription_id`.
+    - S17 (`premium/page.tsx`, `premium-client.tsx`): EUR prices per Design §9, Premium and breeder variants, `@paddle/paddle-js` loaded with `await import()` on click (`initializePaddle` + `Checkout.open` overlay; `checkout.completed` → close, `/profil`, toast); payments enabled only with both `PADDLE_API_KEY` and `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`. S18 *Upravljaj plaćanjem* (outline, ExternalLink, new tab) when `manage_billing_available`. S20 breeder banner link to `/premium` for Admins via the new optional `ReadOnlyBanner` `action` prop. No `/* placeholder price — OQ-03 */` left in `app/`.
+    - `lib/i18n/sr.ts` / `en.ts` (S17 / S18 / S20 strings, Paddle note replaces the Monri note); `.env.example` and its test (four `PADDLE_*` names after `OPERATOR_ALERT_EMAIL`); README "Payments (Paddle)" section; mockups `premium.tsx` / `profile.tsx` (EUR price constants and Paddle note copy only); `@paddle/paddle-js` in `package.json` / lock.
+    - Tests: new `tests/integrations/paddle.test.ts`, `tests/payments/payments-webhook.test.ts`, `tests/subscription/billing-portal.test.ts`, `supabase/tests/payments.test.sql`; updated the earlier tests on the file list (exception 3). All Paddle calls mocked with `fetch` mocks; webhook payloads signed in-test; `@paddle/paddle-js` mocked. Everything passes with empty `PADDLE_*` variables.
+  - **Database functions added (pre-approved exception 6):** `apply_payment_event(p_event jsonb, p_record_event boolean default true) returns text` (security definer, service_role only); `set_renewal_paused_for_deletion(p_paused boolean) returns void` (security definer on `auth.uid()`, authenticated); `get_my_subscription()` recreated with `manage_billing_available`; `retention_delete_due_accounts(p_limit, p_skip uuid[])` recreated with `p_skip`. **Follow-up:** name them in `docs/product/05-api-integration-contract.md` EP-46 / EP-51 (and EP-52 for `p_skip`).
+  - **Owner-approved exceptions / deviations (accepted by the owner on 2026-10-29 from the STOPPED report):**
+    - `vitest.config.ts`: `test.maxWorkers: 4` (exception 5 extended to Vitest) — `tests/sapa/listing-form-screen.test.tsx` timed out under full parallel load (it also failed on the previous commit). Nothing else changed for it.
+    - `retention_delete_due_accounts` gets the `p_skip` parameter so an account whose Paddle cancellation failed is skipped that night.
+    - `tests/design/ui-overrides.test.ts`: strips the new optional `ReadOnlyBanner` `action` prop before comparing with the mockup (the only allowed change).
+    - The date wording, the S17 breeder copy and the mockup price constants as built and reported.
+  - **Verification** (in order, after `npx supabase db reset`):
+    - `npm run typecheck` ✅ exit 0
+    - `npm run lint` ✅ exit 0 (0 errors; the 2 known warnings in the generated `cloudflare-env.d.ts`)
+    - `npm test` ✅ `Test Files 148 passed (148)`, `Tests 1745 passed (1745)`
+    - `npx supabase test db` ✅ `All tests successful. Files=92, Tests=3188`, `Result: PASS`
+    - `npm run build` ✅ exit 0; the routes include `ƒ /api/webhooks/payments`.
+  - **Owner follow-ups:**
+    - Paddle sandbox and production setup: one product per plan family; plain EUR prices for all four plans plus a 7-day-trial price for each Premium plan (tax added on top).
+    - Set `plans.provider_price_id` / `provider_trial_price_id` per environment with the README SQL update.
+    - Notification destination `${NEXT_PUBLIC_SITE_URL}/api/webhooks/payments` with the nine API §9.2 event types; its secret into `PADDLE_WEBHOOK_SECRET`; set `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`, `NEXT_PUBLIC_PADDLE_ENV` per environment.
+    - **Before launch:** one real sandbox purchase (with trial), renewal and cancellation, recorded for Step 32 (Release Criterion 2). Not run here — no Paddle sandbox credentials exist yet.
+    - Name the new database functions in API EP-46 / EP-51 / EP-52 (above).
 
 ---
 

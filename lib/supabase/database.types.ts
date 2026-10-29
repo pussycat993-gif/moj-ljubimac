@@ -989,14 +989,14 @@ isOneToOne: false
                   ]
                 },"plans": {
                   Row: {
-                    "active": boolean,"code": Database["public"]['Enums']["subscription_plan"],"created_at": string,"currency": string,"id": string,"price_minor": number,"updated_at": string
+                    "active": boolean,"code": Database["public"]['Enums']["subscription_plan"],"created_at": string,"currency": string,"id": string,"price_minor": number,"provider_price_id": string | null,"provider_trial_price_id": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "active": boolean,"code": Database["public"]['Enums']["subscription_plan"],"created_at"?: string,"currency"?: string,"id"?: string,"price_minor": number,"updated_at"?: string
+                    "active": boolean,"code": Database["public"]['Enums']["subscription_plan"],"created_at"?: string,"currency"?: string,"id"?: string,"price_minor": number,"provider_price_id"?: string | null,"provider_trial_price_id"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "active"?: boolean,"code"?: Database["public"]['Enums']["subscription_plan"],"created_at"?: string,"currency"?: string,"id"?: string,"price_minor"?: number,"updated_at"?: string
+                    "active"?: boolean,"code"?: Database["public"]['Enums']["subscription_plan"],"created_at"?: string,"currency"?: string,"id"?: string,"price_minor"?: number,"provider_price_id"?: string | null,"provider_trial_price_id"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     
@@ -1331,14 +1331,14 @@ isOneToOne: false
                   ]
                 },"subscription_payments": {
                   Row: {
-                    "amount_minor": number,"created_at": string,"currency": string,"id": string,"kind": Database["public"]['Enums']["payment_kind"],"monri_transaction_id": string,"result": Database["public"]['Enums']["payment_result"],"subscription_id": string,"updated_at": string
+                    "amount_minor": number,"created_at": string,"currency": string,"id": string,"kind": Database["public"]['Enums']["payment_kind"],"provider_transaction_id": string,"result": Database["public"]['Enums']["payment_result"],"subscription_id": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "amount_minor": number,"created_at"?: string,"currency"?: string,"id"?: string,"kind": Database["public"]['Enums']["payment_kind"],"monri_transaction_id": string,"result": Database["public"]['Enums']["payment_result"],"subscription_id": string,"updated_at"?: string
+                    "amount_minor": number,"created_at"?: string,"currency"?: string,"id"?: string,"kind": Database["public"]['Enums']["payment_kind"],"provider_transaction_id": string,"result": Database["public"]['Enums']["payment_result"],"subscription_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "amount_minor"?: number,"created_at"?: string,"currency"?: string,"id"?: string,"kind"?: Database["public"]['Enums']["payment_kind"],"monri_transaction_id"?: string,"result"?: Database["public"]['Enums']["payment_result"],"subscription_id"?: string,"updated_at"?: string
+                    "amount_minor"?: number,"created_at"?: string,"currency"?: string,"id"?: string,"kind"?: Database["public"]['Enums']["payment_kind"],"provider_transaction_id"?: string,"result"?: Database["public"]['Enums']["payment_result"],"subscription_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -1351,14 +1351,14 @@ isOneToOne: false
                   ]
                 },"subscriptions": {
                   Row: {
-                    "auto_renew": boolean,"card_brand": string | null,"card_last4": string | null,"created_at": string,"current_period_end": string,"id": string,"last_notice_days": number | null,"monri_cit_id": string | null,"monri_token_ref": string | null,"plan": Database["public"]['Enums']["subscription_plan"],"status": Database["public"]['Enums']["subscription_status"],"trial_ends_at": string | null,"updated_at": string,"user_id": string
+                    "auto_renew": boolean,"card_brand": string | null,"card_last4": string | null,"created_at": string,"current_period_end": string,"id": string,"last_notice_days": number | null,"plan": Database["public"]['Enums']["subscription_plan"],"provider_customer_id": string | null,"provider_event_at": string | null,"provider_subscription_id": string | null,"renewal_paused_for_deletion": boolean,"status": Database["public"]['Enums']["subscription_status"],"trial_ends_at": string | null,"updated_at": string,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "auto_renew"?: boolean,"card_brand"?: string | null,"card_last4"?: string | null,"created_at"?: string,"current_period_end": string,"id"?: string,"last_notice_days"?: number | null,"monri_cit_id"?: string | null,"monri_token_ref"?: string | null,"plan": Database["public"]['Enums']["subscription_plan"],"status": Database["public"]['Enums']["subscription_status"],"trial_ends_at"?: string | null,"updated_at"?: string,"user_id": string
+                    "auto_renew"?: boolean,"card_brand"?: string | null,"card_last4"?: string | null,"created_at"?: string,"current_period_end": string,"id"?: string,"last_notice_days"?: number | null,"plan": Database["public"]['Enums']["subscription_plan"],"provider_customer_id"?: string | null,"provider_event_at"?: string | null,"provider_subscription_id"?: string | null,"renewal_paused_for_deletion"?: boolean,"status": Database["public"]['Enums']["subscription_status"],"trial_ends_at"?: string | null,"updated_at"?: string,"user_id": string
                   }
                   Update: {
-                    "auto_renew"?: boolean,"card_brand"?: string | null,"card_last4"?: string | null,"created_at"?: string,"current_period_end"?: string,"id"?: string,"last_notice_days"?: number | null,"monri_cit_id"?: string | null,"monri_token_ref"?: string | null,"plan"?: Database["public"]['Enums']["subscription_plan"],"status"?: Database["public"]['Enums']["subscription_status"],"trial_ends_at"?: string | null,"updated_at"?: string,"user_id"?: string
+                    "auto_renew"?: boolean,"card_brand"?: string | null,"card_last4"?: string | null,"created_at"?: string,"current_period_end"?: string,"id"?: string,"last_notice_days"?: number | null,"plan"?: Database["public"]['Enums']["subscription_plan"],"provider_customer_id"?: string | null,"provider_event_at"?: string | null,"provider_subscription_id"?: string | null,"renewal_paused_for_deletion"?: boolean,"status"?: Database["public"]['Enums']["subscription_status"],"trial_ends_at"?: string | null,"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [
                     {
@@ -1793,6 +1793,9 @@ isOneToOne: false
 "admin_restore_user":
 { Args: { "p_user_id": string }; Returns: Json
                            },
+"apply_payment_event":
+{ Args: { "p_event": Json,"p_record_event"?: boolean }; Returns: string
+                           },
 "billing_expire_subscriptions":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
@@ -2025,7 +2028,7 @@ isOneToOne: false
 { Args: { "p_pet_id": string,"p_reenable_reminders"?: boolean }; Returns: Json
                            },
 "retention_delete_due_accounts":
-{ Args: { "p_limit"?: number }; Returns: Json
+{ Args: { "p_limit"?: number,"p_skip"?: (string)[] }; Returns: Json
                            },
 "retention_expire_exports":
 { Args: Record<PropertyKey, never>; Returns: Json
@@ -2060,9 +2063,11 @@ isOneToOne: false
 "current_period_end": string,
 "id": string,
 "last_notice_days": number | null,
-"monri_cit_id": string | null,
-"monri_token_ref": string | null,
 "plan": Database["public"]['Enums']["subscription_plan"],
+"provider_customer_id": string | null,
+"provider_event_at": string | null,
+"provider_subscription_id": string | null,
+"renewal_paused_for_deletion": boolean,
 "status": Database["public"]['Enums']["subscription_status"],
 "trial_ends_at": string | null,
 "updated_at": string,
@@ -2076,6 +2081,9 @@ isOneToOne: false
       } },
 "set_meal_schedule":
 { Args: { "p_meal_times": (string)[],"p_meal_weekdays"?: (number)[],"p_pet_id": string }; Returns: Json
+                           },
+"set_renewal_paused_for_deletion":
+{ Args: { "p_paused": boolean }; Returns: undefined
                            },
 "submit_org_request":
 { Args: { "p_email": string,"p_message": string,"p_name": string,"p_pet_id": string,"p_phone": string }; Returns: Json

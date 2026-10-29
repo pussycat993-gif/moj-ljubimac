@@ -7,7 +7,10 @@ vi.mock("server-only", () => ({}));
 // FR-25 #1 / #2, FR-32 (route side), route auth — EP-49 POST /api/internal/billing-nightly with the service-role
 // client and Resend faked (the database functions — expiry, the 30 / 7 / 1 Belgrade-day candidates, the
 // monthly first-day skip, last_notice_days, the household flag — are proven in supabase/tests/billing_job.test.sql).
-// Secret check; the job works only at 03:xx Europe/Belgrade (CET and CEST); step 1 only logs (OQ-11); one
+// Secret check; the job works only at 03:xx Europe/Belgrade (CET and CEST); step 1 reconciles provider rows near
+// their period end with Paddle (Step 31: GET /subscriptions/{id} on a mocked fetch → apply_payment_event with
+// p_record_event = false and occurred_at = updated_at; Paddle failing for a row or an empty key skips it; never a
+// charge); one
 // premium_expiry_* email per candidate with the {renew_line} matching auto_renew, recorded only when Resend
 // accepted it, so a re-run on the same date sends nothing; counts per EP-49. FR-25 #2: after expiry the Step 19/29
 // dispatch sends a WhatsApp-configured reminder by email + push.
@@ -22,10 +25,22 @@ const fake = vi.hoisted(() => ({
   marked: new Map<string, number>(),
   emails: [] as Email[],
   failFor: new Set<string>(),
+  due: [] as { id: string; provider_subscription_id: string }[],
+  fromFilters: [] as unknown[][],
 }));
 
 vi.mock("@/lib/supabase/service-role", () => ({
   createServiceRoleClient: () => ({
+    from: (table: string) => {
+      const chain = {
+        select: (...a: unknown[]) => (fake.fromFilters.push([table, "select", ...a]), chain),
+        not: (...a: unknown[]) => (fake.fromFilters.push([table, "not", ...a]), chain),
+        in: (...a: unknown[]) => (fake.fromFilters.push([table, "in", ...a]), chain),
+        lte: (...a: unknown[]) => (fake.fromFilters.push([table, "lte", ...a]), chain),
+        then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data: fake.due, error: null }).then(resolve),
+      };
+      return chain;
+    },
     rpc: async (fn: string, args?: unknown) => {
       fake.rpcCalls.push({ fn, args });
       const queue = fake.rpcQueues[fn];
@@ -106,6 +121,9 @@ beforeEach(() => {
   fake.marked = new Map();
   fake.emails = [];
   fake.failFor = new Set();
+  fake.due = [];
+  fake.fromFilters = [];
+  vi.stubEnv("PADDLE_API_KEY", "");
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -147,7 +165,7 @@ describe("EP-49 the Belgrade 03:00 window", () => {
     vi.setSystemTime(new Date(at));
     const response = await POST(request());
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ renewals_attempted: 0, expired: 0, notices_sent: 0, households_updated: 0 });
+    expect(await response.json()).toEqual({ reconciled: 0, expired: 0, notices_sent: 0, households_updated: 0 });
     expect(fake.rpcCalls).toHaveLength(0);
   });
 
@@ -162,7 +180,7 @@ describe("EP-49 the Belgrade 03:00 window", () => {
 });
 
 describe("EP-49 steps in order", () => {
-  it("step 1 only logs (OQ-11); steps 2–4 run in order; the response has exactly the EP-49 counts", async () => {
+  it("no provider rows due → no Paddle call; steps 2–4 run in order; the response has exactly the EP-49 counts", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     fake.rpcQueues.billing_expire_subscriptions = [
       { data: { expired: 3, household_ids: ["b1000000-0000-4000-8000-000000000001"] }, error: null },
@@ -171,14 +189,92 @@ describe("EP-49 steps in order", () => {
       { data: ["b1000000-0000-4000-8000-000000000001", "b1000000-0000-4000-8000-000000000002"], error: null },
     ];
     const response = await POST(request());
-    expect(await response.json()).toEqual({ renewals_attempted: 0, expired: 3, notices_sent: 0, households_updated: 2 });
+    expect(await response.json()).toEqual({ reconciled: 0, expired: 3, notices_sent: 0, households_updated: 2 });
     expect(fake.rpcCalls.map((c) => c.fn)).toEqual([
       "billing_expire_subscriptions",
       "billing_expiry_notice_candidates",
       "billing_refresh_household_flags",
     ]);
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("OQ-11"));
     expect(fetchSpy).not.toHaveBeenCalled();
+    // Step 1 reads provider rows (trialing / active / cancelled / payment_failed) ending within a day.
+    expect(fake.fromFilters).toEqual([
+      ["subscriptions", "select", "id, provider_subscription_id"],
+      ["subscriptions", "not", "provider_subscription_id", "is", null],
+      ["subscriptions", "in", "status", ["trialing", "active", "cancelled", "payment_failed"]],
+      ["subscriptions", "lte", "current_period_end", "2026-11-02T02:00:00.000Z"],
+    ]);
+  });
+
+  it("FR-37 #2: step 1 applies a Paddle GET /subscriptions/{id} like an EP-46 event, without an event row", async () => {
+    vi.stubEnv("PADDLE_API_KEY", "pdl_test_key");
+    vi.stubEnv("NEXT_PUBLIC_PADDLE_ENV", "sandbox");
+    fake.due = [
+      { id: "s1", provider_subscription_id: "sub_test_1" },
+      { id: "s2", provider_subscription_id: "sub_test_2" },
+    ];
+    const fetchCalls: { url: string; method: string }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      fetchCalls.push({ url, method: String(init.method) });
+      if (url.endsWith("sub_test_2")) return new Response(JSON.stringify({ error: { code: "internal_error" } }), { status: 500 });
+      return new Response(
+        JSON.stringify({
+          data: {
+            id: "sub_test_1",
+            status: "active",
+            customer_id: "ctm_test_1",
+            items: [{ price: { id: "pri_test_pm" }, trial_dates: null }],
+            current_billing_period: { ends_at: "2026-12-01T10:00:00Z" },
+            scheduled_change: null,
+            canceled_at: null,
+            paused_at: null,
+            updated_at: "2026-11-01T09:00:00Z",
+          },
+        }),
+        { status: 200 },
+      );
+    });
+    fake.rpcQueues.apply_payment_event = [{ data: "applied", error: null }];
+
+    const response = await POST(request());
+    expect(await response.json()).toMatchObject({ reconciled: 1 });
+    expect(fetchCalls).toEqual([
+      { url: "https://sandbox-api.paddle.com/subscriptions/sub_test_1", method: "GET" },
+      { url: "https://sandbox-api.paddle.com/subscriptions/sub_test_2", method: "GET" },
+    ]);
+    expect(calls("apply_payment_event")).toEqual([
+      {
+        fn: "apply_payment_event",
+        args: {
+          p_record_event: false,
+          p_event: expect.objectContaining({
+            event_id: null,
+            type: "subscription",
+            occurred_at: "2026-11-01T09:00:00Z",
+            provider_subscription_id: "sub_test_1",
+            provider_status: "active",
+            price_id: "pri_test_pm",
+            period_ends_at: "2026-12-01T10:00:00Z",
+            cancel_scheduled: false,
+          }),
+        },
+      },
+    ]);
+    // Paddle failing for sub_test_2 skips that row with a warning; the run still finishes steps 2–4.
+    expect(console.warn).toHaveBeenCalledWith("[billing-nightly] reconciliation skipped:", "sub_test_2", expect.any(String));
+    expect(calls("billing_refresh_household_flags")).toHaveLength(1);
+    // No charge is ever started: only reads.
+    expect(fetchCalls.every((c) => c.method === "GET")).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it("step 1 with PADDLE_API_KEY empty skips the due rows with a warning and calls nothing", async () => {
+    fake.due = [{ id: "s1", provider_subscription_id: "sub_test_1" }];
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const response = await POST(request());
+    expect(await response.json()).toMatchObject({ reconciled: 0 });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(calls("apply_payment_event")).toEqual([]);
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("PADDLE_API_KEY is empty"));
   });
 
   it("the candidates are read for the current time, so the database picks the Belgrade date", async () => {

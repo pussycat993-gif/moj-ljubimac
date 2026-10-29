@@ -82,3 +82,35 @@ Lokalno:
 **Restore:** backup se vraća ručno, `pg_restore` (iste ili novije major verzije) iz preuzetog `.dump` fajla u prazan Supabase projekat. Pre lansiranja vlasnik mora bar jednom da uvežba ceo restore (RISK-13) i zapiše korake.
 
 **Arhive ličnih podataka** (EP-50, FR-41): job `data-exports` (`*/5 * * * *`) poziva `private.call_internal_route('/api/internal/exports')` sa istim Vault tajnama `dispatch_url` / `dispatch_secret`. Ruta po pozivu pravi jednu arhivu (`fflate`) za najstariji red `data_exports` u stanju `preparing`, upload-uje je u `R2_BUCKET` kao `exports/<user_id>/<data_export_id>.zip`, red prebacuje u `ready` (link važi 7 dana) i šalje mejl `data_export_ready`; greška ili arhiva veća od 90 MB → `failed`. Bez R2 kredencijala ne radi ništa i redovi ostaju `preparing`. Ručno lokalno: `curl -X POST http://localhost:3000/api/internal/exports -H "X-Dispatch-Secret: <DISPATCH_SECRET>"`.
+
+## Payments (Paddle)
+
+Paddle Billing je prodavac (merchant of record, TC ADR-09): naplaćuje karticu, dodaje PDV, obnavlja pretplatu, ponavlja neuspele naplate i šalje račune. Aplikacija nikad ne pokreće naplatu i ne čuva podatke o kartici — samo Paddle id-jeve, stanje pretplate i marku / poslednje 4 cifre kartice za prikaz. Cene su u EUR bez PDV-a (PRD BR-62): Premium 3 € mesečno / 30 € godišnje, odgajivački plan 11 € / 110 €; migracija ih upisuje u `plans`.
+
+**Podešavanje Paddle-a** (prvo u sandbox nalogu, pa isto u produkcionom):
+
+1. Napravi jedan proizvod po porodici planova (Premium, Odgajivački plan).
+2. Napravi cene, sve u EUR, sa porezom koji se dodaje na cenu (tax *exclusive*): obične cene za sva četiri plana (`premium_monthly` 3 € / mesec, `premium_yearly` 30 € / godina, `breeder_monthly` 11 € / mesec, `breeder_yearly` 110 € / godina) i, za svaki Premium plan, još jednu cenu sa probnim periodom od 7 dana (BR-07). Odgajivački planovi nemaju probni period (BR-51).
+3. Notifications → nova destinacija tipa URL: `${NEXT_PUBLIC_SITE_URL}/api/webhooks/payments`, sa događajima `subscription.created`, `subscription.activated`, `subscription.trialing`, `subscription.updated`, `subscription.past_due`, `subscription.paused`, `subscription.canceled`, `transaction.completed`, `transaction.payment_failed`. Njen secret key ide u `PADDLE_WEBHOOK_SECRET`.
+4. Developer tools → Authentication: API ključ (sa dozvolama za subscriptions, customers i customer portal sessions) ide u `PADDLE_API_KEY`, client-side token u `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`.
+5. Upiši id-jeve cena u bazu tog okruženja (SQL editor; id-jevi se nikad ne stavljaju u migraciju ni u kod):
+
+```sql
+update public.plans set provider_price_id = 'pri_…', provider_trial_price_id = 'pri_…' where code = 'premium_monthly';
+update public.plans set provider_price_id = 'pri_…', provider_trial_price_id = 'pri_…' where code = 'premium_yearly';
+update public.plans set provider_price_id = 'pri_…' where code = 'breeder_monthly';
+update public.plans set provider_price_id = 'pri_…' where code = 'breeder_yearly';
+```
+
+**Promenljive** (TC §8.1):
+
+| Ime | Namena |
+|---|---|
+| `PADDLE_API_KEY` | Paddle API, samo na serveru (otkazivanje / nastavak obnove, portal, noćno usklađivanje) |
+| `PADDLE_WEBHOOK_SECRET` | provera zaglavlja `Paddle-Signature` na `/api/webhooks/payments` |
+| `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` | Paddle.js (checkout overlay u pregledaču) |
+| `NEXT_PUBLIC_PADDLE_ENV` | `sandbox` ili `production` (sve osim tačno `production` koristi sandbox) |
+
+**Lokalno:** sa praznim `PADDLE_*` promenljivama plaćanje je isključeno — S17 `/premium` prikazuje „Plaćanje uskoro dostupno", `startCheckout` vraća `503 payment_provider_unavailable`, a Premium se za testiranje dobija samo iz seed podataka (Step 04). Nijedan test ne zove Paddle.
+
+**Webhook-ovi lokalno:** sa sandbox ključevima u `.env.local` pokreni `npm run dev`, otvori tunel do porta 3000 (npr. `cloudflared tunnel --url http://localhost:3000` ili `ngrok http 3000`) i u sandbox nalogu napravi posebnu notification destinaciju na `<tunel-url>/api/webhooks/payments` sa istih devet događaja; njen secret stavi u lokalni `PADDLE_WEBHOOK_SECRET`. Sandbox kartice: Paddle dokumentacija „Test cards". Propuštene događaje ispravlja noćno usklađivanje (EP-49 korak 1).

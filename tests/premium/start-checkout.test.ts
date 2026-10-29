@@ -3,18 +3,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-// EP-45 startCheckout — the provider-neutral stub (Step 23, OQ-11). Over a fake server client: the EP-45
-// Request validation still surfaces (validation_failed with plan_not_allowed, trial_already_used,
-// subscription_already_active, forbidden_role, idempotency_key), and a valid request returns 503
-// payment_provider_unavailable and writes nothing — no subscriptions row, no idempotency_keys row, no RPC.
-// The active plans row exists only as a fixture in this test (migrations and seed keep plans empty, OQ-03).
+// EP-45 startCheckout (Step 23 validation, Step 31 Paddle). Over a fake server client: the EP-45 Request validation
+// surfaces first (validation_failed with plan_not_allowed, trial_already_used, subscription_already_active,
+// forbidden_role, idempotency_key). Local mode (PADDLE_API_KEY empty): a valid request returns 503
+// payment_provider_unavailable and writes nothing. With a key: the CheckoutSession for the Paddle.js overlay — the
+// trial price id and trial_applied for an owner who never had the trial (BR-07), the plain price id otherwise
+// (E-15) and always for breeder plans (BR-51); custom_data {user_id, plan, idempotency_key}; environment and
+// client_token from the env; stored in idempotency_keys and replayed; a missing price id → 500. No Paddle call,
+// no subscriptions row. Price ids are test fixtures.
 
 type Row = Record<string, unknown>;
 
 const IVANA = "a1000000-0000-4000-8000-000000000001";
 
 const state = {
-  profile: { account_type: "owner", trial_used: false } as Row,
+  profile: { account_type: "owner", trial_used: false, email: "ivana.petrovic@mojljubimac.test" } as Row,
   memberships: [] as Row[],
   tables: {} as Record<string, Row[]>,
   writes: [] as string[],
@@ -37,7 +40,12 @@ function query(table: string) {
     eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), api),
     in: (c: string, v: unknown[]) => (filters.push((r) => v.includes(r[c])), api),
     gt: (c: string, v: string) => (filters.push((r) => String(r[c]) > v), api),
-    insert: () => (state.writes.push(`insert:${table}`), api),
+    gte: (c: string, v: string) => (filters.push((r) => String(r[c]) >= v), api),
+    insert: (row: Row) => {
+      state.writes.push(`insert:${table}`);
+      (state.tables[table] ??= []).push({ ...row, created_at: new Date().toISOString() });
+      return api;
+    },
     update: () => (state.writes.push(`update:${table}`), api),
     upsert: () => (state.writes.push(`upsert:${table}`), api),
     maybeSingle: async () => ({ data: rows()[0] ?? null, error: null }),
@@ -65,30 +73,39 @@ function client() {
 let n = 0;
 const key = () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`;
 
+const fetchSpy = vi.fn();
+
 beforeEach(() => {
-  state.profile = { account_type: "owner", trial_used: false };
+  vi.unstubAllEnvs();
+  vi.stubEnv("PADDLE_API_KEY", "");
+  vi.stubEnv("NEXT_PUBLIC_PADDLE_CLIENT_TOKEN", "");
+  vi.stubEnv("NEXT_PUBLIC_PADDLE_ENV", "");
+  fetchSpy.mockReset();
+  vi.stubGlobal("fetch", fetchSpy);
+  state.profile = { account_type: "owner", trial_used: false, email: "ivana.petrovic@mojljubimac.test" };
   state.memberships = [];
   state.writes = [];
   state.tables = {
-    // Test fixture only: an active priced plan (OQ-03 keeps the real table empty).
+    // Test fixture: plans rows with fake provider price ids (the real ids are environment data).
     plans: [
-      { code: "premium_monthly", active: true },
-      { code: "premium_yearly", active: false },
-      { code: "breeder_monthly", active: true },
+      { code: "premium_monthly", active: true, price_minor: 300, currency: "EUR", provider_price_id: "pri_test_pm", provider_trial_price_id: "pri_test_pm_trial" },
+      { code: "premium_yearly", active: false, price_minor: 3000, currency: "EUR", provider_price_id: "pri_test_py", provider_trial_price_id: "pri_test_py_trial" },
+      { code: "breeder_monthly", active: true, price_minor: 1100, currency: "EUR", provider_price_id: "pri_test_bm", provider_trial_price_id: null },
     ],
     subscriptions: [],
     idempotency_keys: [],
   };
 });
 
-describe("EP-45 startCheckout (stub until OQ-11)", () => {
-  it("a valid request → 503 payment_provider_unavailable and nothing is written", async () => {
+describe("EP-45 startCheckout — validation and local mode", () => {
+  it("local mode: PADDLE_API_KEY empty → 503 payment_provider_unavailable after validation, nothing written", async () => {
     const result = await startCheckout({ plan: "premium_monthly", expect_trial: true, idempotency_key: key() });
     expect(result).toMatchObject({ ok: false, error: { code: "payment_provider_unavailable" } });
     expect(httpStatus("payment_provider_unavailable")).toBe(503);
     expect(state.writes).toEqual([]);
     expect(state.tables.subscriptions).toEqual([]);
     expect(state.tables.idempotency_keys).toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("validation_failed: unknown, inactive or wrong-family plan → plan_not_allowed", async () => {
@@ -152,5 +169,98 @@ describe("EP-45 startCheckout (stub until OQ-11)", () => {
       error: { code: "payment_provider_unavailable" },
     });
     expect(state.writes).toEqual([]);
+  });
+});
+
+describe("EP-45 startCheckout — Paddle checkout session", () => {
+  beforeEach(() => {
+    vi.stubEnv("PADDLE_API_KEY", "pdl_test_key");
+    vi.stubEnv("NEXT_PUBLIC_PADDLE_CLIENT_TOKEN", "test_client_token");
+    vi.stubEnv("NEXT_PUBLIC_PADDLE_ENV", "sandbox");
+  });
+
+  it("FR-37 #1 / BR-07: an owner with trial_used = false gets the trial price id and trial_applied", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-29T10:00:00Z"));
+    const idempotencyKey = key();
+    const result = await startCheckout({ plan: "premium_monthly", expect_trial: true, idempotency_key: idempotencyKey });
+    vi.useRealTimers();
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        price_id: "pri_test_pm_trial",
+        customer_email: "ivana.petrovic@mojljubimac.test",
+        custom_data: { user_id: IVANA, plan: "premium_monthly", idempotency_key: idempotencyKey },
+        environment: "sandbox",
+        client_token: "test_client_token",
+        plan: "premium_monthly",
+        trial_applied: true,
+        trial_ends_at: "2026-11-05T10:00:00.000Z",
+        amount: { amount_minor: 300, currency: "EUR" },
+        first_charge_at: "2026-11-05T10:00:00.000Z",
+      },
+    });
+    // No Paddle API call and no subscriptions row (rows come only from EP-46); the session is stored.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(state.tables.subscriptions).toEqual([]);
+    expect(state.writes).toEqual(["insert:idempotency_keys"]);
+    expect(state.tables.idempotency_keys[0]).toMatchObject({ user_id: IVANA, key: idempotencyKey, operation: "start_checkout" });
+  });
+
+  it("E-15: trial_used = true → the plain price id, trial_applied = false, charged now", async () => {
+    state.profile.trial_used = true;
+    const result = await startCheckout({ plan: "premium_monthly", idempotency_key: key() });
+    expect(result).toMatchObject({ ok: true, data: { price_id: "pri_test_pm", trial_applied: false, trial_ends_at: null } });
+    expect(await startCheckout({ plan: "premium_monthly", expect_trial: true, idempotency_key: key() })).toMatchObject({
+      ok: false,
+      error: { code: "trial_already_used" },
+    });
+  });
+
+  it("FR-42 / BR-51: a breeder Admin gets the breeder plain price id and never a trial", async () => {
+    state.profile.account_type = "breeder";
+    state.memberships = [{ organisation_id: "o1", role: "admin", organisations: { type: "breeder", approval_status: "approved" } }];
+    expect(await startCheckout({ plan: "breeder_monthly", idempotency_key: key() })).toMatchObject({
+      ok: true,
+      data: { price_id: "pri_test_bm", trial_applied: false, plan: "breeder_monthly", amount: { amount_minor: 1100, currency: "EUR" } },
+    });
+  });
+
+  it("environment is production only for exactly 'production'", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PADDLE_ENV", "production");
+    expect(await startCheckout({ plan: "premium_monthly", idempotency_key: key() })).toMatchObject({ ok: true, data: { environment: "production" } });
+    vi.stubEnv("NEXT_PUBLIC_PADDLE_ENV", "prod");
+    expect(await startCheckout({ plan: "premium_monthly", idempotency_key: key() })).toMatchObject({ ok: true, data: { environment: "sandbox" } });
+  });
+
+  it("API §3.3: a repeat with the same idempotency_key returns the stored session", async () => {
+    const idempotencyKey = key();
+    const first = await startCheckout({ plan: "premium_monthly", idempotency_key: idempotencyKey });
+    state.tables.plans[0].provider_trial_price_id = "pri_test_changed";
+    const second = await startCheckout({ plan: "premium_monthly", idempotency_key: idempotencyKey });
+    expect(second).toEqual(first);
+    expect(state.tables.idempotency_keys).toHaveLength(1);
+  });
+
+  it("a needed price id that is null → 500 internal_error (logged), nothing stored", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    state.tables.plans[0].provider_trial_price_id = null;
+    expect(await startCheckout({ plan: "premium_monthly", idempotency_key: key() })).toMatchObject({
+      ok: false,
+      error: { code: "internal_error" },
+    });
+    expect(error).toHaveBeenCalled();
+    expect(state.tables.idempotency_keys).toEqual([]);
+    error.mockRestore();
+  });
+
+  it("validation still comes first: a running subscription → 409 subscription_already_active", async () => {
+    state.tables.subscriptions = [
+      { id: "s1", user_id: IVANA, plan: "premium_monthly", status: "trialing", current_period_end: "2999-01-01T00:00:00.000Z" },
+    ];
+    expect(await startCheckout({ plan: "premium_monthly", idempotency_key: key() })).toMatchObject({
+      ok: false,
+      error: { code: "subscription_already_active" },
+    });
   });
 });

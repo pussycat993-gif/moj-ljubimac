@@ -22,13 +22,10 @@ const states: { value: ViewState; label: string }[] = [
   { value: "unavailable", label: "Plaćanje uskoro dostupno" },
 ]
 
+// EUR before VAT (PRD BR-62, Design §9).
 const prices: Record<Billing, { amount: string; period: string; note?: string }> = {
-  monthly: { amount: "499 RSD" /* placeholder price — OQ-03 */, period: "mesečno" },
-  yearly: {
-    amount: "4.990 RSD" /* placeholder price — OQ-03 */,
-    period: "godišnje",
-    note: "≈ 416 RSD mesečno — 2 meseca gratis" /* placeholder price — OQ-03 */,
-  },
+  monthly: { amount: "3 €", period: "mesečno", note: "+ PDV prema tvojoj zemlji" },
+  yearly: { amount: "30 €", period: "godišnje (2 meseca gratis)", note: "+ PDV prema tvojoj zemlji" },
 }
 
 type Cell = string | boolean
@@ -113,7 +110,7 @@ export default function PremiumScreen() {
               </div>
               <span className="shrink-0 rounded-full bg-foreground/5 px-2 py-1 text-xs font-medium">Tvoj plan</span>
             </div>
-            <p className="font-heading text-[22px] leading-7 font-bold">0 RSD</p>
+            <p className="font-heading text-[22px] leading-7 font-bold">0 €</p>
             <Button variant="outline" className="mt-auto h-11 md:h-9" disabled>
               Trenutni plan
             </Button>
@@ -181,9 +178,9 @@ export default function PremiumScreen() {
           <Card className="flex-row items-start gap-3 p-4 md:p-6">
             <CreditCard className="size-5 shrink-0 text-primary" aria-hidden />
             <div className="min-w-0 space-y-1">
-              <p className="text-sm font-medium">Plaćanje karticom preko Monri-ja</p>
+              <p className="text-sm font-medium">Plaćanje preko Paddle-a</p>
               <p className="text-sm text-muted-foreground">
-                Visa, Mastercard i DinaCard. Podatke o kartici čuva Monri, ne mi.
+                Paddle je prodavac i izdaje račun; PDV se dodaje prema tvojoj zemlji. Podatke o kartici čuva Paddle, ne mi.
               </p>
             </div>
           </Card>

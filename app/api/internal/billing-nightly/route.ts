@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { getSubscription, mapPaddleSubscription, paddleConfigured } from "@/lib/integrations/paddle";
 import { sendEmail } from "@/lib/integrations/resend";
 import { fromProfileLocale } from "@/lib/i18n";
 import { formatBelgradeDate } from "@/lib/server/dispatch";
@@ -10,7 +11,11 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role";
 // only when the Europe/Belgrade hour is 3 and otherwise answers zero counts, so it runs once a night at 03:00
 // Belgrade time in summer and in winter. System only: X-Dispatch-Secret is compared in constant time with
 // DISPATCH_SECRET (401 unauthenticated otherwise); the work uses the service role. Env vars are read per request.
-//   1. Renewals — the payment provider is not configured (OQ-11): a warning, nothing else.
+//   1. Reconcile (v1.4) — Paddle charges renewals itself (TC ADR-09); this job never starts a charge. Rows with a
+//      provider_subscription_id, status trialing / active / cancelled / payment_failed and current_period_end within
+//      a day are read from Paddle (GET /subscriptions/{id}) and applied like an EP-46 subscription event through
+//      apply_payment_event (p_record_event = false, occurred_at = the response's updated_at). With PADDLE_API_KEY
+//      empty, or when Paddle fails for a row, that row is skipped with a warning.
 //   2. Expiry — billing_expire_subscriptions(); the Step 05 trigger refreshes the owner's household flag.
 //   3. Notices (BR-09) — premium_expiry_30 / _7 / _1 by email; last_notice_days is set only for emails Resend
 //      accepted, so a re-run on the same Belgrade date sends nothing and a failed send is retried by the next run
@@ -33,7 +38,9 @@ type NoticeRow = {
   days_left: number;
 };
 
-type Counters = { renewals_attempted: number; expired: number; notices_sent: number; households_updated: number };
+type Counters = { reconciled: number; expired: number; notices_sent: number; households_updated: number };
+
+const DAY_MS = 86_400_000;
 
 const TEMPLATES = { 30: "premium_expiry_30", 7: "premium_expiry_7", 1: "premium_expiry_1" } as const;
 
@@ -60,7 +67,7 @@ export async function POST(request: NextRequest) {
   }
 
   const now = new Date();
-  const counters: Counters = { renewals_attempted: 0, expired: 0, notices_sent: 0, households_updated: 0 };
+  const counters: Counters = { reconciled: 0, expired: 0, notices_sent: 0, households_updated: 0 };
   if (belgradeHour(now) !== 3) {
     return NextResponse.json(counters);
   }
@@ -71,8 +78,37 @@ export async function POST(request: NextRequest) {
     const changedHouseholds = new Set<string>();
     let emailsFailed = 0;
 
-    // Step 1 — renewal charges wait for the payment provider (EP-49 [DEFERRED: OQ-11]).
-    console.warn("[billing-nightly] renewals skipped: no payment provider is configured (OQ-11)");
+    // Step 1 — reconcile with Paddle.
+    const due = await supabase
+      .from("subscriptions")
+      .select("id, provider_subscription_id")
+      .not("provider_subscription_id", "is", null)
+      .in("status", ["trialing", "active", "cancelled", "payment_failed"])
+      .lte("current_period_end", new Date(now.getTime() + DAY_MS).toISOString());
+    if (due.error) throw new Error(`subscriptions (reconcile): ${due.error.message}`);
+    const dueRows = (due.data ?? []) as { id: string; provider_subscription_id: string }[];
+    let reconcileSkipped = 0;
+    if (dueRows.length > 0 && !paddleConfigured()) {
+      reconcileSkipped = dueRows.length;
+      console.warn(`[billing-nightly] reconciliation skipped for ${dueRows.length} row(s): PADDLE_API_KEY is empty`);
+    } else {
+      for (const row of dueRows) {
+        try {
+          const paddle = await getSubscription(row.provider_subscription_id);
+          const event = mapPaddleSubscription(paddle, paddle.updated_at ?? now.toISOString());
+          const applied = await supabase.rpc("apply_payment_event", { p_event: event, p_record_event: false });
+          if (applied.error) throw new Error(`apply_payment_event: ${applied.error.message}`);
+          if (applied.data === "applied") counters.reconciled += 1;
+        } catch (error) {
+          reconcileSkipped += 1;
+          console.warn(
+            "[billing-nightly] reconciliation skipped:",
+            row.provider_subscription_id,
+            error instanceof Error ? error.message : error,
+          );
+        }
+      }
+    }
 
     // Step 2 — expiry.
     const expired = await supabase.rpc("billing_expire_subscriptions");
@@ -119,7 +155,10 @@ export async function POST(request: NextRequest) {
     for (const id of (flags.data ?? []) as string[]) changedHouseholds.add(id);
     counters.households_updated = changedHouseholds.size;
 
-    console.info("[billing-nightly] run", JSON.stringify({ ...counters, emails_failed: emailsFailed }));
+    console.info(
+      "[billing-nightly] run",
+      JSON.stringify({ ...counters, emails_failed: emailsFailed, reconcile_skipped: reconcileSkipped }),
+    );
     return NextResponse.json(counters);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

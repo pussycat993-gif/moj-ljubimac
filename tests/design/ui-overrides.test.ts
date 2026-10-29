@@ -31,6 +31,7 @@ function unport(name: string, source: string) {
   if (name === "pet-header") s = stripPetHeaderLabels(s);
   if (name === "reminder-row") s = stripReminderRowLabels(s);
   if (name === "reminder-type-icon") s = stripReminderTypeIconMessage(s);
+  if (name === "read-only-banner") s = stripReadOnlyBannerAction(s);
   return s;
 }
 
@@ -111,6 +112,19 @@ function stripReminderTypeIconMessage(source: string) {
     .replace(' | "manual" | "message"\n', ' | "manual"\n')
     .replace("  manual: Bell,\n  message: MessageCircle,\n", "  manual: Bell,\n")
     .replace('  manual: "Moj podsetnik",\n  message: "Poruke",\n', '  manual: "Moj podsetnik",\n');
+}
+
+// Step 31 (Design v1.7 S20, owner decisions OQ-11 / OQ-03 of 2026-10-29): ReadOnlyBanner takes an optional
+// `action` { href, label } rendered as a link after the reason (the breeder banner's "Aktiviraj odgajivački plan").
+// That prop is the only allowed change and is ignored here; everything else must still equal the docs mockup.
+function stripReadOnlyBannerAction(source: string) {
+  return source
+    .replace('import Link from "next/link"\n', "")
+    .replace(
+      "export function ReadOnlyBanner({ reason, action }: { reason: string; action?: { href: string; label: string } }) {",
+      "export function ReadOnlyBanner({ reason }: { reason: string }) {",
+    )
+    .replace(/\n {6}\{action && \([\s\S]*?\n {6}\)\}/, "");
 }
 
 describe("shadcn primitives (Design §6, ADR-14)", () => {

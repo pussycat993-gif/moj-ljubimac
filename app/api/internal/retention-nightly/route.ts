@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { cancelSubscription, paddleConfigured } from "@/lib/integrations/paddle";
 import { r2, r2Configured, type R2 } from "@/lib/integrations/r2";
 import { apiError } from "@/lib/server/result";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
@@ -10,7 +11,10 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role";
 // constant time with DISPATCH_SECRET (401 unauthenticated otherwise). Every step is idempotent; a failed run keeps
 // its progress and the next night resumes. Env vars are read per request.
 //   1. Accounts past deletion_due_at — BR-27 / BR-46 succession, then the account and its rows (database function).
-//      The heir email has no Design §9.1 template (CR-24) and is not sent.
+//      The heir email has no Design §9.1 template (CR-24) and is not sent. Paddle (v1.4): before the rows go, a
+//      due account's non-expired provider subscription is cancelled at Paddle immediately (and marked expired);
+//      if that call fails the account is skipped tonight (p_skip) and retried the next night, so a deleted user
+//      is never charged again. With PADDLE_API_KEY empty no call is made.
 //   2. R2 cleanup — every queued key is deleted and dequeued only after R2 confirms; then objects older than 24 h
 //      under u/, o/, p/ and exports/ that no row uses are deleted (API §10 item 7), at most 1000 listed per run.
 //      Without R2 credentials R2 is skipped entirely and the keys stay queued (owner decision, Step 30).
@@ -40,6 +44,48 @@ type Counters = {
 };
 
 type Supabase = ReturnType<typeof createServiceRoleClient>;
+
+/**
+ * EP-52 step 1 (Paddle part): cancels every due account's non-expired provider subscription immediately and
+ * returns the accounts whose cancellation failed (skipped for the night).
+ */
+async function cancelDueProviderSubscriptions(supabase: Supabase, now: Date): Promise<string[]> {
+  if (!paddleConfigured()) return [];
+  const due = await supabase.from("profiles").select("id").lte("deletion_due_at", now.toISOString());
+  if (due.error) throw new Error(`profiles (due): ${due.error.message}`);
+  const ids = ((due.data ?? []) as { id: string }[]).map((p) => p.id);
+  if (ids.length === 0) return [];
+
+  const subs = await supabase
+    .from("subscriptions")
+    .select("id, user_id, provider_subscription_id")
+    .in("user_id", ids)
+    .neq("status", "expired")
+    .not("provider_subscription_id", "is", null);
+  if (subs.error) throw new Error(`subscriptions (due): ${subs.error.message}`);
+
+  const skipped = new Set<string>();
+  for (const row of (subs.data ?? []) as { id: string; user_id: string; provider_subscription_id: string }[]) {
+    try {
+      await cancelSubscription(row.provider_subscription_id, "immediately");
+    } catch (error) {
+      skipped.add(row.user_id);
+      console.warn(
+        "[retention-nightly] Paddle cancellation failed — account skipped tonight:",
+        row.user_id,
+        error instanceof Error ? error.message : error,
+      );
+      continue;
+    }
+    // Cancelled at Paddle: a later failure of the deletion must not try to cancel it again.
+    const { error } = await supabase
+      .from("subscriptions")
+      .update({ status: "expired", auto_renew: false })
+      .eq("id", row.id);
+    if (error) throw new Error(`subscriptions (expire cancelled): ${error.message}`);
+  }
+  return [...skipped];
+}
 
 /** Constant-time comparison: the time does not depend on where the strings differ. */
 function secretsMatch(given: string, expected: string): boolean {
@@ -125,8 +171,10 @@ export async function POST(request: NextRequest) {
     if (!storage) console.info("[retention-nightly] R2 is not configured — R2 skipped, keys stay queued");
 
     // Step 1 — account deletion. A batch that only failed stops the loop (those accounts wait for the next night).
+    const skip = await cancelDueProviderSubscriptions(supabase, now);
+    log.accounts_skipped_paddle = skip.length;
     for (;;) {
-      const { data, error } = await supabase.rpc("retention_delete_due_accounts", { p_limit: ACCOUNT_BATCH });
+      const { data, error } = await supabase.rpc("retention_delete_due_accounts", { p_limit: ACCOUNT_BATCH, p_skip: skip });
       if (error) throw new Error(`retention_delete_due_accounts: ${error.message}`);
       const result = (data ?? {}) as Record<string, number>;
       const deleted = Number(result.accounts_deleted ?? 0);

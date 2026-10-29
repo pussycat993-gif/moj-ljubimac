@@ -1,11 +1,12 @@
 -- EP-47 rpc:get_my_subscription and EP-48 set_auto_renew (Step 23; FR-25 display data, FR-38, BR-07, BR-08).
 -- Seeded: Ivana (…01, owner, premium_monthly active), Marko (…02, owner, never subscribed), Jelena (…03, owner,
 -- Free), Milica (…04, shelter admin), Nikola (…05, breeder admin). Other subscription rows are fixtures
--- inserted in this transaction.
+-- inserted in this transaction. Step 31: price from the seeded EUR plans row (BR-62) and manage_billing_available
+-- (API §6 v1.4: true only with a Paddle customer).
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(38);
+select plan(40);
 
 select has_function('public', 'get_my_subscription', array[]::text[], 'EP-47 function exists');
 select is((select prosecdef from pg_proc where oid = 'public.get_my_subscription()'::regprocedure), false,
@@ -27,7 +28,10 @@ select is((select (s ->> 'is_active')::boolean from sub_ivana), true, 'is_active
 select is((select s ->> 'plan' from sub_ivana), 'premium_monthly', 'plan');
 select ok((select (s ->> 'days_remaining')::int between 28 and 32 from sub_ivana), 'days_remaining counts to current_period_end');
 select ok((select (s ->> 'period_days')::int between 28 and 31 from sub_ivana), 'period_days of a monthly plan');
-select is((select s -> 'price' from sub_ivana), 'null'::jsonb, 'price is null while plans holds no priced row (OQ-03)');
+select is((select s -> 'price' from sub_ivana), '{"amount_minor": 300, "currency": "EUR"}'::jsonb,
+  'price from the plans row of the subscription''s plan (EUR, BR-62)');
+select is((select (s ->> 'manage_billing_available')::boolean from sub_ivana), false,
+  'manage_billing_available is false for a row without a Paddle customer (seed data)');
 select is((select s ->> 'card_brand' from sub_ivana), 'visa', 'card_brand');
 select is((select s -> 'over_limits' from sub_ivana), '[]'::jsonb, 'over_limits is empty while active');
 select is((select (s ->> 'trial_available')::boolean from sub_ivana), true, 'trial_available = not trial_used (BR-07)');
@@ -41,6 +45,8 @@ select is((select jsonb_build_array(s -> 'id', s -> 'plan', s -> 'status', s -> 
   '[null, null, null, null, null]'::jsonb, 'never subscribed: id, plan, status and period fields are null');
 select is((select (s ->> 'is_active')::boolean from sub_marko), false, 'never subscribed: not active');
 select is((select (s ->> 'trial_available')::boolean from sub_marko), true, 'never subscribed: trial available');
+select is((select (s ->> 'manage_billing_available')::boolean from sub_marko), false,
+  'never subscribed: manage_billing_available = false');
 
 -- Breeder admin: breeder family, no trial (BR-07 covers Premium only).
 select set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000005","role":"authenticated"}', true);

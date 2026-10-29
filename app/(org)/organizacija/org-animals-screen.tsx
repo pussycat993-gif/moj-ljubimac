@@ -840,7 +840,12 @@ export function OrgAnimalsScreen({
       </div>
 
       {pending && <ReadOnlyBanner reason={t.pendingBanner} />}
-      {!pending && noPlan && <ReadOnlyBanner reason={t.breederPlanBanner} />}
+      {!pending && noPlan && (
+        <ReadOnlyBanner
+          reason={t.breederPlanBanner}
+          action={isAdmin ? { href: "/premium", label: t.breederPlanAction } : undefined}
+        />
+      )}
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
         <TabsList>

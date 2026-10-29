@@ -1166,6 +1166,7 @@ export const sr = {
     inviteMember: "Pozovi člana",
     pendingBanner: "Tvoj azil čeka odobrenje. Obično odobravamo u roku od 2 dana — do tada sve možeš samo da pregledaš.",
     breederPlanBanner: "Odgajivački plan nije aktivan — sve možeš samo da pregledaš.",
+    breederPlanAction: "Aktiviraj odgajivački plan",
     loading: "Učitavanje",
     emptyTitle: "Još nema životinja",
     emptyShelter: "Upiši prvi prijem i vodi karton od prvog dana.",
@@ -1494,9 +1495,11 @@ export const sr = {
     overWhatsappDetail: "Stižu mejlom i push-om.",
     renew: "Obnovi Premium",
     seePremium: "Pogledaj Premium",
+    manageBilling: "Upravljaj plaćanjem",
   },
   // S17 Premium (premium.tsx), Step 23 — the payments_coming_soon state (CR-22). Owner decisions: the trial-used
-  // note while payments are coming; "Tvoj plan" only on the user's current plan card. Prices are data (OQ-03).
+  // note while payments are coming; "Tvoj plan" only on the user's current plan card. Step 31 (Design v1.7): EUR
+  // prices from EP-44, the Paddle note, the payment toast and the breeder variant.
   premium: {
     title: "Premium za sve tvoje ljubimce",
     subtitle: "Neograničeno ljubimaca, domaćinstvo za celu porodicu i podsetnici na WhatsApp.",
@@ -1508,11 +1511,12 @@ export const sr = {
     yearly: "Godišnje",
     perMonth: "mesečno",
     perYear: "godišnje",
-    yearlyNote: "≈ {amount} mesečno",
+    yearlyFree: "(2 meseca gratis)",
+    vatNote: "+ PDV prema tvojoj zemlji",
     freeName: "Free",
     freeDescription: "Za jednog ljubimca i osnovni karton.",
     yourPlan: "Tvoj plan",
-    freePrice: "0 RSD",
+    freePrice: "0 €",
     currentPlan: "Trenutni plan",
     premiumName: "Premium",
     premiumDescription: "Sve otključano, bez limita.",
@@ -1543,8 +1547,16 @@ export const sr = {
     rowLogo: "Logo na podeljenim slikama",
     logoFree: "Uvek",
     logoPremium: "Možeš da ga ukloniš",
-    cardTitle: "Plaćanje karticom preko Monri-ja",
-    cardBody: "Visa, Mastercard i DinaCard. Podatke o kartici čuva Monri, ne mi.",
+    cardTitle: "Plaćanje preko Paddle-a",
+    cardBody: "Paddle je prodavac i izdaje račun; PDV se dodaje prema tvojoj zemlji. Podatke o kartici čuva Paddle, ne mi.",
+    paymentReceived: "Plaćanje je primljeno. Premium se uključuje za nekoliko trenutaka.",
+    breederTitle: "Odgajivački plan",
+    breederLitters: "Legla i mladunci",
+    breederPublicPage: "Javna stranica sa cenama",
+    breederInquiries: "Upiti kupaca",
+    breederHandover: "Predaja kartona",
+    breederActive: "Odgajivački plan je aktivan do {date}",
+    manageBilling: "Upravljaj plaćanjem",
   },
   // S19 Moji podaci (account-data.tsx), Step 23. Owner decisions: pending deletion hides the export card;
   // the heir line only with an heir; a failed export shows the default card plus exportFailed; plurals

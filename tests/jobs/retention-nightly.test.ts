@@ -9,7 +9,9 @@ vi.mock("server-only", () => ({}));
 // proven in supabase/tests/retention_job.test.sql and succession_job.test.sql). Secret check; the job works only at
 // 03:xx Europe/Belgrade; the steps run in EP-52 order; queued keys are dequeued only after R2 confirms; orphans
 // older than 24 h that no row uses are deleted (≤ 1000 listed per run); expired archives are deleted; without R2
-// credentials R2 is skipped and the keys stay queued; counts per EP-52.
+// credentials R2 is skipped and the keys stay queued; counts per EP-52. Step 31 (EP-52 v1.4, E-16): before the
+// accounts are deleted, each due account's non-expired Paddle subscription is cancelled immediately (mocked fetch)
+// and marked expired; a failed cancel skips that account tonight (p_skip); an empty PADDLE_API_KEY makes no call.
 
 type Rpc = { data: unknown; error: { message: string } | null };
 type Listed = { key: string; last_modified: string };
@@ -24,10 +26,36 @@ const fake = vi.hoisted(() => ({
   listCalls: [] as { prefix: string; maxKeys?: number; continuationToken?: string | null }[],
   removed: [] as string[],
   failRemove: new Set<string>(),
+  dueProfiles: [] as { id: string }[],
+  providerSubs: [] as { id: string; user_id: string; provider_subscription_id: string; status: string }[],
+  updates: [] as { table: string; values: Record<string, unknown>; eq: unknown[] }[],
 }));
 
 vi.mock("@/lib/supabase/service-role", () => ({
   createServiceRoleClient: () => ({
+    from: (table: string) => {
+      const chain = {
+        select: () => chain,
+        lte: () => chain,
+        in: () => chain,
+        neq: () => chain,
+        not: () => chain,
+        update: (values: Record<string, unknown>) => ({
+          eq: async (...eq: unknown[]) => {
+            fake.updates.push({ table, values, eq });
+            const row = fake.providerSubs.find((s) => s.id === eq[1]);
+            if (row) Object.assign(row, values);
+            return { error: null };
+          },
+        }),
+        then: (resolve: (v: unknown) => unknown) =>
+          Promise.resolve({
+            data: table === "profiles" ? fake.dueProfiles : fake.providerSubs.filter((s) => s.status !== "expired"),
+            error: null,
+          }).then(resolve),
+      };
+      return chain;
+    },
     rpc: async (fn: string, args?: unknown) => {
       fake.rpcCalls.push({ fn, args });
       const queued = fake.rpcQueues[fn];
@@ -118,8 +146,13 @@ beforeEach(() => {
   fake.listCalls = [];
   fake.removed = [];
   fake.failRemove = new Set();
+  fake.dueProfiles = [];
+  fake.providerSubs = [];
+  fake.updates = [];
+  vi.stubEnv("PADDLE_API_KEY", "");
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -333,5 +366,61 @@ describe("R2 adapter list (orphan scan)", () => {
       fetch: (async () => new Response("<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>")) as typeof fetch,
     });
     expect(await last.list("p/")).toEqual({ objects: [], next_token: null });
+  });
+});
+
+describe("EP-52 step 1 — Paddle cancellation (v1.4)", () => {
+  const ANA = "a1000000-0000-4000-8000-000000000006";
+  const MARKO = "a1000000-0000-4000-8000-000000000002";
+  let fetchCalls: { url: string; method: string; body: unknown }[];
+
+  beforeEach(() => {
+    vi.stubEnv("PADDLE_API_KEY", "pdl_test_key");
+    vi.stubEnv("NEXT_PUBLIC_PADDLE_ENV", "sandbox");
+    fake.dueProfiles = [{ id: ANA }, { id: MARKO }];
+    fake.providerSubs = [
+      { id: "s-ana", user_id: ANA, provider_subscription_id: "sub_test_ana", status: "cancelled" },
+      { id: "s-marko", user_id: MARKO, provider_subscription_id: "sub_test_marko", status: "active" },
+    ];
+    fetchCalls = [];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      fetchCalls.push({ url, method: String(init.method), body: init.body ? JSON.parse(String(init.body)) : undefined });
+      if (url.includes("sub_test_marko")) return new Response(JSON.stringify({ error: { code: "internal_error" } }), { status: 500 });
+      return new Response(JSON.stringify({ data: {} }), { status: 200 });
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("cancels each due account's non-expired Paddle subscription immediately; a failed cancel skips that account", async () => {
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(fetchCalls).toEqual([
+      { url: "https://sandbox-api.paddle.com/subscriptions/sub_test_ana/cancel", method: "POST", body: { effective_from: "immediately" } },
+      { url: "https://sandbox-api.paddle.com/subscriptions/sub_test_marko/cancel", method: "POST", body: { effective_from: "immediately" } },
+    ]);
+    // The cancelled one is marked expired, so a later run never cancels it twice.
+    expect(fake.updates).toEqual([{ table: "subscriptions", values: { status: "expired", auto_renew: false }, eq: ["id", "s-ana"] }]);
+    // Marko's cancel failed: skipped tonight, retried the next night.
+    expect(calls("retention_delete_due_accounts")[0].args).toEqual({ p_limit: 100, p_skip: [MARKO] });
+    expect(console.warn).toHaveBeenCalledWith(
+      "[retention-nightly] Paddle cancellation failed — account skipped tonight:",
+      MARKO,
+      expect.any(String),
+    );
+  });
+
+  it("the next night the expired row is not cancelled again", async () => {
+    await POST(request());
+    fetchCalls = [];
+    fake.rpcCalls = [];
+    await POST(request());
+    expect(fetchCalls.map((c) => c.url)).toEqual(["https://sandbox-api.paddle.com/subscriptions/sub_test_marko/cancel"]);
+  });
+
+  it("PADDLE_API_KEY empty → no call, nobody skipped", async () => {
+    vi.stubEnv("PADDLE_API_KEY", "");
+    await POST(request());
+    expect(fetchCalls).toEqual([]);
+    expect(calls("retention_delete_due_accounts")[0].args).toEqual({ p_limit: 100, p_skip: [] });
   });
 });

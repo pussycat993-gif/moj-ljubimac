@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { checkGates } from "@/lib/server/gates";
 import { formatBelgradeDate } from "@/lib/server/dispatch";
 import { fail, fromDatabaseError, ok, type ActionResult } from "@/lib/server/result";
+import { cancelSubscription, paddleConfigured, resumeSubscription } from "@/lib/integrations/paddle";
 import { r2 } from "@/lib/integrations/r2";
 import { sendEmail } from "@/lib/integrations/resend";
 import type { Me } from "@/lib/actions/registration";
@@ -16,7 +17,9 @@ import { fromProfileLocale } from "@/lib/i18n";
 // cancelAccountDeletion is the one call allowed through gate 3. requestDataExport only inserts the row —
 // the archive is built by /api/internal/exports (Step 30a, TC ADR-13). The deletion request sends the
 // Design §9.1 account_deletion_scheduled email; the cancel confirmation has no §9.1 template (CR-24) and
-// is not sent.
+// is not sent. Paddle (v1.4, TC ADR-09): a deletion request first cancels a renewing provider subscription at
+// period end and flags it (subscriptions.renewal_paused_for_deletion), so Paddle charges nothing while deletion is
+// pending; cancelling the deletion resumes renewal for a flagged row and clears the flag (E-16).
 
 /** API §6 FileUrl for the archive (presigned R2 GET, 10 min). */
 export type ExportFileUrl = {
@@ -139,16 +142,47 @@ export async function getMyDataOverview(): Promise<ActionResult<DataOverview>> {
   return ok({ latest_export: latestExport, summary: overview.summary, deletion: overview.deletion });
 }
 
+type ProviderRow = { provider_subscription_id: string | null; auto_renew: boolean; renewal_paused_for_deletion: boolean };
+
+/** The caller's running rows (trialing / active / cancelled / payment_failed) that Paddle bills. */
+async function runningProviderRows(supabase: Supabase, userId: string): Promise<ActionResult<ProviderRow[]>> {
+  const { data, error } = await supabase
+    .from("subscriptions")
+    .select("provider_subscription_id, auto_renew, renewal_paused_for_deletion")
+    .eq("user_id", userId)
+    .in("status", ["trialing", "active", "cancelled", "payment_failed"])
+    .not("provider_subscription_id", "is", null);
+  if (error) return { ok: false, error: fromDatabaseError(error) };
+  return ok((data ?? []) as ProviderRow[]);
+}
+
 /**
  * EP-51 — request: deletion_requested_at = now, deletion_due_at = +30 days (BR-31); `confirm` must be true;
  * already pending → 403 account_pending_deletion (gate 3). Sends account_deletion_scheduled with the due date.
- * Subscriptions are not changed, so a cancel restores the account unchanged (E-16).
+ * Our subscription row keeps its state, so a cancel restores the account unchanged (E-16); a renewing Paddle
+ * subscription is first cancelled at period end and flagged — a Paddle failure → 503, nothing stored.
  */
 export async function requestAccountDeletion(input: { confirm: boolean }): Promise<ActionResult<Me>> {
   const supabase = await createClient();
   const caller = await checkGates(supabase, { access: "read" });
   if (!caller.ok) return caller;
   if (input?.confirm !== true) return fail("validation_failed", { fields: { confirm: "required" } });
+
+  const rows = await runningProviderRows(supabase, caller.data.user.id);
+  if (!rows.ok) return rows;
+  const renewing = rows.data.filter((r) => r.auto_renew && r.provider_subscription_id);
+  if (renewing.length > 0) {
+    if (!paddleConfigured()) return fail("payment_provider_unavailable", { message: "PADDLE_API_KEY is empty" });
+    try {
+      for (const row of renewing) await cancelSubscription(row.provider_subscription_id!, "next_billing_period");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[lib/actions/data-control] Paddle cancellation failed:", message);
+      return fail("payment_provider_unavailable", { message });
+    }
+    const flagged = await supabase.rpc("set_renewal_paused_for_deletion", { p_paused: true });
+    if (flagged.error) return { ok: false, error: fromDatabaseError(flagged.error) };
+  }
 
   const { error } = await supabase.rpc("request_account_deletion");
   if (error) return { ok: false, error: fromDatabaseError(error) };
@@ -172,11 +206,30 @@ export async function requestAccountDeletion(input: { confirm: boolean }): Promi
   return me;
 }
 
-/** EP-51 — cancel: both deletion columns back to null (E-16); nothing pending → no-op. No email (CR-24). */
+/**
+ * EP-51 — cancel: both deletion columns back to null (E-16); nothing pending → no-op. No email (CR-24). A row
+ * flagged renewal_paused_for_deletion is resumed at Paddle and the flag cleared first (Paddle failure → 503).
+ */
 export async function cancelAccountDeletion(): Promise<ActionResult<Me>> {
   const supabase = await createClient();
   const caller = await checkGates(supabase, { access: "read", exempt: "cancel_deletion" });
   if (!caller.ok) return caller;
+
+  const rows = await runningProviderRows(supabase, caller.data.user.id);
+  if (!rows.ok) return rows;
+  const paused = rows.data.filter((r) => r.renewal_paused_for_deletion && r.provider_subscription_id);
+  if (paused.length > 0) {
+    if (!paddleConfigured()) return fail("payment_provider_unavailable", { message: "PADDLE_API_KEY is empty" });
+    try {
+      for (const row of paused) await resumeSubscription(row.provider_subscription_id!);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[lib/actions/data-control] Paddle resume failed:", message);
+      return fail("payment_provider_unavailable", { message });
+    }
+    const cleared = await supabase.rpc("set_renewal_paused_for_deletion", { p_paused: false });
+    if (cleared.error) return { ok: false, error: fromDatabaseError(cleared.error) };
+  }
 
   const { error } = await supabase.rpc("cancel_account_deletion");
   if (error) return { ok: false, error: fromDatabaseError(error) };
