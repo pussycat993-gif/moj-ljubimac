@@ -6,10 +6,10 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 02 — Product Requirements Document |
-| Version | 1.7 |
-| Date | 2026-10-19 |
+| Version | 1.8 |
+| Date | 2026-10-29 |
 | Author | Keti Vrtunić (interview facilitated by "Đura", Senior PM persona) |
-| Traces to | `01-product-brief.md` v1.7 (2026-10-19); downstream: Technical Constraints v1.7 · Design System v1.6 · API Contract v1.3 |
+| Traces to | `01-product-brief.md` v1.8 (2026-10-29); downstream: Technical Constraints v1.7 · Design System v1.6 · API Contract v1.3 |
 | Status | Draft — awaiting owner review |
 
 **Change log**
@@ -24,6 +24,7 @@
 | 1.5 | 2026-10-19 | FR-59 pet search; FR-21 covers editing and deleting manual reminders; FR-34 covers password reset; BR-46 organisation ownership when the last admin leaves; FR-60 organisation public profile editing; defaults confirmed in API Contract OQ-12 recorded as BR-47 … BR-52. |
 | 1.6 | 2026-10-19 | Owner-approved change requests from the Build Plan review: CR-23 requirement count corrected to 60 (FR-01 … FR-60) in §1, §11 and Release Criterion 1; CR-18 BR-53 — a person invited to an organisation team keeps their own account type. |
 | 1.7 | 2026-10-19 | New EPIC-08 / CAP-08 "Šapa pomoći" (Brief v1.7): FR-61 … FR-72, UC-11 … UC-13, BR-54 … BR-61, E-28 … E-35, NFR-11, OQ-16; six new domain entities (Listing, ListingPhoto, Conversation, Message, UserBlock, Report). Requirement count now 72 (§1, §11, Release Criterion 1); Release Criterion 6 includes moderation. |
+| 1.8 | 2026-10-29 | Owner decision: OQ-03 resolved (Brief v1.8) — plan prices in EUR, VAT added by the payment provider (Paddle Billing, merchant of record; Technical Constraints OQ-11). New BR-62 records the prices; §2 and §15 updated. Requirements FR-37 and FR-42 are unchanged. |
 
 ---
 
@@ -46,7 +47,7 @@ This PRD turns the eight v1 capabilities of the Moj Ljubimac Product Brief (v1.7
 |---|---|---|
 | OQ-01 | Proposed metric targets | Still open (see §15) |
 | OQ-02 | Free vs Premium channels | Resolved in Brief v1.1 (email and push free, WhatsApp and Viber Premium) |
-| OQ-03 | Premium and Breeder pricing | Still open (see §15) |
+| OQ-03 | Premium and Breeder pricing | Resolved by the owner on 2026-10-29 (BR-62; Brief v1.8) |
 | OQ-04 | Partner pricing and placement | Placement resolved here (BR-40 … BR-42); pricing still open (see §15) |
 | OQ-05 | Interface language | Resolved in Brief v1.4 (Serbian Latin + English) |
 
@@ -677,6 +678,7 @@ Fields: bank account, payment link (https URL), drop-off address, drop-off hours
 - BR-09: Expiry notices at 30, 7, and 1 day(s) before the end; remaining days always visible in profile settings.
 - BR-10: After expiry, existing data stays visible; new items beyond Free limits are blocked.
 - BR-11: Breeder accounts require a separate paid breeder plan.
+- BR-62: Plan money is in EUR; VAT is added on top by the payment provider (merchant of record). Prices: Premium €3.00 per month or €30.00 per year (one 7-day trial per user, BR-07); breeder plan €11.00 per month or €110.00 per year (no trial, BR-51). Šapa pomoći selling prices stay in RSD (BR-57).
 
 **Reminders**
 - BR-12: Reminders are created automatically from vaccination next-dose dates, treatment frequencies, vet check-up dates, meal schedules, and dates of birth.
@@ -858,7 +860,7 @@ _No new assumptions were recorded during this interview. Brief assumptions ASM-0
 | ID | Origin | Question | Blocking for Technical Constraints? |
 |---|---|---|---|
 | OQ-01 | Brief | `[NEEDS CLARIFICATION]` Confirm proposed metric targets (300 active reminded pets, 5 partners, 3 shelters, 60% with a vaccination entry, all at 6 months). | No |
-| OQ-03 | Brief | `[NEEDS CLARIFICATION]` Premium monthly and yearly prices; breeder plan price. | No |
+| OQ-03 | Brief | ✅ Resolved (v1.8, owner, 2026-10-29): prices in EUR, VAT added by Paddle — Premium €3.00 / month or €30.00 / year, breeder plan €11.00 / month or €110.00 / year (BR-62). | — |
 | OQ-04 | Brief | `[NEEDS CLARIFICATION]` Partner pricing (standard vs featured). Placement rules resolved in BR-40 … BR-42. | No |
 | OQ-06 | PRD | ✅ Resolved (v1.1): several channels may be selected per reminder type. | — |
 | OQ-07 | PRD | ✅ Resolved (v1.1): household becomes read-only until the new owner has Premium. | — |

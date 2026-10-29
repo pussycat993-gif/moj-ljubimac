@@ -6,10 +6,10 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 03 — Technical Constraints |
-| Version | 1.7 |
-| Date | 2026-10-19 |
+| Version | 1.8 |
+| Date | 2026-10-29 |
 | Author | Keti Vrtunić (interview facilitated by "Iva", Staff Engineer persona) |
-| Traces to | `01-product-brief.md` v1.7 · `02-prd.md` v1.7 · `04-design-system.md` v1.6 · `05-api-integration-contract.md` v1.3 (all 2026-10-19) |
+| Traces to | `01-product-brief.md` v1.8 · `02-prd.md` v1.8 · `04-design-system.md` v1.7 · `05-api-integration-contract.md` v1.4 (all 2026-10-29) |
 | Status | Draft — awaiting owner review (Data Model in particular) |
 
 **Change log**
@@ -24,18 +24,19 @@
 | 1.5 | 2026-10-19 | Change requests from the Build Plan: ADR-15 test strategy, ADR-16 repository and folder layout. |
 | 1.6 | 2026-10-19 | Owner-approved change requests CR-01 … CR-20 (Build Plan review): ADR-17 approved libraries; ADR-18 no edge caching of public pages (reverses the 5-minute cache); Next.js 16.x pinned and request-interception file rule (ADR-01); ADR-10 amended (no preview deployments, CI applies migrations); ADR-11 cities seed; ADR-13 backup and export mechanics; ADR-16 amended (`lib/server/`, `scripts/`, `public/sw.js`, page + client files); tables `idempotency_keys` and `rate_limit_counters`; `TERMS_VERSION` constant; database error format; §8.1 environment variables; pg_cron → `pg_net` dispatch via Vault secrets. |
 | 1.7 | 2026-10-19 | CAP-08 "Šapa pomoći" (Brief v1.7, PRD v1.7): new §5.10 with `listings`, `listing_photos`, `conversations`, `messages`, `user_blocks`, `reports`; new columns `profiles.display_name`, `profiles.marketplace_suspended_at`, `organisations.donation_bank_account`, `donation_url`, `dropoff_address`, `dropoff_hours`; `reminder_preferences.type` gains `message`; §5.8 now 34 entities; daily listing expiry job (§8); NFR-11 target (§7); non-goals for real-time chat and in-app donation/sale payments (§9); RISK-31, RISK-32. |
+| 1.8 | 2026-10-29 | Owner decisions OQ-11 and OQ-03: ADR-09 rewritten for **Paddle Billing** as merchant of record (EUR, Paddle.js overlay checkout, signed webhooks, provider-owned renewals, dunning, card updates and cancellation; RISK-16 updated). Neutral provider columns: `subscriptions.provider_customer_id`, `provider_subscription_id`, `provider_event_at`, `renewal_paused_for_deletion`; `subscription_payments.provider_transaction_id` (unique together with `result`); `monri_token_ref` and `monri_cit_id` dropped. `plans` gains `provider_price_id` and `provider_trial_price_id` (Premium only); plan money is EUR (`plans.currency`, `subscription_payments.currency` default `EUR`). §8.1 adds `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`, `NEXT_PUBLIC_PADDLE_ENV`; ADR-17 adds `@paddle/paddle-js`; §6, §8, §9 and §13 updated; OQ-03 and OQ-11 resolved. |
 
 ---
 
 ## 1. Executive Summary
 
-This document defines how Moj Ljubimac is built: thirteen architecture decisions, the physical data model for every PRD entity, the third-party services, and the technical path to every PRD non-functional requirement. The architecture is a single Next.js application hosted on Cloudflare, backed by one Supabase project (Postgres, Auth, scheduled jobs) with files on Cloudflare R2, a once-per-minute database job dispatching reminders by email (Resend), web push, WhatsApp, and (when switched on) Viber, and subscriptions charged through Monri. Every choice is sized for one builder and a running budget of about €20/month. It traces to Brief v1.5 and PRD v1.3; v1.7 adds the Šapa pomoći community board (§5.10) from Brief v1.7 and PRD v1.7.
+This document defines how Moj Ljubimac is built: thirteen architecture decisions, the physical data model for every PRD entity, the third-party services, and the technical path to every PRD non-functional requirement. The architecture is a single Next.js application hosted on Cloudflare, backed by one Supabase project (Postgres, Auth, scheduled jobs) with files on Cloudflare R2, a once-per-minute database job dispatching reminders by email (Resend), web push, WhatsApp, and (when switched on) Viber, and subscriptions sold through Paddle Billing as merchant of record (v1.8). Every choice is sized for one builder and a running budget of about €20/month. It traces to Brief v1.5 and PRD v1.3; v1.7 adds the Šapa pomoći community board (§5.10) from Brief v1.7 and PRD v1.7.
 
 ---
 
 ## 2. Inherited Context (from Brief v1.5 & PRD v1.3; CAP-08 from Brief v1.7 & PRD v1.7)
 
-- **Constraints:** web only; one person builds and operates; no deadline; running costs ≈ €20/month; Serbian (Latin) and English; public launch waits for a registered business and a domestic card-processing contract.
+- **Constraints:** web only; one person builds and operates; no deadline; running costs ≈ €20/month; Serbian (Latin) and English; public launch waits for a registered business and a domestic card-processing contract (superseded in v1.8: Paddle Billing as merchant of record; launch waits for the owner's sole-proprietor registration and Paddle account approval — Brief v1.8).
 - **North-star:** active reminded pets (≥ 1 delivered reminder in the trailing 30 days) — the reminder pipeline is the most reliability-critical path.
 - **Epics:** EPIC-01 Pet Health Record · EPIC-02 Care Log & Moments · EPIC-03 Reminders · EPIC-04 Household Sharing · EPIC-05 Accounts & Subscriptions · EPIC-06 Organisation Accounts · EPIC-07 Local Partners · EPIC-08 Šapa pomoći (v1.7).
 - **Domain entities (PRD §4):** User, Subscription, Household, Household Membership, Pet, Organisation, Organisation Membership, Weight Entry, Vaccination, Treatment, Dose Log, Vet Visit, Attachment, Feeding Entry, Stool Entry, Moment, Moment Photo, Public Link, Memorial Record, Reminder, Reminder Delivery, Intake, Adoption Request, Litter, Breeder Inquiry, Record Transfer, Partner, Partner Click; v1.7: Listing, Listing Photo, Conversation, Message, User Block, Report.
@@ -46,14 +47,14 @@ This document defines how Moj Ljubimac is built: thirteen architecture decisions
 - Apple sign-in deferred beyond v1 (requires a paid Apple Developer account) → PRD v1.2.
 - WhatsApp/Viber capped at 30 messages per Premium user per month → PRD v1.2–1.3.
 - Viber built but switched off until Premium revenue covers its fixed fee → Brief v1.5, PRD v1.3.
-- Payments through a domestic processor; launch waits for business registration → Brief v1.5.
+- Payments through a domestic processor; launch waits for business registration → Brief v1.5. Superseded by the owner on 2026-10-29: Paddle Billing as merchant of record, prices in EUR → Brief v1.8, PRD v1.8 (BR-62).
 
 **Carried-forward open questions**
 
 | ID | Origin | Status here |
 |---|---|---|
 | OQ-01 | Brief | Still open — metric targets (non-technical) |
-| OQ-03 | Brief | Still open — prices (non-technical; plan table holds prices as data) |
+| OQ-03 | Brief | ✅ Resolved (owner, 2026-10-29) — EUR prices seeded as data in `plans` (PRD BR-62) |
 | OQ-04 | Brief | Still open — partner pricing (non-technical; billed outside the product) |
 
 ---
@@ -109,11 +110,16 @@ This document defines how Moj Ljubimac is built: thirteen architecture decisions
 - **Alternatives considered:** Brevo — rejected: Resend integrates more simply with Next.js; Supabase's built-in email — rejected: not intended for production volume.
 - **Consequences:** free-tier daily/monthly limits must be watched (RISK-15).
 
-### ADR-09 — Payments via Monri with tokenised recurring charges
-- **Context:** Stripe does not onboard Serbian-registered businesses directly; the owner chose a domestic processor (Brief v1.5); auto-renewal is required (FR-37, BR-07).
-- **Decision:** Monri, operating in Serbia, with card tokenisation: the first payment is customer-initiated with consent to future charges; renewals are merchant-initiated charges against the stored token. Our database stores only the Monri token reference and subscription state, never card data.
-- **Alternatives considered:** Paddle / Lemon Squeezy (merchant of record) — rejected by the owner in favour of a domestic processor; a bank's own gateway — rejected for now: recurring support could not be confirmed.
-- **Consequences:** the acquiring bank must approve merchant-initiated transactions; this is a hard condition when choosing the bank (RISK-16). Launch waits for business registration and the contract.
+### ADR-09 — Payments via Paddle Billing (merchant of record) — rewritten in v1.8
+- **Context:** Stripe does not onboard Serbian-registered businesses directly. The earlier domestic-processor plan (Monri, Brief v1.5) needed a registered business, an acquiring-bank contract and bank approval of merchant-initiated charges (old RISK-16). Auto-renewal is required (FR-37, BR-07). On 2026-10-29 the owner chose Paddle Billing (paddle.com) as merchant of record (OQ-11) and is opening a sole-proprietor business to receive payouts.
+- **Decision:** Paddle Billing is the seller of record for every plan. It charges the card, adds and remits VAT, issues the invoice and pays out to the owner. Plan money is EUR, because RSD is not a Paddle currency; Paddle adds VAT on top (PRD BR-62). Each `plans` row maps to a Paddle price (`plans.provider_price_id`). Each Premium plan has a second Paddle price with a 7-day trial period (`plans.provider_trial_price_id`). Breeder plans have no trial price (BR-51).
+  - **Checkout:** the **Paddle.js overlay** (`@paddle/paddle-js`, loaded in the browser on click). The server action EP-45 decides trial vs no trial (BR-07) by choosing the trial price id or the plain one. It returns `{price_id, customer_email, custom_data: {user_id, plan, idempotency_key}, environment, client_token}`, and the browser opens the overlay with them. Card data never reaches our servers.
+  - **Webhooks:** Paddle POSTs to `/api/webhooks/payments` with the header `Paddle-Signature: ts=<unix>;h1=<hex>`, where `h1 = HMAC-SHA256(PADDLE_WEBHOOK_SECRET, "<ts>:<raw body>")`. A request is rejected when its signature does not match or its `ts` is more than 5 minutes old. Events are deduplicated on their `event_id` in `payment_webhook_events`. Mapped events: `subscription.created`, `subscription.activated`, `subscription.trialing`, `subscription.updated`, `subscription.past_due`, `subscription.paused`, `subscription.canceled`, `transaction.completed` and `transaction.payment_failed` (API EP-46). The subscription state in our database mirrors Paddle's.
+  - **Provider-owned lifecycle:** Paddle owns renewals, dunning (payment retries and its own payment-failure emails), card updates and cancellation; we never start a charge. These operations call the Paddle API: cancelling or resuming renewal (EP-48), account deletion (EP-51, EP-52) and cancelling a duplicate purchase. The API is called with `PADDLE_API_KEY` (server only) through the `fetch`-based client in `lib/integrations/paddle.ts`. Card updates and invoices go through the Paddle customer portal (API EP-89). The nightly job (EP-49) only reconciles subscriptions with Paddle, then expires, notifies and recomputes household flags.
+  - **Stored data:** only `provider_customer_id`, `provider_subscription_id`, `provider_transaction_id`, the subscription state, and the display-only card brand and last four digits from Paddle's transaction payload. No card data and no token.
+  - **Local mode:** with empty `PADDLE_*` variables, EP-45 answers `503 payment_provider_unavailable` and S17 stays in *Plaćanje uskoro dostupno*. Tests never call Paddle.
+- **Alternatives considered:** Monri (domestic processor, tokenised merchant-initiated renewals) — dropped by the owner: it needs a registered business, an acquiring-bank contract and bank approval of recurring charges, and makes us responsible for VAT and card-on-file flows. Lemon Squeezy (merchant of record) — not chosen by the owner. Stripe — does not onboard Serbian businesses directly.
+- **Consequences:** plan prices are in EUR, while the rest of the product's money (vet costs, offspring and listing prices) stays in RSD. Paddle's fee and VAT handling are part of the price. Launch waits for the owner's sole-proprietor registration and Paddle account approval (RISK-16). Webhooks can arrive late, twice or out of order, so every handler is idempotent and ordered by event time, and the nightly reconciliation corrects missed events.
 
 ### ADR-10 — Environments: local and production
 - **Context:** one builder, no deadline.
@@ -158,7 +164,7 @@ This document defines how Moj Ljubimac is built: thirteen architecture decisions
 - **Decision:** a new repository `pussycat993-gif/moj-ljubimac` (new and empty; the earlier mobile code is not in it). Layout:
   - `app/` — routes matching the Design System screen inventory (`app/(app)/…` signed-in, `app/(org)/…` organisation, `app/(auth)/…`, `app/(public)/…`, `app/admin/…`, `app/api/…` route handlers)
   - `components/ui/` — shadcn primitives (project-owned); `components/app/` — composites from `04-design/components`
-  - `lib/supabase/` — server, browser, and service-role clients plus generated types; `lib/actions/<resource>.ts` — server actions per resource; `lib/integrations/` — Resend, WhatsApp, R2, web push, Nominatim, payments adapter; `lib/i18n/` — Serbian and English strings
+  - `lib/supabase/` — server, browser, and service-role clients plus generated types; `lib/actions/<resource>.ts` — server actions per resource; `lib/integrations/` — Resend, WhatsApp, R2, web push, Nominatim, payments adapter (`paddle.ts`, v1.8); `lib/i18n/` — Serbian and English strings
   - `lib/server/` — shared server-only utilities (action tokens, `ApiError` / `ActionResult` helpers, idempotency, rate limits, database error mapping); every module imports `server-only` (v1.6, CR-16)
   - `lib/legal.ts` — `TERMS_VERSION` constant (v1.6, CR-09)
   - `supabase/migrations/` — SQL migrations; `supabase/tests/` — pgTAP tests; `supabase/seed.sql` — seed data; `supabase/seed/cities.sql` — cities seed (ADR-11)
@@ -171,7 +177,7 @@ This document defines how Moj Ljubimac is built: thirteen architecture decisions
 
 ### ADR-17 — Approved libraries
 - **Context:** build steps install packages; without an approved list each step would choose its own, and some popular packages do not run on Cloudflare Workers (Node-only crypto, file system, native binaries) (raised as CR-01).
-- **Decision:** only the packages below (and their own dependencies) may be added. Anything else needs a Technical Constraints change first.
+- **Decision:** only the packages below (and their own dependencies) may be added. Anything else needs a Technical Constraints change first. v1.8 adds `@paddle/paddle-js` (ADR-09); the Paddle server API is called with `fetch`, without a Paddle Node SDK.
 
 | Package | Purpose | ADR |
 |---|---|---|
@@ -186,6 +192,7 @@ This document defines how Moj Ljubimac is built: thirteen architecture decisions
 | `@react-pdf/renderer` | Browser-side PDF export | ADR-12 |
 | `html-to-image` | Moment share-as-image, in the browser | — (FR-18) |
 | `fflate` | ZIP for data export archives on Workers | ADR-13 |
+| `@paddle/paddle-js` | Paddle.js loader for the checkout overlay, imported only in the browser on click (v1.8) | ADR-09 |
 | `vitest`, `@vitejs/plugin-react`, `jsdom`, Testing Library | Unit and component tests | ADR-15 |
 | `@playwright/test`, `@axe-core/playwright` | End-to-end and accessibility checks (NFR-04) | ADR-15 |
 
@@ -216,7 +223,7 @@ This document defines how Moj Ljubimac is built: thirteen architecture decisions
 | Push | Web Push (VAPID, `public/sw.js`, `@pushforge/builder`) | ADR-05, ADR-17 |
 | Public page caching | None in v1 (render on request) | ADR-18 |
 | WhatsApp / Viber | WhatsApp Business Platform (Cloud API); Viber chatbot (off until enabled) | ADR-04, §6 |
-| Payments | Monri (tokenised recurring) | ADR-09 |
+| Payments | Paddle Billing, merchant of record (EUR; Paddle.js overlay, signed webhooks, provider-owned renewals) | ADR-09 |
 | Geocoding | OpenStreetMap Nominatim (admin only) | ADR-11 |
 | PDF | Browser-side generation (`@react-pdf/renderer`) | ADR-12, ADR-17 |
 | Backups & data export | Backups: GitHub Actions `pg_dump` → R2 backup bucket (14 days); exports: in-app route with `fflate` → R2 | ADR-13 |
@@ -265,30 +272,34 @@ Postgres (Supabase). Conventions for every table unless stated otherwise:
 | trial_ends_at | timestamptz | |
 | current_period_end | timestamptz | not null; drives "days remaining" and expiry notices |
 | auto_renew | boolean | not null default true; false after cancellation (BR-08) |
-| monri_token_ref | text | Monri card token reference only — never card data |
-| monri_cit_id | text | initial customer-initiated transaction id |
-| card_brand | text | e.g. `visa`, `mastercard` — display only, from Monri |
+| provider_customer_id | text | v1.8; Paddle customer id (`ctm_…`); needed for the customer portal (API EP-89) |
+| provider_subscription_id | text | v1.8; Paddle subscription id (`sub_…`); unique; null only for seeded test rows |
+| provider_event_at | timestamptz | v1.8; `occurred_at` of the last Paddle subscription event applied — older events are ignored (out-of-order delivery) |
+| renewal_paused_for_deletion | boolean | v1.8; not null default false; true while an account deletion request (FR-40) has scheduled the Paddle cancellation, so cancelling the deletion can resume renewal (E-16) |
+| card_brand | text | e.g. `visa`, `mastercard` — display only, from Paddle's transaction payload |
 | card_last4 | char(4) | display only, from the provider; never the full number |
-| last_notice_days | smallint | last expiry notice sent (30 / 7 / 1) so a re-run never double-sends (BR-09) |
+| last_notice_days | smallint | last expiry notice sent (30 / 7 / 1) so a re-run never double-sends (BR-09); reset to null when a renewal moves `current_period_end` forward (v1.8) |
 - Unique partial index: one row with status in (`trialing`,`active`,`cancelled`) per `user_id` and plan family.
 
 **subscription_payments** — technical necessity: record of every charge attempt
 | Column | Type | Notes |
 |---|---|---|
 | subscription_id | uuid FK → subscriptions | not null; index |
-| amount_minor | integer | > 0 (RSD para) |
-| currency | char(3) | default `RSD` |
+| amount_minor | integer | > 0 (euro cents as charged by Paddle, VAT included) |
+| currency | char(3) | default `EUR` (v1.8) |
 | kind | enum `initial` / `renewal` | |
 | result | enum `succeeded` / `failed` | |
-| monri_transaction_id | text | unique |
+| provider_transaction_id | text | v1.8 (was `monri_transaction_id`); Paddle transaction id (`txn_…`); unique together with `result`, because a transaction can fail and later succeed |
 
-**plans** — technical necessity: prices as data, since OQ-03 is still open
+**plans** — technical necessity: prices as data (OQ-03 resolved in v1.8: seeded EUR prices, PRD BR-62)
 | Column | Type | Notes |
 |---|---|---|
 | code | same enum as `subscriptions.plan`, unique | |
-| price_minor | integer | > 0 |
-| currency | char(3) | `RSD` |
+| price_minor | integer | > 0; euro cents before VAT: `premium_monthly` 300, `premium_yearly` 3000, `breeder_monthly` 1100, `breeder_yearly` 11000 |
+| currency | char(3) | `EUR` (v1.8; was `RSD`) |
 | active | boolean | |
+| provider_price_id | text | v1.8; Paddle price id (`pri_…`) without a trial; set per environment, null locally |
+| provider_trial_price_id | text | v1.8; Paddle price id with a 7-day trial period, Premium plans only (check: null for `breeder_*`); set per environment, null locally |
 
 **households** (Household)
 | Column | Type | Notes |
@@ -549,7 +560,7 @@ Postgres (Supabase). Conventions for every table unless stated otherwise:
 
 **r2_deletion_queue** — technical necessity: `r2_key text primary key`, `queued_at timestamptz not null default now()`; filled when rows with files are deleted, emptied by the nightly job.
 
-**payment_webhook_events** — technical necessity: `provider text`, `event_id text`, `received_at timestamptz`; unique (`provider`, `event_id`) for webhook idempotency (provider deferred, OQ-11).
+**payment_webhook_events** — technical necessity: `provider text`, `event_id text`, `received_at timestamptz`; unique (`provider`, `event_id`) for webhook idempotency; `provider = 'paddle'` (v1.8, ADR-09).
 
 **data_exports** — technical necessity: personal data archives (FR-41) — `user_id` FK, `status enum preparing/ready/failed/expired`, `r2_key text`, `size_bytes bigint`, `requested_at`, `ready_at`, `expires_at` (7 days after ready).
 
@@ -727,7 +738,7 @@ Community listings, 1:1 messaging, blocking, and reports (CAP-08, FR-61 … FR-7
 | WhatsApp reminders (FR-23, Premium) | WhatsApp Business Platform (Meta Cloud API), utility message templates | Billed per delivered message (Serbia is in the "Rest of Central & Eastern Europe" rate group); bounded by the 30/month cap (BR-14a). Chosen over a reseller to avoid a markup. |
 | Viber reminders (FR-23, Premium) | Viber chatbot | Fixed €100/month per bot plus per-message fees; built but switched off until revenue covers it (BR-14b). |
 | Google sign-in (FR-33) | Google OAuth via Supabase Auth | ADR-06 |
-| Payments (FR-37, FR-38, FR-42) | Monri | ADR-09 |
+| Payments (FR-37, FR-38, FR-42) | Paddle Billing (merchant of record; EUR; VAT added by Paddle) | ADR-09 |
 | Partner geocoding (FR-53, FR-57) | OpenStreetMap Nominatim | ADR-11 |
 | North-star measurement (Brief §8) | None external — counted from `reminder_deliveries` | Owner decision: no external analytics in v1 |
 | Backups, scheduled exports | GitHub Actions | ADR-13 |
@@ -758,7 +769,7 @@ Community listings, 1:1 messaging, blocking, and reports (CAP-08, FR-61 … FR-7
 - **Production:** Cloudflare Workers + Supabase project + R2 bucket + Resend domain.
 - **No staging and no preview deployments** (ADR-10, amended v1.6). Non-`main` branches run CI only.
 - **CI/CD:** on every push, type-check, lint, tests, and build run. On a push to `main` that passes, CI applies pending migrations to production (`supabase db push`) and then deploys the app to Cloudflare. Database changes are versioned migration files in `supabase/migrations/`.
-- **Scheduled jobs:** pg_cron (every minute: reminder dispatch and 30-minute re-send; every 5 minutes: data export archives (ADR-13); nightly: occurrence generation — scheduled in the reminders build step — deletions, retention, idempotency/rate-limit purge, invitation/transfer expiry, subscription renewals and expiry notices; daily (v1.7): listing expiry job EP-87 — 3-day expiry notices and expiry of listings past `expires_at`, at 09:00 Europe/Belgrade so emails arrive in the morning). GitHub Actions nightly: database backup to the R2 backup bucket (14-day retention, ADR-13).
+- **Scheduled jobs:** pg_cron (every minute: reminder dispatch and 30-minute re-send; every 5 minutes: data export archives (ADR-13); nightly: occurrence generation — scheduled in the reminders build step — deletions, retention, idempotency/rate-limit purge, invitation/transfer expiry, subscription reconciliation with Paddle, expiry and expiry notices (Paddle charges the renewals, v1.8); daily (v1.7): listing expiry job EP-87 — 3-day expiry notices and expiry of listings past `expires_at`, at 09:00 Europe/Belgrade so emails arrive in the morning). GitHub Actions nightly: database backup to the R2 backup bucket (14-day retention, ADR-13).
 - **pg_cron → app calls (v1.6, CR-15):** pg_cron calls the app's internal routes (reminder dispatch, `/api/internal/exports`, and from v1.7 the listing expiry job EP-87) through `pg_net`, reading the target URL and the shared secret from Supabase Vault secrets `dispatch_url` and `dispatch_secret`, set per environment; the route rejects requests without a matching `DISPATCH_SECRET`. Locally, pg_cron can be disabled and dispatch run manually.
 
 ### 8.1 Environment variables and secrets (v1.6, CR-03)
@@ -788,6 +799,10 @@ Community listings, 1:1 messaging, blocking, and reports (CAP-08, FR-61 … FR-7
 | `DISPATCH_SECRET` | Shared secret for pg_cron → internal routes (matches Vault `dispatch_secret`) |
 | `ACTION_TOKEN_SECRET` | Signing key for one-click action tokens (e.g. `dn_`) |
 | `OPERATOR_ALERT_EMAIL` | Recipient of Operator alerts (RISK-14) |
+| `PADDLE_API_KEY` | v1.8; Paddle Billing API key, server only (portal links, cancel/resume, reconciliation); empty locally → payments off |
+| `PADDLE_WEBHOOK_SECRET` | v1.8; secret key of the Paddle notification destination, server only (`Paddle-Signature` verification, ADR-09) |
+| `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` | v1.8; Paddle client-side token for Paddle.js |
+| `NEXT_PUBLIC_PADDLE_ENV` | v1.8; `sandbox` or `production` |
 
 **GitHub Actions secrets**
 
@@ -812,7 +827,7 @@ Community listings, 1:1 messaging, blocking, and reports (CAP-08, FR-61 … FR-7
 | Edge caching of public pages | Not needed at v1 traffic; avoids purge logic (ADR-18). |
 | External analytics (e.g., PostHog) | The north-star is counted from the database. |
 | Apple sign-in | Requires a paid Apple Developer account (ADR-06). |
-| Storing card data | Only Monri token references are kept (ADR-09). |
+| Storing card data | Paddle (merchant of record) keeps all card data; we keep only Paddle ids and the display-only card brand and last four digits (ADR-09). |
 | Native mobile apps | Brief §10. |
 | Real-time chat for Šapa pomoći (v1.7) | Messages and unread counts appear on the next page load or refresh (NFR-11); no WebSockets or Supabase Realtime, which would add connection limits and cost on the Free plans. |
 | In-app payments for donations or sales (v1.7) | Money never passes through the product (BR-58, Brief §10); "Doniraj" only shows the shelter's donation info. |
@@ -828,7 +843,7 @@ Community listings, 1:1 messaging, blocking, and reports (CAP-08, FR-61 … FR-7
 | RISK-13 | No automatic backups on Supabase Free; up to 24 h of data loss in a disaster. | Medium | Nightly backups to R2 (ADR-13); practise one restore before launch. |
 | RISK-14 | The single reminder job is a single point of failure for the north-star path. | High | Alert the Operator by email if no delivery has been recorded for 15 minutes while pending occurrences exist. |
 | RISK-15 | Email free-tier limits on Resend are exceeded as users grow. | Medium | Monitor daily volume; paid tier when revenue allows. |
-| RISK-16 | The chosen acquiring bank does not approve merchant-initiated (recurring) charges. | High | Ask about MIT approval before signing; otherwise fall back to manual renewal via a PRD change. |
+| RISK-16 | v1.8 (the earlier risk — the acquiring bank refusing merchant-initiated charges — went away with Monri). Paddle does not approve the account or the sole-proprietor business, delays payouts, or changes its fees; webhooks arrive late, twice or out of order. | Medium | Apply to Paddle early with the sole-proprietor registration and the public legal pages (OQ-15); develop against the Paddle sandbox; idempotent, time-ordered webhook handling and nightly reconciliation (API EP-46, EP-49); all provider calls isolated in `lib/integrations/paddle.ts`, so moving to another merchant of record touches one adapter. |
 | RISK-17 | WhatsApp per-message cost, now also charged inside the service window, rises with Premium growth. | Low | 30-message monthly cap per user (BR-14a); review the cap against revenue quarterly. |
 | RISK-31 | New-message emails (FR-69) and listing expiry emails (FR-65) multiply Resend volume and push it past the free-tier limits sooner (compounds RISK-15). | Medium | Users can switch message notifications off per channel; rate limit on sending messages (API EP-82); monitor daily email volume and move message notifications to push-first if needed. |
 | RISK-32 | Listing photos and message history grow R2 storage and the Supabase Free database size (compounds RISK-12). | Low | ≤ 5 photos per listing; Free limit of 3 active listings; photos removed with deleted listings via `r2_deletion_queue`; text-only messages ≤ 2,000 characters; monitor size monthly. |
@@ -846,7 +861,8 @@ _No technical assumptions were recorded during this interview._
 | ID | Origin | Question | Blocking for Design Mock? |
 |---|---|---|---|
 | OQ-01 | Brief | `[NEEDS CLARIFICATION]` Confirm metric targets. | No |
-| OQ-03 | Brief | `[NEEDS CLARIFICATION]` Premium and breeder plan prices (stored as data in `plans`). | No |
+| OQ-03 | Brief | ✅ Resolved (v1.8, owner, 2026-10-29): EUR, VAT added by Paddle — `premium_monthly` €3.00, `premium_yearly` €30.00, `breeder_monthly` €11.00, `breeder_yearly` €110.00 (seeded in `plans`). | — |
+| OQ-11 | API | ✅ Resolved (v1.8, owner, 2026-10-29): Paddle Billing as merchant of record (ADR-09). | — |
 | OQ-04 | Brief | `[NEEDS CLARIFICATION]` Partner pricing (billed outside the product). | No |
 
 ---
@@ -857,9 +873,9 @@ _No technical assumptions were recorded during this interview._
 |---|---|
 | Reminder occurrence | One concrete due instance of a reminder (per lead time), tracked from pending to done or missed. |
 | Reminder dispatch job | The every-minute scheduled job that sends due occurrences. |
-| MIT (merchant-initiated transaction) | A card charge started by the merchant against a stored token, used for subscription renewals. |
-| CIT (customer-initiated transaction) | The first payment, made by the customer, in which they consent to future charges. |
-| Token reference | Monri's identifier for a stored card; the only payment detail kept in our database. |
+| Merchant of record | The company that legally sells to the customer, charges the card, handles VAT and refunds — Paddle (ADR-09, v1.8). |
+| Paddle price | A Paddle catalogue entry (`pri_…`) with an amount, billing period and optional trial; one per plan, plus a trial price for each Premium plan (v1.8). |
+| Customer portal | Paddle's hosted page where the customer updates the card, sees invoices and cancels (API EP-89, v1.8). |
 | R2 key | The identifier of a file stored on Cloudflare R2. |
 | Operator switch | A setting only the Operator can change, e.g. turning the Viber channel on. |
 | Preview link | A temporary deployment of a non-`main` branch — not used in v1 (ADR-10, amended v1.6). |
@@ -876,5 +892,8 @@ _No technical assumptions were recorded during this interview._
 - WhatsApp Business Platform pricing — https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing
 - Viber chatbot fees — https://respond.io/blog/viber-bot-pricing
 - Free object storage comparison (R2 vs Supabase Storage) — https://agentdeals.dev/storage-comparison-2026
-- Monri recurring payments — https://docs.monri.com/docs/en/recurring-payments.md
-- Monri country coverage — https://powercommerce.com/blogs/partners/monri
+- Paddle Billing — webhook signature verification — https://developer.paddle.com/webhooks/signature-verification
+- Paddle Billing — Paddle.js overlay checkout — https://developer.paddle.com/paddlejs/overview
+- Paddle Billing — customer portal sessions — https://developer.paddle.com/api-reference/customer-portals/create-customer-portal-session
+- Paddle supported currencies — https://developer.paddle.com/concepts/sell/supported-currencies
+- (Superseded in v1.8) Monri recurring payments — https://docs.monri.com/docs/en/recurring-payments.md

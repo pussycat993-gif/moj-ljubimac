@@ -6,10 +6,10 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 04 — Design System & Living Screens |
-| Version | 1.6 |
-| Date | 2026-10-19 |
+| Version | 1.7 |
+| Date | 2026-10-29 |
 | Author | Keti Vrtunić (interview facilitated by "Jelena", Design Systems lead persona) |
-| Traces to | Brief v1.7 · PRD v1.7 · Technical Constraints v1.7 |
+| Traces to | Brief v1.8 · PRD v1.8 · Technical Constraints v1.8 |
 | Status | Draft — 37 screens written and verified in a preview build (see `04-design/README.md`) |
 
 **Change log**
@@ -23,6 +23,7 @@
 | 1.4 | 2026-10-19 | Codex direction adopted: large pastel pet headers and cards, species icons in avatars, reminder-type icon tiles, pastel status pills, "Danas" as a card row, sidebar with full logo, counts and user footer, pet search; new S28 new password, S29 organisation public profile, S11 edit variant. |
 | 1.5 | 2026-10-19 | Owner-approved change requests from the Build Plan review: CR-11 i18n rule (every string in `sr.ts` and `en.ts`); CR-12 S10 manual reminder rows open S11 edit; CR-13 S12 WhatsApp "Uskoro dostupno" state; CR-14 new §9.1 Message copy (email, push, action pages) with template ids; CR-18 S14 team invitation variant; CR-21 new S30 Politika privatnosti and S31 Uslovi korišćenja with placeholder legal text (new OQ-15); CR-22 S03 vet suggestion card, S17 "Plaćanje uskoro dostupno" state, count badge on the phone bottom nav, web app manifest exception to the no-hex rule. `ReminderRow` gains an optional `href`; public footer links go to `/privatnost` and `/uslovi`. |
 | 1.6 | 2026-10-19 | New capability CAP-08 **Šapa pomoći** (EPIC-08, FR-61…FR-72): six new screens S32 list, S33 listing detail (with "Doniraj" donation info), S34 listing form (+ edit), S35 my listings, S36 messages (inbox + thread), S37 public user profile; S12 gets a "Poruke" notification card, S26 a "Moderacija" tab, S29 a "Donacije" section. Navigation: *Šapa pomoći* (HandHeart) in owner and organisation shells, phone bottom nav 5 items, *Poruke* (MessageCircle) with unread badge in the sidebar footer and phone top bar; admin *Moderacija*; `PublicShell` gains `wide`. New token `--info-soft`; new composites `ListingTypeTag`, `ListingCard`, `ReportDialog` / `BlockDialog`. §9.1 message copy for `new_message`, `listing_expiring`, `listing_expired`, `listing_hidden`, `marketplace_suspended`. Also fixed: S25 loading/error states lacked an `h1`. |
+| 1.7 | 2026-10-29 | Owner decisions OQ-03 (EUR prices, VAT added by Paddle) and OQ-11 (Paddle Billing, TC ADR-09): S17 shows real EUR prices (*3 € mesečno*, *30 € godišnje (2 meseca gratis)*; breeder *11 € / 110 €*), the payment note names Paddle, and a new breeder variant sells the breeder plan; S18 gains *Upravljaj plaćanjem* (API EP-89); S20 breeder banner links to the plan; §9 plan-price format; placeholder-price notes removed; OQ-03 resolved. |
 
 ---
 
@@ -40,7 +41,7 @@ This design system dresses all eight Moj Ljubimac epics in one visual language a
 - **Locale:** Serbian (Latin) default, English available (NFR-05). Screens are written in Serbian.
 - **UI-shaping NFRs:** usable from 360 px (NFR-03); WCAG 2.1 AA, keyboard and screen reader (NFR-04); attachments ≤ 10 MB images/PDF (NFR-09).
 - **Gated states implied by the PRD:** Premium-locked (BR-01, BR-10; Šapa pomoći: 4th active listing on Free, BR-55), read-only household (BR-28, FR-31), read-only organisation copy after transfer (BR-38), Viber hidden while switched off (BR-14b), shelter pending approval (BR-32); Šapa pomoći signed-out (browse only, FR-61/FR-62), blocked user (BR-59) and suspended from Šapa pomoći (BR-60).
-- **Carried-forward open questions:** OQ-01, OQ-03, OQ-04 (targets and prices) — non-blocking for design; prices on screens are marked as placeholders.
+- **Carried-forward open questions:** OQ-01, OQ-04 (targets and partner prices) — non-blocking for design. OQ-03 (plan prices) resolved in v1.7: EUR prices, VAT added by Paddle (PRD BR-62).
 
 ---
 
@@ -352,8 +353,8 @@ Rule: **primitives are composed from shadcn/ui, never hand-rolled.**
 - **i18n rule (CR-11):** every screen step adds all of its strings to both `lib/i18n/sr.ts` and `lib/i18n/en.ts`. The Serbian text is the copy in the mockups; the English text is a faithful translation of it — no new copy, no extra or missing messages. A key present in one file and missing in the other fails the build. Message copy in §9.1 follows the same rule.
 - **Tone:** informal "ti", warm, short. Name the pet, always in the **nominative** — names are never declined, because user-entered names cannot be inflected reliably: *"Luna — vakcina ističe za 7 dana"*, *"Lek za: Luna"*, not *"Luni ističe vakcina"*.
 - **Terminology:** use Brief/PRD glossary terms exactly — *Uspomena* (Memorial), *Trenutak* (Moment), *Domaćinstvo* (Household), *Partner*, *Podsetnik* (Reminder), *Premium*, *Azil*, *Odgajivačnica*, *Leglo*, *Udomljavanje*; Šapa pomoći (v1.6): *Šapa pomoći* (never translated in Serbian UI; EN "Helping Paw"), *Oglas* (Listing), *Potreba* (Need — shelter only), *Poklanjam / Prodajem / Tražim* (giving / selling / seeking), *Razgovor* (Conversation), *Poruke* (Messages), *Prijavi* (Report), *Blokiraj* (Block), *Doniraj* + *Podaci za donacije* (Donation info), *Rešeno* with *Poklonjeno / Prodato / Donirano / Pronađeno*, *Po dogovoru* (negotiable price). Users appear by display name (nickname or *Ime P.*), never with email or phone.
-- **Formats:** dates `19. 10. 2026.`; time `08:00`; money `2.990 RSD`; weight `4,2 kg`, `850 g`.
-- **Mock data:** realistic Serbian names and places — pets *Luna* (female cat), *Maks* (male dog), *Kiki* (female rabbit); people *Ivana Petrović*, *Marko Jovanović*; places *Novi Sad*, *Beograd*, *Bečej*; partners *Veterinarska ambulanta „Dr Vet"*, *Pet shop „Šapica"*, *Grooming salon „Čupko"*, *Pet hotel „Kod Mace"*. Never "Lorem ipsum", never "John Doe". Prices for Premium/breeder plans are placeholders until OQ-03 closes and are marked `/* placeholder price — OQ-03 */` in code.
+- **Formats:** dates `19. 10. 2026.`; time `08:00`; money `2.990 RSD`; plan prices (v1.7) in EUR with `Intl.NumberFormat` currency `EUR`, no decimals for whole euros and two otherwise — sr-Latn `3 €`, `30 €`, `2,50 €`; en-GB `€3`, `€30`, `€2.50`; weight `4,2 kg`, `850 g`.
+- **Mock data:** realistic Serbian names and places — pets *Luna* (female cat), *Maks* (male dog), *Kiki* (female rabbit); people *Ivana Petrović*, *Marko Jovanović*; places *Novi Sad*, *Beograd*, *Bečej*; partners *Veterinarska ambulanta „Dr Vet"*, *Pet shop „Šapica"*, *Grooming salon „Čupko"*, *Pet hotel „Kod Mace"*. Never "Lorem ipsum", never "John Doe". Premium/breeder plan prices are the real EUR prices (v1.7, OQ-03): Premium 3 € / 30 €, breeder 11 € / 110 €.
 
 ### 9.1 Message copy (CR-14)
 
@@ -476,7 +477,7 @@ Shells: **A** = App shell (owner), **O** = Organisation shell, **P** = Public sh
 | S14 | EPIC-04 / EPIC-06 | Prihvati poziv / karton | `/poziv/[token]` | FR-26, FR-50, FR-51 | U | `invite-accept.tsx` |
 | S15 | EPIC-05 | Registracija | `/registracija` | FR-33, FR-35 | U | `register.tsx` |
 | S16 | EPIC-05 | Prijava | `/prijava` | FR-34 | U | `sign-in.tsx` |
-| S17 | EPIC-05 | Premium | `/premium` | FR-36, FR-37 | A | `premium.tsx` |
+| S17 | EPIC-05 | Premium | `/premium` | FR-36, FR-37, FR-42 (breeder variant) | A | `premium.tsx` |
 | S18 | EPIC-05 | Profil i pretplata | `/profil` | FR-25, FR-35, FR-38, FR-39 | A | `profile.tsx` |
 | S19 | EPIC-05 | Moji podaci i brisanje naloga | `/profil/podaci` | FR-40, FR-41 | A | `account-data.tsx` |
 | S20 | EPIC-06 | Životinje i tim organizacije | `/organizacija` | FR-42, FR-43, FR-44, FR-45 | O | `org-animals.tsx` |
@@ -541,13 +542,13 @@ Every screen: inline Serbian mock data, local React state only, `"use client"`, 
 
 **S16 Prijava** — Email/lozinka, Google, "Zaboravljena lozinka". States D X.
 
-**S17 Premium** — Free vs Premium comparison (rows from BR-01/BR-02), Mesečno / Godišnje toggle (placeholder prices — OQ-03), "Probaj 7 dana besplatno" (or "Pretplati se" when trial used), card-payment note (Monri). States D, trial used, and **"Plaćanje uskoro dostupno"** (CR-22: plans without prices from EP-44, EP-45 → `503 payment_provider_unavailable`): status card explaining payment is coming, billing toggle and prices hidden ("Cena će biti objavljena uskoro."), CTA disabled with the label "Plaćanje uskoro dostupno", card-payment note hidden.
+**S17 Premium** — Free vs Premium comparison (rows from BR-01/BR-02), Mesečno / Godišnje toggle with the EP-44 prices (v1.7, EUR, VAT added at checkout): *Mesečno* → *"3 € mesečno"* / *"€3 a month"*; *Godišnje* → *"30 € godišnje (2 meseca gratis)"* / *"€30 a year (2 months free)"*; the Free card shows *"0 €"* / *"€0"*; under the price a muted line *"+ PDV prema tvojoj zemlji"* / *"+ VAT for your country"*. "Probaj 7 dana besplatno" (or "Pretplati se" when trial used) opens the Paddle checkout overlay over the page (API EP-45); after a completed payment the app goes to S18 with the toast *"Plaćanje je primljeno. Premium se uključuje za nekoliko trenutaka."* / *"Payment received. Premium switches on in a few moments."* Payment note card (v1.7, replaces the Monri note): title *"Plaćanje preko Paddle-a"* / *"Payments through Paddle"*, body *"Paddle je prodavac i izdaje račun; PDV se dodaje prema tvojoj zemlji. Podatke o kartici čuva Paddle, ne mi."* / *"Paddle is the seller and issues the invoice; VAT is added for your country. Paddle keeps your card details, not us."* **Breeder variant** (v1.7, Admin of a breeder organisation, FR-42): h1 *"Odgajivački plan"* / *"Breeder plan"*; instead of the comparison a card listing what the plan unlocks — *Legla i mladunci*, *Javna stranica sa cenama*, *Upiti kupaca*, *Predaja kartona* / *Litters and offspring*, *Public page with prices*, *Buyer inquiries*, *Record hand-over* (FR-48 … FR-50); the same toggle with *"11 € mesečno"* / *"€11 a month"* and *"110 € godišnje (2 meseca gratis)"* / *"€110 a year (2 months free)"*; no trial; CTA *"Pretplati se"*; while the breeder plan is running a status card *"Odgajivački plan je aktivan do {date}."* / *"Your breeder plan is active until {date}."* with *"Upravljaj plaćanjem"* (EP-89) instead of the CTA. Shelter accounts and Volunteers are still redirected to `/organizacija`. States D, trial used, and **"Plaćanje uskoro dostupno"** (CR-22: plans without prices from EP-44, EP-45 → `503 payment_provider_unavailable`): status card explaining payment is coming, billing toggle and prices hidden ("Cena će biti objavljena uskoro."), CTA disabled with the label "Plaćanje uskoro dostupno", card-payment note hidden.
 
-**S18 Profil i pretplata** — Name, city, language; Premium card with days remaining (`Progress`), renewal date, auto-renew status, "Otkaži obnovu" AlertDialog; expired variant with downgrade note (FR-39). Links to reminder settings and S19.
+**S18 Profil i pretplata** — Name, city, language; Premium card with days remaining (`Progress`), renewal date, price in EUR (e.g. *"Sledeća naplata 19. 11. 2026. · 3 € · Visa •••• 4821"*), auto-renew status, "Otkaži obnovu" AlertDialog; v1.7: an outline button *"Upravljaj plaćanjem"* / *"Manage billing"* (`ExternalLink` icon) when the subscription has a Paddle customer (API EP-89) — it opens the Paddle customer portal in a new tab for card changes and invoices; expired variant with downgrade note (FR-39). Links to reminder settings and S19.
 
 **S19 Moji podaci** — "Preuzmi sve moje podatke" (preparing → ready states), "Obriši nalog" AlertDialog explaining 30 days; pending-deletion variant with "Otkaži brisanje".
 
-**S20 Životinje i tim** — Org shell. Tabs Životinje / Tim. Animals: filter chips by status (shelter: Prijem, Na brizi, Za udomljavanje, Rezervisan, Udomljen; breeder: Dostupno, Rezervisano, Prodato); Table on lg, cards below; new intake Dialog (shelter). Tim: members with Admin/Volonter badge, "1 / 20". Pending-approval variant for shelters (banner, everything read-only).
+**S20 Životinje i tim** — Org shell. Tabs Životinje / Tim. Animals: filter chips by status (shelter: Prijem, Na brizi, Za udomljavanje, Rezervisan, Udomljen; breeder: Dostupno, Rezervisano, Prodato); Table on lg, cards below; new intake Dialog (shelter). Tim: members with Admin/Volonter badge, "1 / 20". Pending-approval variant for shelters (banner, everything read-only). v1.7: for a breeder Admin without an active breeder plan, the read-only banner gets the action link *"Aktiviraj odgajivački plan"* / *"Activate the breeder plan"* → S17 breeder variant (`/premium`); Volunteers see the banner without the link.
 
 **S21 Zahtevi i upiti** — List of requests (name, phone, email, message, animal) with Prihvati / Odbij (Admin only; Volunteer sees read-only); accepted → "Pošalji karton" (transfer Dialog with email, 30-day validity, re-send). States D E R (volunteer).
 
@@ -584,7 +585,7 @@ Every screen: inline Serbian mock data, local React state only, `"use client"`, 
 | ID | Origin | Question | Blocking for API Contract? |
 |---|---|---|---|
 | OQ-01 | Brief | Metric targets. | No |
-| OQ-03 | Brief | Premium / breeder prices — screens show placeholders. | No |
+| OQ-03 | Brief | ✅ Resolved (v1.7, owner, 2026-10-29): EUR, VAT added by Paddle — Premium 3 € / month, 30 € / year; breeder 11 € / month, 110 € / year (PRD BR-62). | — |
 | OQ-04 | Brief | Partner pricing. | No |
 | OQ-09 | Design | ✅ Resolved (v1.1): logo supplied and integrated. An SVG version is still welcome but not blocking. | — |
 | OQ-10 | Design | `[NEEDS CLARIFICATION]` Approve the proposed composites in §6 (DateField, compact PremiumLock, AttachmentChip, StatusBadge statuses, LogoAvatar, InlineAlert, Toaster in shells). | No |

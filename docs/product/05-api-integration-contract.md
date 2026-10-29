@@ -6,11 +6,11 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 05 — API & Integration Contract |
-| Version | 1.3 |
-| Date | 2026-10-19 |
+| Version | 1.4 |
+| Date | 2026-10-29 |
 | Author | Keti Vrtunić (interview facilitated by "Vuk", API/Integration Engineer persona) |
-| Traces to | Brief v1.7 · PRD v1.7 · TC v1.7 · Design v1.6 (37 screens) |
-| Status | Draft — payment-provider operations deferred (OQ-11) |
+| Traces to | Brief v1.8 · PRD v1.8 · TC v1.8 · Design v1.7 (37 screens) |
+| Status | Draft — payments contracted for Paddle Billing (v1.4) |
 
 **Change log**
 
@@ -20,21 +20,22 @@
 | 1.1 | 2026-10-19 | OQ-12 defaults confirmed (PRD BR-47 … BR-52); OQ-13 data model in TC v1.4; OQ-14 screens added (S28, S29, S11 edit); EP-72 organisation profile; search on EP-54 (FR-59); BR-46 in EP-52. |
 | 1.2 | 2026-10-19 | Owner-approved change requests from the Build Plan review: CR-07 `<code>:<detail>` database error mapping (§7.1); CR-10 one R2 key layout (§10, referenced from §5.1); CR-17 public pages EP-24 / EP-62 not cached — all cache headers and purges removed (EP-05, EP-22, EP-23, EP-24, EP-55, EP-58, EP-61, EP-62, EP-68, EP-72, §3.1, §11, §12); CR-18 organisation team invitations through EP-39 / EP-40 (`InvitationView.kind`); CR-19 WhatsApp templates in §9.4; CR-20 data export archives built in-app (EP-50); CR-22 EP-44 / EP-45 before payments, EP-25 count badge, EP-64 S03 vet suggestion block. |
 | 1.3 | 2026-10-19 | CAP-08 "Šapa pomoći" (Brief v1.7, PRD v1.7 FR-61 … FR-72, TC v1.7 §5.10, Design v1.6 S32 … S37): new §5.9 with EP-73 … EP-88 (public listing list/detail/profile route handlers, not cached per ADR-18; listings, my listings, extend/resolve/delete, donation info, conversations and messages with new-message email + push, report, block, Operator moderation, daily listing expiry job, shelter donation info); 15 new schemas in §6 (ListingSummary, Listing, ListingPhoto, ListingAuthor, MyListing, MarketplaceStatus, DonationInfo, PublicProfile, ConversationSummary, Conversation, Message, UserBlock, Report, ModerationItem, Restriction); `Me.display_name` + `Me.marketplace`, `Organisation.donation`; EP-13 purpose `listing_photo`, EP-15 kind `listing_photo`, EP-28 preference type `message`, EP-43 writes `display_name`, EP-52 cascade note; error codes `listing_not_active`, `cannot_message_self`, `user_blocked`, `marketplace_suspended`, `listing_type_not_allowed`, `category_not_allowed` and `premium_required:listings` (§7); §7.3 states signed_out / blocked / suspended / unavailable; §4.4 rows; §9.4 notification templates; §10 listing photo keys; §11 30 messages / hour; §12, §13 (FR-61 … FR-72), §14, §15 (RISK-33 … RISK-36), §17 (OQ-16, OQ-17), §18. |
+| 1.4 | 2026-10-29 | Owner decisions OQ-11 (Paddle Billing, merchant of record) and OQ-03 (EUR prices, VAT added by Paddle). Every `[DEFERRED: OQ-11]` marker settled: EP-44 returns real EUR prices; EP-45 returns the Paddle.js overlay inputs (`CheckoutSession` = `{price_id, customer_email, custom_data, environment, client_token}` plus plan, trial and amount), with the server choosing the trial or the plain Paddle price, and `503 payment_provider_unavailable` only while `PADDLE_API_KEY` is empty; EP-46 verifies `Paddle-Signature` (`ts`, `h1` = HMAC-SHA256 over `<ts>:<raw body>`, 5-minute window), dedupes on `event_id` and maps nine Paddle event types to subscription state and payment rows; EP-48 calls Paddle to cancel or resume; EP-49 becomes reconciliation + expiry (no renewal charges); EP-51 / EP-52 cancel at Paddle; new EP-89 customer-portal link (S18 "Upravljaj plaćanjem") and `Subscription.manage_billing_available`; §3.5 EUR money, §5.6 Paddle intro, §7.2, §9.2, §9.4, §13, §14, §15 RISK-21, §17 (OQ-03, OQ-11 resolved), §18, §19. Operation count 89 (EP-01 … EP-89). |
 
 ---
 
 ## 1. Executive Summary
 
-This contract defines everything that crosses the wire in Moj Ljubimac. Reads and simple writes of a user's own data go through the Supabase data API protected by row-level security, with every Free limit and business rule enforced inside the database; multi-step or privileged work goes through Next.js server actions; external systems (WhatsApp, the payment provider, message action links) and the reminder dispatch job reach the app through a small set of route handlers. It defines 88 operations (EP-01 … EP-88), one error envelope with a catalog of stable codes, and the exact response that puts each screen into its loading, empty, error, Premium-locked, read-only, signed-out, blocked, or suspended state. The Šapa pomoći community board (EP-73 … EP-88) adds public, uncached listing and profile pages, 1:1 messaging with email and push notifications, report and block, and Operator moderation. Payment-provider-specific operations are contracted provider-neutrally and deferred until the provider is chosen (OQ-11). Traces to Brief v1.7, PRD v1.7, Technical Constraints v1.7, Design System v1.6 (37 screens).
+This contract defines everything that crosses the wire in Moj Ljubimac. Reads and simple writes of a user's own data go through the Supabase data API protected by row-level security, with every Free limit and business rule enforced inside the database; multi-step or privileged work goes through Next.js server actions; external systems (WhatsApp, the payment provider, message action links) and the reminder dispatch job reach the app through a small set of route handlers. It defines 89 operations (EP-01 … EP-89), one error envelope with a catalog of stable codes, and the exact response that puts each screen into its loading, empty, error, Premium-locked, read-only, signed-out, blocked, or suspended state. The Šapa pomoći community board (EP-73 … EP-88) adds public, uncached listing and profile pages, 1:1 messaging with email and push notifications, report and block, and Operator moderation. Payments go through Paddle Billing as merchant of record (v1.4): a Paddle.js overlay checkout, signed webhooks, provider-owned renewals and a customer-portal link (EP-89). Traces to Brief v1.7, PRD v1.7, Technical Constraints v1.7, Design System v1.6 (37 screens).
 
 ---
 
 ## 2. Inherited Context
 
 - **Scope ceiling:** 8 epics, FR-01 … FR-72 (PRD v1.7; EPIC-08 / CAP-08 Šapa pomoći = FR-61 … FR-72, BR-54 … BR-61, E-28 … E-35, NFR-11).
-- **Binding ADRs (TC v1.6):** ADR-01 Next.js + Supabase · ADR-02 schema · ADR-04 reminder dispatch job every minute · ADR-05 web push · ADR-06 Supabase Auth (email + Google) · ADR-07 files on R2 · ADR-08 Resend email · ADR-09 payments (**provider deferred**, see OQ-11) · ADR-11 OpenStreetMap geocoding · ADR-12 PDF in the browser · ADR-13 backups/exports · ADR-14 shadcn/Tailwind · ADR-15 tests · ADR-16 folder layout · ADR-17 approved libraries · ADR-18 no edge caching of public pages.
+- **Binding ADRs (TC v1.6):** ADR-01 Next.js + Supabase · ADR-02 schema · ADR-04 reminder dispatch job every minute · ADR-05 web push · ADR-06 Supabase Auth (email + Google) · ADR-07 files on R2 · ADR-08 Resend email · ADR-09 payments (Paddle Billing, merchant of record — TC v1.8) · ADR-11 OpenStreetMap geocoding · ADR-12 PDF in the browser · ADR-13 backups/exports · ADR-14 shadcn/Tailwind · ADR-15 tests · ADR-16 folder layout · ADR-17 approved libraries · ADR-18 no edge caching of public pages.
 - **Design System v1.6:** 37 screens (S01 … S37; S32 … S37 are Šapa pomoći). State vocabulary used as keys in §7.3: **default, loading, empty, error, premium_locked, read_only**, plus (v1.6) **signed_out** (O), **blocked** (B), **suspended** (S), and screen-specific variants: *pending_approval* (S20), *link_disabled* (S09), *invitation_expired / invitation_declined / slot_taken* (S14), *email_sent* (S15), *pending_deletion* (S19), *trial_used / expired / cancelled* (S17, S18), *unavailable / own / resolved* (S33, S37).
-- **Formatting (Design §9):** dates `19. 10. 2026.`, time `08:00`, money `2.990 RSD`, Europe/Belgrade time; pet names always nominative.
+- **Formatting (Design §9):** dates `19. 10. 2026.`, time `08:00`, money `2.990 RSD` (plan prices in EUR: `3 €` / `€3`, Design v1.7), Europe/Belgrade time; pet names always nominative.
 - **NFRs that become budgets (§12):** NFR-01 reminder delivery, NFR-03/04 usability, NFR-09 attachment size, NFR-10 cost, NFR-11 no real-time messaging (v1.3).
 - **Highest upstream ids:** RISK-17, ASM-09 → this document continues at RISK-18 and ASM-10. v1.3: upstream now reaches RISK-32 (TC v1.7) and OQ-16 (PRD v1.7) → new risks continue at RISK-33, new open questions at OQ-17.
 
@@ -43,10 +44,10 @@ This contract defines everything that crosses the wire in Moj Ljubimac. Reads an
 | ID | Origin | Status here |
 |---|---|---|
 | OQ-01 | Brief | Open — targets; no wire impact |
-| OQ-03 | Brief | Open — prices are data in `plans`; no wire impact |
+| OQ-03 | Brief | ✅ Resolved (v1.4, owner, 2026-10-29) — EUR prices seeded in `plans` (EP-44) |
 | OQ-04 | Brief | Open — partner pricing, billed outside the product |
 | OQ-10 | Design | Open — proposed composites; no wire impact |
-| OQ-11 | API (new) | Open — payment provider deferred; blocks EP-45, EP-46, EP-49 provider specifics |
+| OQ-11 | API (new) | ✅ Resolved (v1.4, owner, 2026-10-29) — Paddle Billing (EP-45, EP-46, EP-48, EP-49, EP-89) |
 | OQ-16 | PRD v1.7 | Open — breeder plan and the Free listing limit; contract uses the PRD default (`MarketplaceStatus.active_listing_limit`) |
 
 ---
@@ -81,7 +82,7 @@ No versioning in v1: client and server deploy together and there is no public AP
 - Names `snake_case` (same as columns).
 - IDs: UUID strings.
 - Timestamps: ISO 8601 with `Z` (UTC), e.g. `"2026-10-19T06:00:00Z"`; dates without time: `"2026-10-19"`; times of day: `"08:00"` (Europe/Belgrade wall clock). The client renders per Design §9.
-- Money: integer minor units + ISO currency, e.g. `{ "amount_minor": 299000, "currency": "RSD" }` → 2.990 RSD.
+- Money: integer minor units + ISO currency, e.g. `{ "amount_minor": 299000, "currency": "RSD" }` → 2.990 RSD. Plan prices and subscription payments are EUR (v1.4, Paddle): `{ "amount_minor": 300, "currency": "EUR" }` → 3 €. Every other amount stays RSD.
 - Weights: number in the pet's unit plus `weight_unit` (`kg` / `g`).
 - Enums: lowercase snake_case English values (`female`, `in_care`, `pet_hotel`); labels are translated in the UI.
 - **Nullability:** every documented field is always present; `null` means "no value". Absent is never used to mean anything.
@@ -160,7 +161,7 @@ Route handlers return the HTTP status from §7.2 with `ApiError` as the body on 
 | EP-38 | My reminder opt-in | — | ✅ | — | — | — | — |
 | EP-39 / EP-40 | Invitation view / decide | invitee | invitee | invitee | invitee | invitee | view only |
 | EP-41 – EP-44 | Register, auth, profile, plans | ✅ | ✅ | ✅ | ✅ | ✅ | register/sign-in, plans |
-| EP-45 – EP-48 | Checkout, subscription, cancel | ✅ | ✅ | ✅ breeder | ❌ | — | — |
+| EP-45 – EP-48, EP-89 | Checkout, subscription, cancel, billing portal | ✅ | ✅ | ✅ breeder | ❌ | — | — |
 | EP-50 / EP-51 | Data export / account deletion | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | EP-53 | My organisation | — | — | ✅ | 👁 | — | — |
 | EP-54 / EP-55 | Org animals list / intake & status | — | — | ✅ | ✅ (no delete) | — | — |
@@ -847,13 +848,13 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 
 #### EP-44 — List plans
 - **Address:** Data API: `plans` `select` `.eq("active", true)` via view `v_public_plans` (anon + authenticated read), sorted family then period (monthly before yearly)
-- **Callers:** S17 `/premium` (Mesečno / Godišnje toggle, prices, yearly per-month amount); S18 `/profil` (price on the Premium card)
-- **FRs:** FR-36, FR-37
+- **Callers:** S17 `/premium` (Mesečno / Godišnje toggle, prices, yearly note; the breeder variant shows the breeder plans, v1.4); S18 `/profil` (price on the Premium card)
+- **FRs:** FR-36, FR-37, FR-42
 - **Authorization:** public (Visitor allowed).
 - **Request:** none.
-- **Response:** `200` `Plan[]` (bounded, whole list). Before payments (plans not yet seeded with prices, OQ-03 / OQ-11), the plan codes are listed with price fields `null` (v1.2, CR-22).
+- **Response:** `200` `Plan[]` (bounded, whole list). Prices are EUR before VAT (v1.4, OQ-03 resolved; PRD BR-62): `premium_monthly` `{300, "EUR"}`, `premium_yearly` `{3000, "EUR"}`, `breeder_monthly` `{1100, "EUR"}`, `breeder_yearly` `{11000, "EUR"}`. Paddle adds VAT at checkout. `price` is `null` only when a code has no active `plans` row (v1.2, CR-22). The provider price ids are not exposed.
 - **Errors:** —
-- **States:** S17 *default*; price fields `null` → *payments_coming_soon* ("Plaćanje uskoro dostupno", prices hidden); `5xx` → *error*.
+- **States:** S17 *default* with prices; price fields `null`, or payments not configured (the S17 server page reads `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` and `PADDLE_API_KEY`; either empty → payments off, local mode) → *payments_coming_soon* ("Plaćanje uskoro dostupno", prices hidden); `5xx` → *error*.
 - **Side effects:** none.
 - **Budget:** `public`
 
@@ -861,58 +862,90 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 
 Common to every operation below: the §4.1 gates run first (`401 unauthenticated`, `403 email_not_verified`, `403 account_pending_deletion`, `403 organisation_pending_approval` on organisation writes) and are not repeated in each **Errors** list unless an operation changes them. "Premium active" (used throughout) = `computed: a subscriptions row of the user with plan premium_* and status in (trialing, active, cancelled) and current_period_end > now()`. "Breeder plan active" = the same test with plan breeder_*, held by any `admin` of the organisation.
 
+**Payment provider (v1.4, TC ADR-09):** Paddle Billing is the merchant of record. Paddle charges the card, adds VAT, renews, retries failed payments (dunning), takes card updates and cancels. We never start a charge. Every Paddle API call goes through `lib/integrations/paddle.ts`: a `fetch` client for `https://api.paddle.com` (`https://sandbox-api.paddle.com` when `NEXT_PUBLIC_PADDLE_ENV = sandbox`) with `Authorization: Bearer PADDLE_API_KEY`, plus the webhook signature check of EP-46. Paddle operations used:
+- cancel at period end: `POST /subscriptions/{id}/cancel` `{ "effective_from": "next_billing_period" }` (EP-48, EP-51);
+- cancel immediately: `POST /subscriptions/{id}/cancel` `{ "effective_from": "immediately" }` (EP-52, duplicate purchase in EP-46);
+- resume renewal (remove a scheduled cancellation): `PATCH /subscriptions/{id}` `{ "scheduled_change": null }` (EP-48, EP-51);
+- read a subscription: `GET /subscriptions/{id}` (EP-49 reconciliation);
+- customer portal: `POST /customers/{customer_id}/portal-sessions` `{ "subscription_ids": [id] }` (EP-89).
+
+With `PADDLE_API_KEY` empty (local mode) no call is made; the operations below say what happens instead.
+
 #### EP-45 — Start checkout
 - **Address:** `action:startCheckout(input) → CheckoutSession`
-- **Callers:** S17 `/premium` ("Probaj 7 dana besplatno" / "Pretplati se"); S18 `/profil` ("Obnovi Premium" in the expired variant)
+- **Callers:** S17 `/premium` ("Probaj 7 dana besplatno" / "Pretplati se"; breeder variant "Pretplati se"); S18 `/profil` ("Obnovi Premium" in the expired variant links to S17)
 - **FRs:** FR-37, FR-42 (breeder plan)
 - **Authorization:** Owner, Member (as owners of their own account) for `premium_*`; OrgAdmin of a breeder organisation for `breeder_*`; Volunteer and shelter users → `403 forbidden_role`.
 - **Request:**
   - `plan` — enum `premium_monthly` / `premium_yearly` / `breeder_monthly` / `breeder_yearly` — required — must exist in `plans` with `active = true`; family must match `profiles.account_type` (owner → premium_*, breeder → breeder_*)
   - `expect_trial` — boolean — optional, default false — the client sets it when the screen offered the trial; if true and `profiles.trial_used = true` the call fails with `trial_already_used` so the screen re-renders (BR-07)
   - `idempotency_key` — uuid v4 — required (§3.3)
-- **Response:** `ok` + `CheckoutSession`. Trial rule (BR-07): `trial_applied = true` only for a `premium_*` plan when `profiles.trial_used = false`; breeder plans have no trial (BR-07 covers Premium only); otherwise the first charge is immediate (E-15).
-- **Errors:** `payment_provider_unavailable` (503) — **always, until OQ-11 is resolved** (returned after validation, so validation errors still surface); `validation_failed` (422) — unknown/inactive plan, family mismatch (`fields.plan = "plan_not_allowed"`); `trial_already_used` (409) — `expect_trial = true` but the trial was used; `subscription_already_active` (409) — the user already has a `trialing`/`active`/`cancelled` row of the same family whose `current_period_end > now()` (use EP-48 to resume renewal instead); `forbidden_role` (403).
-- **States:** S17 *default* → redirect to `checkout_url`; S17 *trial_used* on `trial_already_used`; S17 *payments_coming_soon* ("Plaćanje uskoro dostupno") and S18 *error* on `payment_provider_unavailable` (v1.2, CR-22).
-- **Side effects:** creates a provider checkout session carrying `{user_id, plan, trial_applied, idempotency_key}` as metadata `[DEFERRED: OQ-11]`. No `subscriptions` row is written here; it is created only when EP-46 confirms. Repeat with the same key within 24 h returns the same `CheckoutSession`.
+- **Response:** `ok` + `CheckoutSession`. Trial rule (BR-07): `trial_applied = true` only for a `premium_*` plan when `profiles.trial_used = false`. Breeder plans have no trial (BR-51); otherwise the first charge is immediate (E-15). The server applies the rule by choosing the Paddle price: `price_id = plans.provider_trial_price_id` (the price with a 7-day trial period) when `trial_applied`, else `plans.provider_price_id`.
+- **Errors:** `payment_provider_unavailable` (503) — only while `PADDLE_API_KEY` is empty (local mode); returned after validation, so validation errors still surface; `validation_failed` (422) — unknown/inactive plan, family mismatch (`fields.plan = "plan_not_allowed"`); `trial_already_used` (409) — `expect_trial = true` but the trial was used; `subscription_already_active` (409) — the user already has a `trialing`/`active`/`cancelled` row of the same family whose `current_period_end > now()` (use EP-48 to resume renewal instead); `forbidden_role` (403); `internal_error` (500) — `PADDLE_API_KEY` is set but the price id needed is null (a deployment error, logged).
+- **States:** S17 *default* → the browser opens the Paddle.js overlay. On click, the client imports `@paddle/paddle-js`, calls `initializePaddle({ environment, token: client_token })` and then `Checkout.open({ items: [{ priceId: price_id, quantity: 1 }], customer: { email: customer_email }, customData: custom_data, settings: { displayMode: "overlay" } })`. On the Paddle.js event `checkout.completed` it closes the overlay and navigates to S18 `/profil`; the new subscription shows there once EP-46 has processed Paddle's webhook. Closing the overlay without paying leaves S17 unchanged. S17 *trial_used* on `trial_already_used`; S17 *payments_coming_soon* ("Plaćanje uskoro dostupno") on `payment_provider_unavailable` (v1.2, CR-22).
+- **Side effects:** no Paddle API call and no `subscriptions` row; rows are created only by EP-46. The returned `CheckoutSession` is stored in `idempotency_keys`, and a repeat with the same key within 24 h returns the same `CheckoutSession`.
 - **Budget:** `action`
 
-#### EP-46 — Payment provider webhook
+#### EP-46 — Payment provider webhook (Paddle Billing)
 - **Address:** `POST /api/webhooks/payments`
-- **Callers:** payment provider (external system) `[DEFERRED: OQ-11]`
-- **FRs:** FR-37, FR-38, FR-25 (status that drives notices), FR-32 (household read-only)
-- **Authorization:** System. Authenticated by the provider's signature header `[DEFERRED: OQ-11 — header name and algorithm]`, verified over the raw body with the provider secret before parsing. No session.
-- **Request:** a provider-specific body, mapped by a provider adapter `[DEFERRED: OQ-11]` into this neutral event:
-  - `event_id` — string — required — provider's event id; idempotency key
-  - `type` — enum `payment_succeeded` / `payment_failed` / `card_token_saved` — required; any other provider event type is acknowledged and ignored
-  - `occurred_at` — timestamp — required
-  - `user_id` — uuid — required for `kind = initial` and `card_token_saved` (from checkout metadata)
-  - `plan` — `subscriptions.plan` enum — required for `kind = initial` and `card_token_saved`
-  - `subscription_id` — uuid — required for `kind = renewal` (from the charge metadata set by EP-49)
-  - `kind` — enum `initial` / `renewal` → `subscription_payments.kind` — required for payment events
-  - `amount_minor` / `currency` — integer > 0 / char(3) → `subscription_payments.amount_minor` / `.currency` — required for payment events
-  - `transaction_id` — string → `subscription_payments.monri_transaction_id` `[DEFERRED: OQ-11 column name]` — required for payment events
-  - `token_ref` — string → `subscriptions.monri_token_ref` `[DEFERRED: OQ-11]` — required for `card_token_saved` and `initial` succeeded
-  - `card_brand`, `card_last4` — string, char(4) → `subscriptions.card_brand`, `.card_last4` — optional (display only; never full card data)
-  - `failure_reason` — string — optional (logged only)
-- **Response:** `200 {"received": true}` — also for duplicates and ignored types (so the provider stops retrying).
-- **Errors:** `invalid_signature` (401) — signature check failed; `validation_failed` (422) — signature valid but required neutral fields missing; `internal_error` (500) — processing failed; the provider retries.
+- **Callers:** Paddle Billing (external system): the notification destination subscribed to the nine event types below. Paddle retries a delivery that does not get a `2xx`.
+- **FRs:** FR-37, FR-38, FR-42, FR-25 (status that drives notices), FR-32 (household read-only)
+- **Authorization:** System, no session. Header `Paddle-Signature: ts=<unix seconds>;h1=<hex>`. During secret rotation several `h1` values may appear, and one match is enough. The route reads the raw body as bytes before any JSON parsing, computes `HMAC-SHA256(key = PADDLE_WEBHOOK_SECRET, message = "<ts>:<raw body>")` as lowercase hex and compares it with each `h1` in constant time. The request is rejected with `401 invalid_signature` when the header is missing or malformed, no `h1` matches, `|now − ts| > 300 s` (replay window of 5 minutes) or `PADDLE_WEBHOOK_SECRET` is empty.
+- **Request:** the Paddle event envelope `{ event_id, event_type, occurred_at, notification_id, data }`. `lib/integrations/paddle.ts` maps it into this neutral event:
+  - `event_id` — string — required — Paddle's `event_id` (`evt_…`); idempotency key in `payment_webhook_events` with `provider = 'paddle'`
+  - `type` — `subscription` for `subscription.created`, `subscription.activated`, `subscription.trialing`, `subscription.updated`, `subscription.past_due`, `subscription.paused`, `subscription.canceled`; `payment_succeeded` for `transaction.completed`; `payment_failed` for `transaction.payment_failed`. Any other `event_type` is acknowledged with `200` and ignored.
+  - `occurred_at` — timestamp — required — Paddle's `occurred_at`
+  - Subscription events, from `data` (a Paddle subscription):
+    - `provider_subscription_id` ← `data.id` (`sub_…`) — required
+    - `provider_customer_id` ← `data.customer_id` (`ctm_…`) — required
+    - `provider_status` ← `data.status` (`trialing` / `active` / `past_due` / `paused` / `canceled`) — required
+    - `user_id`, `plan` ← `data.custom_data.user_id`, `data.custom_data.plan` (set by EP-45) — required when no row has this `provider_subscription_id` yet
+    - `price_id` ← `data.items[0].price.id` — required; must equal `provider_price_id` or `provider_trial_price_id` of a `plans` row of the same family as `plan`, which gives the stored `plan`
+    - `period_ends_at` ← `data.current_billing_period.ends_at` (null while paused or canceled)
+    - `trial_ends_at` ← `data.items[0].trial_dates.ends_at` (null without a trial)
+    - `cancel_scheduled` ← `data.scheduled_change.action = "cancel"`
+    - `ended_at` ← `data.canceled_at` or `data.paused_at`, else `occurred_at`
+  - Payment events, from `data` (a Paddle transaction):
+    - `provider_transaction_id` ← `data.id` (`txn_…`) — required
+    - `provider_subscription_id` ← `data.subscription_id` — a transaction without one is ignored
+    - `kind` ← `renewal` when `data.origin = "subscription_recurring"`, else `initial` → `subscription_payments.kind`
+    - `amount_minor` / `currency` ← `data.details.totals.grand_total` (a string of euro cents, VAT included) / `data.currency_code` → `subscription_payments.amount_minor` / `.currency`
+    - `card_brand`, `card_last4` ← `type` and `last4` of `method_details.card` in the first `data.payments[]` entry whose `method_details.type = "card"` — optional, display only, never full card data
+- **Response:** `200 {"received": true}` — also for duplicates, ignored event types and unknown price ids (logged), so Paddle stops retrying.
+- **Errors:** `invalid_signature` (401) — signature check failed; `validation_failed` (422) — valid signature but the body is not JSON, or a mapped event lacks a required field; `internal_error` (500) — processing failed, for example a transaction arrived before its subscription. Nothing is recorded, so Paddle's retry processes the event again.
 - **States:** none directly; the next EP-47 read reflects the result (S17/S18).
-- **Side effects (in one transaction):**
-  - Idempotency: a repeat `event_id` performs nothing. Payment events dedupe on `subscription_payments.monri_transaction_id` (unique); `card_token_saved` dedupes on `subscriptions.monri_cit_id`. (See note at end of part: a dedicated event log may be needed once the provider is chosen.)
-  - `card_token_saved` (trial start, `trial_applied` checkout): insert `subscriptions{user_id, plan, status = trialing, trial_ends_at = now + 7 days, current_period_end = trial_ends_at, auto_renew = true, monri_token_ref, monri_cit_id, card_brand, card_last4}`; set `profiles.trial_used = true`.
-  - `payment_succeeded`, `kind = initial`: if a `trialing` row exists for the user and family, set `status = active` and `current_period_end = trial_ends_at + 1 month | 1 year`; otherwise insert `subscriptions{status = active, current_period_end = now + 1 month | 1 year, auto_renew = true, token/card fields}`. Insert `subscription_payments{kind = initial, result = succeeded}`.
-  - `payment_succeeded`, `kind = renewal`: `current_period_end += 1 month | 1 year`, `status = active`; insert `subscription_payments{kind = renewal, result = succeeded}`.
-  - `payment_failed`: insert `subscription_payments{result = failed}`; for `renewal` (or the first charge after a trial) set `subscriptions.status = payment_failed`; email the user (Resend) "Naplata nije uspela" with a link to S17. A failed `initial` without a trial creates no subscription.
-  - After any status change: recompute `households.read_only = NOT Premium active(owner)` for the user's household (BR-28).
+- **Side effects** (one database transaction, in the service-role database function the route calls):
+  - **Idempotency:** insert `payment_webhook_events { provider: 'paddle', event_id }` with on conflict do nothing. If the row already existed, nothing else happens. The insert rolls back with the rest on failure.
+  - **Subscription events** (find the row by `provider_subscription_id`, else insert one for `user_id` + `plan`):
+    - **Out-of-order delivery:** an event with `occurred_at < subscriptions.provider_event_at` changes nothing; it is still recorded as processed.
+    - **Status mapping:**
+
+      | `provider_status` | `cancel_scheduled` | → `status` | `auto_renew` | `current_period_end` | `trial_ends_at` |
+      |---|---|---|---|---|---|
+      | `trialing` | false | `trialing` | true | `period_ends_at` | `trial_ends_at` |
+      | `trialing` | true | `cancelled` | false | `period_ends_at` | `trial_ends_at` |
+      | `active` | false | `active` | true | `period_ends_at` | unchanged |
+      | `active` | true | `cancelled` | false | `period_ends_at` | unchanged |
+      | `past_due` | — | `payment_failed` | true | `period_ends_at` | unchanged |
+      | `paused` / `canceled` | — | `expired` | false | the earlier of the stored value and `ended_at` | unchanged |
+
+    - **Columns also written:** `plan` (from `price_id`), `provider_customer_id`, `provider_event_at = occurred_at`. `last_notice_days = null` whenever `current_period_end` moves later (a renewal, BR-09). `profiles.trial_used = true` whenever `provider_status = trialing` or `price_id` is a trial price (BR-07).
+    - **Duplicate purchase:** a new `provider_subscription_id` for a user who already has a running (`trialing`/`active`/`cancelled`) row of the same family writes nothing for it. The route then cancels that new Paddle subscription immediately and logs an error for the Operator to refund it in Paddle.
+  - **`payment_succeeded`:**
+    - Find the row by `provider_subscription_id`. When there is none → `500` (Paddle may deliver `transaction.completed` before `subscription.created`; the retry succeeds).
+    - Set `card_brand`, `card_last4` when present.
+    - When `amount_minor > 0`, insert `subscription_payments { kind, result: succeeded, amount_minor, currency, provider_transaction_id }`, with on conflict (`provider_transaction_id`, `result`) do nothing. A zero-amount transaction (the card check at the start of a trial) writes no payment row.
+  - **`payment_failed`:** same lookup; when `amount_minor > 0`, insert `subscription_payments { result: failed }` with the same dedupe. The status change comes from `subscription.past_due`. We send no email: Paddle's dunning emails the customer and retries.
+  - **Household flag:** after any status change the existing subscriptions trigger recomputes `households.read_only = NOT Premium active(owner)` (BR-28).
 - **Budget:** `action`
 
 #### EP-47 — Get my subscription
 - **Address:** Data API `rpc:get_my_subscription()` (security invoker; reads only the caller's rows)
-- **Callers:** S17 `/premium` (trial button vs "Pretplati se", current plan), S18 `/profil` (Premium card, days remaining, renewal, card label, expired/over-limit summary)
-- **FRs:** FR-25, FR-36, FR-37, FR-38, FR-39
+- **Callers:** S17 `/premium` (trial button vs "Pretplati se", current plan; breeder variant status card), S18 `/profil` (Premium card, days remaining, renewal, card label, "Upravljaj plaćanjem", expired/over-limit summary)
+- **FRs:** FR-25, FR-36, FR-37, FR-38, FR-39, FR-42
 - **Authorization:** Owner, Member, OrgAdmin (breeder) — own subscription only. Volunteer and shelter users → `403 forbidden_role`.
 - **Request:** none.
-- **Response:** `200` + `Subscription` — the caller's most recent row of their plan family (owner → premium_*, breeder → breeder_*); a user who never subscribed gets a `Subscription` with `id`, `plan`, `status` and all period/card fields `null` and `trial_available` computed.
+- **Response:** `200` + `Subscription` — the caller's most recent row of their plan family (owner → premium_*, breeder → breeder_*). A user who never subscribed gets a `Subscription` with `id`, `plan`, `status` and all period/card fields `null`, `manage_billing_available = false`, and `trial_available` computed.
 - **Errors:** `forbidden_role` (403).
 - **States:** S17 *trial_used* when `trial_available = false`; S18 *default* (`status` trialing/active, `auto_renew = true`), *cancelled* (`auto_renew = false`, period not ended), *expired* (`status = expired` or `payment_failed`, shows `over_limits`); *loading*; *error* on 5xx.
 - **Side effects:** none.
@@ -926,24 +959,48 @@ Common to every operation below: the §4.1 gates run first (`401 unauthenticated
 - **Request:**
   - `auto_renew` — boolean — required — `false` cancels renewal (BR-08); `true` resumes it
 - **Response:** `ok` + `Subscription` (updated).
-- **Errors:** `subscription_not_active` (409) — no row with status `trialing`/`active`/`cancelled` and `current_period_end > now()` (e.g. already expired: use EP-45); `forbidden_role` (403).
+- **Errors:** `subscription_not_active` (409) — no row with status `trialing`/`active`/`cancelled` and `current_period_end > now()` (e.g. already expired: use EP-45); `payment_provider_unavailable` (503) — the row has a `provider_subscription_id` but `PADDLE_API_KEY` is empty, or the Paddle call failed (nothing changed); `forbidden_role` (403).
 - **States:** S18 *cancelled* after `auto_renew = false`; S18 *default* after `true`.
-- **Side effects:** `false` → `subscriptions.auto_renew = false`, `status = cancelled` (Premium stays until `current_period_end`, BR-08); cancelling during a trial means no first charge. `true` → `auto_renew = true`, `status = trialing` if `trial_ends_at > now()` else `active`. Confirmation email (Resend). No provider call (the stored token is reused at renewal).
+- **Side effects:**
+  - **Paddle first** (v1.4), when the running row has a `provider_subscription_id`: `false` → cancel at period end; `true` → resume renewal (§5.6 intro).
+  - **Then `rpc:set_auto_renew`:** `false` → `subscriptions.auto_renew = false`, `status = cancelled` (Premium stays until `current_period_end`, BR-08); cancelling during a trial means no first charge. `true` → `auto_renew = true`, `status = trialing` if `trial_ends_at > now()` else `active`.
+  - The `subscription.updated` webhook that follows (EP-46) confirms the same state.
+  - Rows without a provider id (local seed data) change in the database only.
+  - Confirmation email (Resend).
 - **Budget:** `write`
 
-#### EP-49 — Renewal & expiry job
+#### EP-89 — Billing portal link (v1.4)
+- **Address:** `action:getBillingPortalUrl() → { url: string }`
+- **Callers:** S18 `/profil` ("Upravljaj plaćanjem" on the Premium card); S17 breeder variant ("Upravljaj plaćanjem" while the breeder plan is running)
+- **FRs:** FR-37, FR-38, FR-42
+- **Authorization:** as EP-47 (own subscription only).
+- **Request:** none.
+- **Response:** `ok` + `{ url }` — `data.urls.general.overview` from Paddle's portal session for `provider_customer_id` and the row's `provider_subscription_id` (§5.6 intro). There the customer updates the card, downloads invoices and can cancel; Paddle's webhooks bring every change back through EP-46. The URL is short-lived; the client opens it right away in a new tab, and it is never stored.
+- **Errors:** `subscription_not_active` (409) — the caller's latest row of their family has no `provider_customer_id` (`Subscription.manage_billing_available = false`); `payment_provider_unavailable` (503) — `PADDLE_API_KEY` is empty or the Paddle call failed; `forbidden_role` (403).
+- **States:** S18 *default* / *cancelled* / *expired* (button shown only when `manage_billing_available`); errors → the generic error toast.
+- **Side effects:** none in our database.
+- **Budget:** `action`
+
+#### EP-49 — Subscription reconciliation & expiry job
 - **Address:** job: pg_cron nightly 03:00 Europe/Belgrade → `POST /api/internal/billing-nightly` (secret header, same mechanism as `/api/internal/dispatch`)
 - **Callers:** job (System)
 - **FRs:** FR-25, FR-37, FR-38, FR-31, FR-32; BR-08, BR-09, BR-16, BR-28
 - **Authorization:** System (service role, server only); a missing or wrong secret → `401 unauthenticated`.
 - **Request:** none.
-- **Response:** `200 {renewals_attempted, expired, notices_sent, households_updated}` (counts, for logs).
+- **Response:** `200 {reconciled, expired, notices_sent, households_updated}` (counts, for logs). v1.4: `reconciled` replaces `renewals_attempted`.
 - **Errors:** `unauthenticated` (401); `internal_error` (500) — the run is retried the next night; each step is idempotent.
 - **States:** none directly; S18 *expired*, S13 *read_only* follow from the data.
-- **Side effects (in order):**
-  1. **Renewals** — rows with `auto_renew = true`, `status` in (`active`, `trialing`) and `current_period_end <= now()`, whose user has no `profiles.deletion_requested_at`: request a merchant-initiated charge of `plans.price_minor` against `subscriptions.monri_token_ref` with metadata `{subscription_id, kind}` (`kind = initial` when ending a trial, else `renewal`) `[DEFERRED: OQ-11]`. The result arrives through EP-46. While the provider is not configured this step does nothing and logs a warning.
-  2. **Expiry** — rows with `status` in (`cancelled`, `payment_failed`, or `trialing`/`active` with `auto_renew = false`, or any status for a user with pending deletion) and `current_period_end <= now()` → `status = expired`.
-  3. **Notices (BR-09)** — for rows with `status` in (`trialing`, `active`, `cancelled`) whose remaining whole days in Europe/Belgrade (`current_period_end` date − today) equal 30, 7 or 1: email (Resend) and web push (if `push_subscriptions` exist) — copy "obnavlja se" when `auto_renew = true`, "ističe" when false. A notice that would fall on the period's first day (30 days on a monthly plan) is skipped. The job must run once per Belgrade date (no column records sent notices — see note).
+- **Side effects (in order).** Paddle charges the renewals itself (TC ADR-09, v1.4); this job never starts a charge. The former step 1 "Renewals" is removed.
+  1. **Reconcile** — rows with a `provider_subscription_id`, `status` in (`trialing`, `active`, `cancelled`, `payment_failed`) and `current_period_end <= now() + 1 day`:
+     - read the subscription from Paddle (`GET /subscriptions/{id}`);
+     - apply it exactly as an EP-46 subscription event with `occurred_at` = the response's `updated_at`, through the same database function but without a `payment_webhook_events` row;
+     - this corrects missed or late webhooks. With `PADDLE_API_KEY` empty, or when Paddle fails for a row, that row is skipped with a warning.
+  2. **Expiry** — rows with `status` in (`cancelled`, `payment_failed`, or `trialing`/`active` with `auto_renew = false`, or any status for a user with pending deletion) and `current_period_end <= now()` → `status = expired`. A row with a provider id that is `trialing`/`active` with `auto_renew = true` is never expired here: Paddle decides, and step 1 mirrors it.
+  3. **Notices (BR-09)** — rows with `status` in (`trialing`, `active`, `cancelled`) whose remaining whole days in Europe/Belgrade (`current_period_end` date − today) equal 30, 7 or 1:
+     - email (Resend) and web push (if `push_subscriptions` exist);
+     - copy "obnavlja se" when `auto_renew = true`, "ističe" when false;
+     - a notice that would fall on the period's first day (30 days on a monthly plan) is skipped;
+     - `subscriptions.last_notice_days` records the notice sent, so a re-run sends nothing twice (TC §5.1); EP-46 resets it on renewal.
   4. **Household flag** — for every household whose owner's Premium-active value changed in steps 1–2: `households.read_only = NOT Premium active(owner)` (BR-28). WhatsApp/Viber fallback after expiry needs no write: the dispatch job checks Premium at send time (BR-16).
 - **Budget:** `job`
 
@@ -982,7 +1039,7 @@ Common to every operation below: the §4.1 gates run first (`401 unauthenticated
 - **Response:** `ok` + `Me` (Part B) with the deletion fields updated.
 - **Errors:** `validation_failed` (422) — `confirm` not true (`fields.confirm = "required"`); `account_pending_deletion` (403) — `requestAccountDeletion` while already pending. `cancelAccountDeletion` when nothing is pending is a no-op returning `ok`.
 - **States:** S19 *pending_deletion* after request (and every other protected call now returns `403 account_pending_deletion`); S19 *default* after cancel (E-16).
-- **Side effects:** request → `profiles.deletion_requested_at = now()`, `deletion_due_at = now() + 30 days`; confirmation email (Resend) with the due date. Subscriptions are **not** changed, so a cancel restores the account unchanged (E-16); instead EP-49 charges no renewal while deletion is pending and lets the period expire. Cancel → both columns set to `null`; confirmation email.
+- **Side effects:** request → `profiles.deletion_requested_at = now()`, `deletion_due_at = now() + 30 days`; confirmation email (Resend) with the due date. Our subscription row is not changed directly, so cancelling the deletion restores the account unchanged (E-16). Instead (v1.4), when the running row has a `provider_subscription_id` and `auto_renew = true`, the request first cancels at Paddle at period end and sets `subscriptions.renewal_paused_for_deletion = true`, so Paddle charges no renewal while deletion is pending. If that Paddle call fails, the request fails with `503 payment_provider_unavailable` and nothing is stored. EP-49 lets the period expire. Cancel → both columns set to `null`; for a row with `renewal_paused_for_deletion = true` the scheduled Paddle cancellation is removed (resume renewal) and the flag reset; the following webhooks mirror Paddle's state back (EP-46); confirmation email.
 - **Budget:** `action`
 
 #### EP-52 — Nightly deletion & retention job
@@ -1001,6 +1058,7 @@ Common to every operation below: the §4.1 gates run first (`401 unauthenticated
      - Pets still owned by the user (not shared) are deleted (cascade); their R2 keys (`pets.photo_r2_key`, `attachments.r2_key`, `moment_photos.r2_key`) and the user's `data_exports.r2_key` are queued for removal.
      - Organisation memberships are removed (cascade from `profiles`).
      - Šapa pomoći (v1.3, TC §5.9): the user's `listing_photos.r2_key`s are queued; `listings` (and their photos), `conversations` where the user is a party (and their `messages`) and `user_blocks` cascade; `reports` stay with `reporter_id` / `reported_user_id` set null.
+     - **Paddle (v1.4):** before the rows are deleted, a subscription with a `provider_subscription_id` and a status other than `expired` is cancelled at Paddle immediately. If that call fails, the account is skipped this night (logged) and retried the next night, so a deleted user is never charged again. With `PADDLE_API_KEY` empty (local mode) no call is made.
      - `auth.users` row deleted → `profiles` cascade.
   2. **R2 cleanup** — delete every queued R2 key (from step 1, from pet deletions FR-13, deleted moments and attachments); a key is dequeued only after R2 confirms.
   3. **Delivery purge (NFR-08)** — delete `reminder_deliveries` with `delivered_at < now() − 12 months`.
@@ -2097,8 +2155,8 @@ Fields marked **(session)** are `null` for a Visitor.
 | code | enum `premium_monthly` / `premium_yearly` / `breeder_monthly` / `breeder_yearly` | no | `plans.code` |
 | family | enum `premium` / `breeder` | no | computed from `code` |
 | period | enum `month` / `year` | no | computed from `code` |
-| price | `{ amount_minor: integer, currency: string }` | no | `plans.price_minor`, `plans.currency` |
-| monthly_equivalent | `{ amount_minor: integer, currency: string }` | yes | computed: yearly → round(`price_minor` / 12); null for monthly |
+| price | `{ amount_minor: integer, currency: string }` | yes | `plans.price_minor`, `plans.currency` — EUR before VAT (v1.4); null only when the code has no active `plans` row (CR-22) |
+| monthly_equivalent | `{ amount_minor: integer, currency: string }` | yes | computed: yearly → round(`price_minor` / 12); null for monthly or when `price` is null |
 | trial_days | integer | no | computed: 7 for premium family (BR-07), 0 for breeder |
 
 
@@ -2116,8 +2174,9 @@ Fields marked **(session)** are `null` for a Visitor.
 | days_remaining | integer | yes | computed: whole days from today (Europe/Belgrade) to `current_period_end`, min 0; null when no row |
 | is_active | boolean | no | computed: status in (trialing, active, cancelled) and `current_period_end > now()` |
 | trial_available | boolean | no | computed: `NOT profiles.trial_used` and the family is premium_* (BR-07) |
-| card_brand | string | yes | `subscriptions.card_brand` `[DEFERRED: OQ-11 value set]` |
+| card_brand | string | yes | `subscriptions.card_brand` — Paddle's `method_details.card.type` (e.g. `visa`, `mastercard`, `american_express`, `maestro`) |
 | card_last4 | string | yes | `subscriptions.card_last4` |
+| manage_billing_available | boolean | no | computed (v1.4): `subscriptions.provider_customer_id is not null` — shows "Upravljaj plaćanjem" (EP-89) |
 | over_limits | array | no | computed for owners when `is_active = false`; `[]` otherwise |
 | over_limits[].limit | enum `pets` / `attachments` / `household` / `whatsapp` | no | computed |
 | over_limits[].pet_id | uuid | yes | `pets.id` (for `attachments`) |
@@ -2128,14 +2187,16 @@ Fields marked **(session)** are `null` for a Visitor.
 #### CheckoutSession
 | Field | Type | Null | Source |
 |---|---|---|---|
-| checkout_url | string | no | provider hosted-checkout URL `[DEFERRED: OQ-11]` |
-| provider_session_id | string | no | provider session id `[DEFERRED: OQ-11]` |
+| price_id | string | no | `plans.provider_trial_price_id` when `trial_applied`, else `plans.provider_price_id` (Paddle `pri_…`, v1.4) |
+| customer_email | string | no | `profiles.email` (prefills the Paddle overlay) |
+| custom_data | object `{ user_id: uuid, plan: enum, idempotency_key: uuid }` | no | `auth.uid()`, request `plan`, request `idempotency_key`; Paddle copies it to the subscription and transactions, and EP-46 reads it |
+| environment | enum `sandbox` / `production` | no | `NEXT_PUBLIC_PADDLE_ENV` |
+| client_token | string | no | `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` (public Paddle.js token) |
 | plan | enum (as `subscriptions.plan`) | no | request `plan` (`plans.code`) |
 | trial_applied | boolean | no | computed: BR-07 rule (EP-45) |
-| trial_ends_at | timestamp | yes | computed: now + 7 days when `trial_applied` |
-| amount | money | no | `plans.price_minor`, `plans.currency` |
+| trial_ends_at | timestamp | yes | computed: now + 7 days when `trial_applied` (display only; EP-46 stores Paddle's value) |
+| amount | money | no | `plans.price_minor`, `plans.currency` (EUR, before VAT) |
 | first_charge_at | timestamp | no | computed: `trial_ends_at` when `trial_applied`, else now |
-| expires_at | timestamp | no | provider session expiry `[DEFERRED: OQ-11]` |
 
 #### DataExport
 | Field | Type | Null | Source |
@@ -2734,7 +2795,7 @@ The text before the first `:` is always a §7.2 catalog code; the detail after i
 | `channel_disabled` | 409 | Viber selected while switched off (BR-14b) | E-27 |
 | `trial_already_used` | 409 | User already had the 7-day trial (BR-07) — informational for checkout | E-15 |
 | `subscription_not_active` | 409 | Cancel or change on a subscription that is not active | — |
-| `payment_provider_unavailable` | 503 | Payment provider not configured (OQ-11) | — |
+| `payment_provider_unavailable` | 503 | Payments are not configured (`PADDLE_API_KEY` empty, local mode — EP-45), or a Paddle API call failed (EP-48, EP-51, EP-89) (v1.4) | — |
 | `subscription_already_active` | 409 | Checkout for a plan family the user already has running (use EP-48 to resume renewal) | — |
 | `already_decided` | 409 | Request, inquiry or organisation approval is no longer pending; Šapa pomoći report no longer `open` (EP-86) | — |
 | `listing_type_not_allowed` | 403 | Listing type `need` without membership in an approved shelter (BR-54) (v1.3) | E-29 |
@@ -2798,8 +2859,12 @@ _Not applicable — Technical Constraints §9 rules out real-time updates; membe
 - **Idempotency:** Meta may deliver twice; status updates are last-write-wins by timestamp, and marking done is naturally idempotent.
 - **Response:** always `200` within 5 s once the signature is valid, even if processing fails internally (failures are logged), so Meta does not retry storms.
 
-### 9.2 Inbound — Payment provider (`POST /api/webhooks/payments`) — provider deferred (OQ-11)
-Contracted provider-neutrally in EP-46: signature verification, idempotency by provider event id, events `payment_succeeded`, `payment_failed`, `card_token_saved`. Exact header names and payload fields are filled in when the provider is chosen.
+### 9.2 Inbound — Paddle Billing (`POST /api/webhooks/payments`) — v1.4
+- **Sender:** a Paddle notification destination (type URL, the production or sandbox account per environment) subscribed to `subscription.created`, `subscription.activated`, `subscription.trialing`, `subscription.updated`, `subscription.past_due`, `subscription.paused`, `subscription.canceled`, `transaction.completed`, `transaction.payment_failed`. Its secret key is `PADDLE_WEBHOOK_SECRET` (TC §8.1).
+- **Verification:** header `Paddle-Signature: ts=<unix>;h1=<hex>`; `h1 = HMAC-SHA256(PADDLE_WEBHOOK_SECRET, "<ts>:<raw body>")` over the raw bytes, constant-time compare, any of several `h1` values may match; rejected with `401 invalid_signature` when no `h1` matches or `ts` is more than 5 minutes old (EP-46).
+- **Idempotency and order:** dedupe on `event_id` in `payment_webhook_events` (`provider = 'paddle'`), in the same transaction as the processing; subscription events older than `subscriptions.provider_event_at` change nothing; payment rows dedupe on (`provider_transaction_id`, `result`).
+- **Mapping:** EP-46 (status table and payment rows). Unknown event types → `200`, ignored.
+- **Response:** `200` within Paddle's timeout once processed; `5xx` makes Paddle retry. Missed events are corrected by the nightly reconciliation (EP-49 step 1).
 
 ### 9.3 Signed action links (`GET /api/a/<action>?t=<token>`)
 - Used by email and push "Urađeno" (EP-32) and by invitation/transfer emails (opened in S14).
@@ -2815,7 +2880,7 @@ Contracted provider-neutrally in EP-46: signature verification, idempotency by p
 | Web Push (VAPID) | push reminders; new-message notifications (EP-82, v1.3) | `{ title, body, url, done_url }` (reminders) / `{ title, body, url }` (messages), ≤ 4 KB | 1 retry | `410 Gone` from the push service deletes the `push_subscriptions` row |
 | WhatsApp Cloud API | reminders (utility template + "Urađeno" quick reply), verification code (authentication template) — templates below | template name + language + variables | 2 tries | delivery row `failed`; falls back to email + push for that occurrence |
 | Viber chatbot | reminders when switched on (BR-14b) | — | — | built, inactive in v1 |
-| Payment provider | checkout session, recurring charge | [DEFERRED: OQ-11] | — | — |
+| Paddle Billing API (v1.4) | cancel at period end / resume (EP-48, EP-51), cancel immediately (EP-52, duplicate purchase in EP-46), read a subscription (EP-49 reconciliation), customer portal session (EP-89). Checkout itself runs in the browser through Paddle.js (EP-45). | JSON over `https://api.paddle.com` (sandbox `https://sandbox-api.paddle.com`), `Authorization: Bearer PADDLE_API_KEY` | none inside a request (the caller gets `503 payment_provider_unavailable`); EP-49 and EP-52 retry the next night | logged; EP-49 reconciliation corrects the state |
 | OpenStreetMap Nominatim | geocode partner address (EP-69) | `q=<address, city, Serbia>` with app User-Agent, max 1 request/s | none | `502 geocoding_failed`; Operator enters coordinates manually |
 
 **WhatsApp message templates (v1.2, CR-19)**
@@ -2935,12 +3000,12 @@ Classes used in §5. Budgets are server-side p95 under v1 volumes; they are targ
 | FR-34 Sign in/out, password reset | S16, S28 | EP-42 |
 | FR-35 Language | S15, S18 | EP-41, EP-43 |
 | FR-36 Free limits | S01, S17 | EP-43 (`entitlements`), DB triggers |
-| FR-37 Subscribe with trial | S17 | EP-44, EP-45, EP-46 |
-| FR-38 Cancel | S18 | EP-48 |
+| FR-37 Subscribe with trial | S17 | EP-44, EP-45, EP-46, EP-49 (reconciliation) |
+| FR-38 Cancel | S18 | EP-48, EP-89 |
 | FR-39 Downgrade | S18 | EP-47, EP-49 |
 | FR-40 Delete account | S19 | EP-51, EP-52 |
 | FR-41 Data download | S19 | EP-50 |
-| FR-42 Shelter approval, breeder plan | S20, S26 | EP-53, EP-68, EP-45 |
+| FR-42 Shelter approval, breeder plan | S17 (breeder variant), S20, S26 | EP-53, EP-68, EP-44, EP-45, EP-46, EP-89 |
 | FR-43 Team | S20, S14 | EP-53, EP-56, EP-39, EP-40 |
 | FR-44 Unlimited animals | S20 | EP-54, EP-02 |
 | FR-45 Intake & status | S20 | EP-55 |
@@ -2972,7 +3037,7 @@ Classes used in §5. Budgets are server-side p95 under v1 volumes; they are targ
 | FR-71 Operator moderation | S26 | EP-86 |
 | FR-72 Shelter donation info | S29 | EP-88, EP-53 (`Organisation.donation`) |
 
-**Reverse checks.** Every EP-01 … EP-88 appears above with a caller (a screen, an external sender in §9, or a job — EP-33, EP-49, EP-52, EP-87). Every screen S01 … S37 is supplied by at least one EP, except the static legal pages S30 and S31 (Release Criterion 4; no data — S31's terms version is the `TERMS_VERSION` constant); S09, S23, S32, S33 and S37 are public (EP-24, EP-62, EP-73, EP-74, EP-79); S16 and S28 are served by Supabase Auth (EP-42). New S32 … S37: S32 ← EP-73, EP-43; S33 ← EP-74, EP-78, EP-82, EP-84, EP-85, EP-77; S34 ← EP-75, EP-13, EP-74, EP-77, EP-67, EP-43; S35 ← EP-76, EP-77, EP-15; S36 ← EP-80, EP-81, EP-82, EP-83, EP-84, EP-85; S37 ← EP-79, EP-84, EP-85. Existing screens extended: S12 ← EP-28 (`message`); S26 ← EP-86; S29 ← EP-53, EP-88.
+**Reverse checks.** Every EP-01 … EP-89 appears above with a caller (a screen, an external sender in §9, or a job — EP-33, EP-49, EP-52, EP-87). Every screen S01 … S37 is supplied by at least one EP, except the static legal pages S30 and S31 (Release Criterion 4; no data — S31's terms version is the `TERMS_VERSION` constant); S09, S23, S32, S33 and S37 are public (EP-24, EP-62, EP-73, EP-74, EP-79); S16 and S28 are served by Supabase Auth (EP-42). New S32 … S37: S32 ← EP-73, EP-43; S33 ← EP-74, EP-78, EP-82, EP-84, EP-85, EP-77; S34 ← EP-75, EP-13, EP-74, EP-77, EP-67, EP-43; S35 ← EP-76, EP-77, EP-15; S36 ← EP-80, EP-81, EP-82, EP-83, EP-84, EP-85; S37 ← EP-79, EP-84, EP-85. Existing screens extended: S12 ← EP-28 (`message`); S26 ← EP-86; S29 ← EP-53, EP-88.
 
 ---
 
@@ -2986,7 +3051,7 @@ Classes used in §5. Budgets are server-side p95 under v1 volumes; they are targ
 | Real-time subscriptions | TC §9. |
 | Bulk import/export beyond the personal archive | Not in the PRD. |
 | Client SDK or OpenAPI file | This document is the contract; the build uses typed Supabase clients and server-action types. |
-| Payment-provider specifics | Deferred (OQ-11). |
+| Our own card form, card storage, renewal charging, dunning or VAT calculation | Paddle (merchant of record) owns them (TC ADR-09, v1.4). |
 | Real-time chat, typing indicators, presence | NFR-11, TC §9 — messages appear on the next page load (v1.3). |
 | Images, files or links as message attachments; editing or deleting sent messages | FR-68: text only; TC `messages` has no `updated_at` (v1.3). |
 | Payments for donations or sales | BR-58, TC §9 — EP-78 only shows donation info (v1.3). |
@@ -3002,7 +3067,7 @@ Classes used in §5. Budgets are server-side p95 under v1 volumes; they are targ
 | RISK-18 | Business rules split between DB triggers and server actions drift apart. | Medium | Rules live only in the database; server actions call the same RPCs and never re-implement limits. |
 | RISK-19 | Email security scanners open the "Urađeno" GET link and mark reminders done. | Medium | Ignore `HEAD` and known scanner user agents; the link opens a page with a one-click confirm if the request has no browser cookies. |
 | RISK-20 | EP-02 (full pet record) grows heavy for old pets with many entries and attachments. | Low | Limit embedded lists to the latest 50 per type with per-tab paging if needed. |
-| RISK-21 | Payment-provider contract (EP-45, EP-46, EP-49) may need reshaping once the provider is chosen. | Medium | Provider-neutral event names; provider specifics isolated in one adapter. |
+| RISK-21 | v1.4 (provider chosen: Paddle). Paddle changes its webhook payloads or API, or delivers events late, twice or out of order, and our mirror of the subscription drifts from Paddle's. | Medium | All Paddle specifics in `lib/integrations/paddle.ts`; dedupe on `event_id`, order by `occurred_at` (`provider_event_at`); nightly reconciliation (EP-49 step 1); unknown event types are ignored; tests use self-signed payloads shaped like Paddle's documented events. |
 | RISK-22 | The single dispatch route is reachable from the internet. | Medium | Secret header + constant-time compare; rejects without it; rate-limited at the edge. |
 | RISK-33 | The public, uncached listing routes (EP-73, EP-74, EP-79) are scraped or hammered, and each request signs up to 50 R2 URLs and queries the database (ADR-18 forbids edge caching). | Medium | Page size ≤ 50; one signing call per photo with no R2 round-trip (presigning is local); monitor Worker requests and Supabase load; add an edge rate limit per IP if abuse appears. |
 | RISK-34 | One user sends many messages and the `new_message` email per message multiplies Resend volume (compounds TC RISK-31). | Medium | 30 messages / hour / user (§11); recipients can switch email off in S12; if volume grows, coalesce to one email per conversation while messages stay unread (contract change). |
@@ -3022,10 +3087,10 @@ _No assumptions were recorded at the owner's request. Defaults proposed while wr
 | ID | Origin | Question | Blocking for Build Plan? |
 |---|---|---|---|
 | OQ-01 | Brief | Metric targets. | No |
-| OQ-03 | Brief | Prices (data in `plans`). | No |
+| OQ-03 | Brief | ✅ Resolved (v1.4, owner, 2026-10-29): EUR, VAT added by Paddle — `premium_monthly` €3.00, `premium_yearly` €30.00, `breeder_monthly` €11.00, `breeder_yearly` €110.00 (PRD BR-62). | — |
 | OQ-04 | Brief | Partner pricing. | No |
 | OQ-10 | Design | Approve proposed composites. | No |
-| OQ-11 | API | `[NEEDS CLARIFICATION]` Payment provider (Monri deferred). Until answered, EP-45 returns `503 payment_provider_unavailable` and the provider parts of EP-46/EP-49 stay unbuilt. | Yes — payment steps only |
+| OQ-11 | API | ✅ Resolved (v1.4, owner, 2026-10-29): Paddle Billing as merchant of record (TC ADR-09); EP-45, EP-46, EP-48, EP-49, EP-51, EP-52, EP-89, §9.2, §9.4. | — |
 | OQ-12 | API | ✅ Resolved (v1.1): defaults confirmed, recorded as PRD BR-47 … BR-52. | — |
 | OQ-13 | API | ✅ Resolved (v1.1): added in TC v1.4. | — |
 | OQ-14 | API | ✅ Resolved (v1.1): S28, S11 edit variant, S29 + EP-72. | — |
@@ -3055,6 +3120,9 @@ _No assumptions were recorded at the owner's request. Defaults proposed while wr
 | Moderation item | One report as the Operator sees it in S26 (`ModerationItem`). |
 | Restriction | A hidden listing or a suspended user, listed for restore in S26 (`Restriction`). |
 | Suspension gate | The `403 marketplace_suspended` check on listing writes and message sends (BR-60). |
+| Paddle price id | The Paddle catalogue price (`pri_…`) a plan maps to: `plans.provider_price_id`, plus `provider_trial_price_id` with a 7-day trial for Premium (v1.4). |
+| Paddle.js overlay | Paddle's checkout opened over S17 in the browser from the `CheckoutSession` (EP-45, v1.4). |
+| Billing portal link | A short-lived Paddle customer-portal URL for card updates, invoices and cancellation (EP-89, v1.4). |
 
 ---
 
@@ -3062,3 +3130,7 @@ _No assumptions were recorded at the owner's request. Defaults proposed while wr
 
 - WhatsApp Business Platform pricing and webhooks — https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing
 - Nominatim usage policy (1 request/s, identifying User-Agent) — https://operations.osmfoundation.org/policies/nominatim/
+- Paddle Billing webhooks and signature verification — https://developer.paddle.com/webhooks/signature-verification
+- Paddle Billing event types — https://developer.paddle.com/webhooks/overview
+- Paddle.js `Checkout.open` — https://developer.paddle.com/paddlejs/methods/paddle-checkout-open
+- Paddle Billing API (subscriptions, customer portal sessions) — https://developer.paddle.com/api-reference/overview

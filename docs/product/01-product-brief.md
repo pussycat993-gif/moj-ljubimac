@@ -6,8 +6,8 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 01 — Product Brief |
-| Version | 1.7 |
-| Date | 2026-10-19 |
+| Version | 1.8 |
+| Date | 2026-10-29 |
 | Author | Keti Vrtunić (interview facilitated by "Đura", Senior PM persona) |
 | Status | Draft — awaiting owner review |
 
@@ -23,6 +23,7 @@
 | 1.5 | 2026-10-19 | Change requests from Technical Constraints: Viber delivery is built but switched on only once Premium revenue covers its fixed monthly cost; public launch waits for a registered business and a domestic card-processing contract. |
 | 1.6 | 2026-10-19 | Pet hotels / pet boarding added as a fourth partner type (CAP-07). |
 | 1.7 | 2026-10-19 | New capability CAP-08 "Šapa pomoći" (community listings: shelter needs with donation info, giving, selling, seeking; 1:1 messaging; report, block, Operator moderation). Persona P6, ASM-10, RISK-29 and RISK-30, glossary terms added; scope warning updated to eight themes. |
+| 1.8 | 2026-10-29 | Owner decisions: OQ-03 resolved — plan prices in EUR, VAT added by the payment provider: Premium €3.00 / month or €30.00 / year (one-time 7-day trial), Breeder €11.00 / month or €110.00 / year (no trial). Subscriptions are sold through Paddle Billing as merchant of record (Technical Constraints OQ-11, resolved); the owner registers as a sole proprietor for payouts. §13 payments constraint updated. |
 
 ---
 
@@ -222,7 +223,7 @@ v1 contains eight capability themes. Each is a candidate EPIC for the PRD.
 - **Team:** one person (the owner) designs, builds, operates, sells to partners, and supports users.
 - **Timeline:** no fixed deadline.
 - **Budget:** running costs up to approximately €20 per month. Viber delivery carries a fixed monthly fee far above this budget, so it is switched on only once Premium revenue covers it.
-- **Payments:** subscriptions are charged through a domestic Serbian card processor; this requires a registered business and a bank contract, and the public launch waits for both.
+- **Payments:** subscriptions are sold through Paddle Billing as merchant of record: Paddle charges the card, adds VAT and pays out to the owner's sole-proprietor business. Plan money is in EUR because RSD is not a Paddle currency. The public launch waits for the sole-proprietor registration and Paddle account approval.
 - **Market and language:** Serbia; interface in Serbian (Latin script) and English from v1.
 - **Legal:** must comply with Serbian personal data protection law and with messaging platform consent rules; users must be able to delete their account and data.
 
@@ -276,7 +277,7 @@ v1 contains eight capability themes. Each is a candidate EPIC for the PRD.
 |---|---|---|---|
 | OQ-01 | `[NEEDS CLARIFICATION]` Confirm proposed targets: 300 active reminded pets, 5 paying partners, 3 active shelters, 60% of pets with a vaccination entry — all at 6 months. | Keti | No |
 | OQ-02 | ✅ Resolved (v1.1): email free for all; WhatsApp and Viber Premium-only. | Keti | — |
-| OQ-03 | `[NEEDS CLARIFICATION]` Final Premium pricing for owners and pricing for Breeder accounts (earlier 399 / 2,990 RSD were trial figures). | Keti | No |
+| OQ-03 | ✅ Resolved (v1.8, owner, 2026-10-29): prices in EUR, VAT added by Paddle — Premium €3.00 / month or €30.00 / year with a one-time 7-day trial; Breeder €11.00 / month or €110.00 / year, no trial. | Keti | — |
 | OQ-04 | `[NEEDS CLARIFICATION]` Partner promotion pricing and placement rules (e.g., by distance, by city). | Keti | No |
 | OQ-05 | ✅ Resolved (v1.4): Serbian (Latin script) and English from v1. | Keti | — |
 

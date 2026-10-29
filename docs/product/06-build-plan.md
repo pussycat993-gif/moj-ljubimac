@@ -6,10 +6,10 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 06 — Build Plan |
-| Version | 1.2 |
-| Date | 2026-10-19 |
+| Version | 1.3 |
+| Date | 2026-10-29 |
 | Author | Keti Vrtunić (planned with "Nindza Tigar", Build Lead persona) |
-| Traces to | Brief v1.7 · PRD v1.7 · Technical Constraints v1.7 · Design System v1.6 (37 screens) · API Contract v1.3 |
+| Traces to | Brief v1.8 · PRD v1.8 · Technical Constraints v1.8 · Design System v1.7 (37 screens) · API Contract v1.4 |
 | Status | Draft — no step executed yet |
 
 **Change log**
@@ -18,13 +18,14 @@
 |---|---|---|
 | 1.0 | 2026-10-19 | Initial plan: 32 steps, 1 blocked (Step 31 — payments). |
 | 1.1 | 2026-10-19 | Change requests CR-01 … CR-23 resolved upstream (PRD v1.6, TC v1.6, Design v1.5, API v1.2). Every pre-flight/blocker check that waited on a CR is replaced by a concrete instruction citing the fixed section (stop clauses kept). Preview deployments removed (TC ADR-10); Step 03 CI runs `supabase db push` on `main` before deploy. Step 04 adds `idempotency_keys`, `rate_limit_counters` and the cities seed (`scripts/fetch-cities.*` → `supabase/seed/cities.sql`, TC ADR-11). Step 08 schedules nightly occurrence generation. Step 11 creates the `lib/server/` foundation (TC ADR-16). Step 12 adds S30 `/privatnost`, S31 `/uslovi`, `lib/legal.ts` (`TERMS_VERSION`) and links registration to the terms. Step 17 adds the S10 → S11 edit link and the count badge; Step 18 the S12 "Uskoro dostupno" WhatsApp state; Step 23 S17 in the payments-coming-soon state with EP-44 and the provider-neutral EP-45 stub; Step 24 the S14 team-invitation variant; Step 27 the S03 vet suggestion block. Step 30 split into Step 30 (nightly jobs) and Step 30a (backups and data export archives). Dependencies fixed for Steps 12, 23, 24, 27, 28, 31, 32. New OQ-15 locks only Step 32 checklist item 4. New CR-24 (copy for emails that have no Design §9.1 template). Coverage matrix regenerated: 60 FRs, 72 EPs, 31 screens, 46 tables. |
+| 1.3 | 2026-10-29 | Step D1 (docs only): owner decisions OQ-11 (Paddle Billing as merchant of record) and OQ-03 (EUR prices, VAT added by Paddle) applied upstream (Brief v1.8, PRD v1.8 BR-62, TC v1.8 ADR-09, Design v1.7, API v1.4 incl. new EP-89). Step 31 unlocked: the lock notice is replaced by a complete step (migration for the neutral provider columns, provider price ids and seeded EUR prices; `lib/integrations/paddle.ts`; EP-45 Paddle.js overlay; EP-46 webhook; EP-48 / EP-49 / EP-51 / EP-52 Paddle parts; EP-89 S18 portal link; S17 breeder variant; local mode with empty `PADDLE_*`). §2 carried-forward OQs, §3 Step 31 row (⬜, nothing blocks it), §7, §9 coverage (EP-48, EP-51, EP-52, EP-89, S18, S20, FR-38, tables) and §12 updated; operation count 89. |
 | 1.2 | 2026-10-19 | CAP-08 "Šapa pomoći" (Brief v1.7, PRD v1.7 FR-61 … FR-72, TC v1.7 §5.10, Design v1.6 S32 … S37, API v1.3 EP-73 … EP-88). Three steps appended between Step 28 and Step 29: Step 28a (schema: six tables, CAP-08 columns, `message` preference, triggers, RLS), Step 28b (listings, public pages S32/S33/S37, S34, S35, S29 *Donacije*, EP-73 … EP-79, EP-87 daily job, EP-88, EP-13/EP-15 `listing_photo`), Step 28c (messaging S36, S12 *Poruke* card, report/block, S26 *Moderacija*, EP-80 … EP-86, new-message email + push, 30 messages/hour). Steps 01 … 28 unchanged; new ordering invariant 11 says where CAP-08 parts of shared contracts are built. Step 32 depends on Step 28c, quotes Release Criteria 1 and 6 as revised in PRD v1.7 and adds the e2e flow "give away an item and message the author" (`e2e/sapa-pomoci.spec.ts`). Carried-forward OQ-16 and OQ-17 (non-blocking; interim mappings of API v1.3). New CR-27 (route group for pages shown in both a signed-in and the public shell) and CR-28 (TC §5.10 error-code wording for `medicine_care`), both non-blocking. RISK-37 … RISK-39. Coverage matrix regenerated: 72 FRs, 88 EPs, 37 screens, 52 tables. |
 
 ---
 
 ## 1. Executive Summary
 
-The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a), each one coding session: foundation (repository, Supabase, CI with production migrations on `main`), the database in six domain slices with every table's access rules and Free limits landing together with its tests, the design foundation, authentication and the shared server utilities, then features in dependency order — registration with the legal pages, pets and the health record, reminders and their delivery (the north-star path, deliberately early), care log and moments, household, subscription status and account data control (including the Premium page before payments), organisations, partners and admin — then the Šapa pomoći community board in three steps (its schema, the listings with public pages and donation info, then messaging, report/block and moderation), followed by WhatsApp, the nightly jobs, backups and data export archives, payments, and release verification. One step is blocked: Step 31 (payments and pricing) waits for OQ-11 (payment provider) and OQ-03 (prices). Step 32 runs, but its Release Criterion 4 item stays open until OQ-15 (legal texts) is answered. OQ-16 and OQ-17 (Šapa pomoći) are open but non-blocking: Steps 28a–28c apply the PRD default and the interim mappings defined in API v1.3. Traces to Brief v1.7, PRD v1.7, Technical Constraints v1.7, Design System v1.6, API Contract v1.3.
+The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a), each one coding session: foundation (repository, Supabase, CI with production migrations on `main`), the database in six domain slices with every table's access rules and Free limits landing together with its tests, the design foundation, authentication and the shared server utilities, then features in dependency order — registration with the legal pages, pets and the health record, reminders and their delivery (the north-star path, deliberately early), care log and moments, household, subscription status and account data control (including the Premium page before payments), organisations, partners and admin — then the Šapa pomoći community board in three steps (its schema, the listings with public pages and donation info, then messaging, report/block and moderation), followed by WhatsApp, the nightly jobs, backups and data export archives, payments, and release verification. No step is blocked: Step 31 (payments and pricing) was unlocked on 2026-10-29, when the owner settled OQ-11 (Paddle Billing) and OQ-03 (EUR prices). Step 32 runs, but its Release Criterion 4 item stays open until OQ-15 (legal texts) is answered. OQ-16 and OQ-17 (Šapa pomoći) are open but non-blocking: Steps 28a–28c apply the PRD default and the interim mappings defined in API v1.3. Traces to Brief v1.7, PRD v1.7, Technical Constraints v1.7, Design System v1.6, API Contract v1.3.
 
 ---
 
@@ -33,7 +34,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 - **Stack (TC v1.7):** Next.js 16.x App Router + TypeScript (ADR-01) on Cloudflare Workers via OpenNext (ADR-03), Supabase Postgres/Auth/pg_cron → `pg_net` with Vault secrets (ADR-02/04/06, TC §8), Cloudflare R2 with `aws4fetch` (ADR-07, ADR-17), Resend (ADR-08), Web Push with `@pushforge/builder` and `public/sw.js` (ADR-05, ADR-17), WhatsApp Cloud API (templates in API §9.4), Nominatim (ADR-11), browser-side PDF with `@react-pdf/renderer` (ADR-12), GitHub Actions backups and in-app data export archives with `fflate` (ADR-13), shadcn/ui + Tailwind v4 + lucide (ADR-14), Vitest + pgTAP + Playwright with `@axe-core/playwright` (ADR-15), layout per ADR-16 (incl. `lib/server/`, `scripts/`, `lib/legal.ts`), approved libraries only (ADR-17), no edge caching of public pages (ADR-18), no preview deployments (ADR-10).
 - **Environment variables and secrets:** exactly the names in TC §8.1 (application and GitHub Actions secrets).
 - **Repository at plan time:** `pussycat993-gif/moj-ljubimac` contains one commit with `docs/`, `CLAUDE.md` and `README.md` only; Step 01 creates the application.
-- **Scale:** 72 FRs (FR-01 … FR-72), 88 operations (EP-01 … EP-88), 37 screens (S01 … S37), 52 tables (TC §5: 34 PRD entities + 18 technical tables, per TC §5.8; v1.7 adds the six Šapa pomoći tables of TC §5.10).
+- **Scale:** 72 FRs (FR-01 … FR-72), 89 operations (EP-01 … EP-89), 37 screens (S01 … S37), 52 tables (TC §5: 34 PRD entities + 18 technical tables, per TC §5.8; v1.7 adds the six Šapa pomoći tables of TC §5.10).
 - **Team and deadline:** one builder, no deadline → a single serial track.
 - **Non-goals steps must respect (TC §9, API §14):** no microservices or separate API server, no message queue, no real-time, no offline mode, no staging and no preview deployments, no edge caching of public pages, no external analytics, no Apple sign-in, no card data stored, no public API, no API versioning.
 - **Mockups:** `docs/product/04-design/screens/*.tsx` and `04-design/components/*.tsx` are the starting material for every screen step; they use inline mock data and must be wired to real data, not redesigned. Each route is a server `page.tsx` plus a colocated `*-client.tsx` (or the screen file name a step names) ported from its mockup (TC ADR-16).
@@ -44,10 +45,10 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | ID | Origin | Effect on this plan |
 |---|---|---|
 | OQ-01 | Brief | None — targets |
-| OQ-03 | Brief | 🔒 Step 31 (plan prices, S17 purchase state) |
+| OQ-03 | Brief | ✅ Resolved 2026-10-29 (EUR prices, PRD BR-62) — Step 31 seeds them |
 | OQ-04 | Brief | None — partner billing is outside the product |
 | OQ-10 | Design | None — proposed composites stay out until approved; steps use only approved composites |
-| OQ-11 | API | 🔒 Step 31 (provider checkout, webhook, renewal charge) |
+| OQ-11 | API | ✅ Resolved 2026-10-29 (Paddle Billing, TC ADR-09) — Step 31 builds it |
 | OQ-15 | Design | Step 32 checklist item 4 (Release Criterion 4) stays open; nothing else is locked |
 | OQ-16 | PRD (v1.7) | None locked — Steps 28a and 28b apply the PRD default (a breeder plan does not lift the 3-active-listing limit) |
 | OQ-17 | API (v1.3) | None locked — Steps 28a–28c add no proposed column and use the API v1.3 interim mappings |
@@ -94,8 +95,8 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 29 | WhatsApp channel | ✅ | 19 | — | 2026-10-29 |
 | 30 | Nightly jobs | ✅ | 23, 25, 29 | — | 2026-10-29 |
 | 30a | Backups & data export archives | ✅ | 30, 23 | — | 2026-10-29 |
-| 31 | Payments & pricing | 🔒 | 30a | OQ-11, OQ-03 | |
-| 32 | Release verification | ⬜ | 30a, 28c (31 when unblocked) | — (checklist item 4 open until OQ-15) | |
+| 31 | Payments & pricing | ⬜ | 30a | — (OQ-11, OQ-03 resolved 2026-10-29) | |
+| 32 | Release verification | ⬜ | 30a, 28c, 31 | — (checklist item 4 open until OQ-15) | |
 
 ---
 
@@ -108,7 +109,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 5. An operation's data access lands in the same step as the first screen that consumes it, ported from its mockup.
 6. Reminders come right after the pet record (17–19) because they are the north-star path; this departs from PRD epic order on purpose.
 7. Integrations come after the surfaces they feed (19 email/push, 29 WhatsApp, 30 nightly jobs, 30a backups and data export archives).
-8. Steps blocked by an open question get no prompt until it is answered (31). An open question that affects only one checklist item of a step keeps that item open, not the step (32 item 4, OQ-15).
+8. Steps blocked by an open question get no prompt until it is answered (Step 31 was, until OQ-11 and OQ-03 were answered on 2026-10-29). An open question that affects only one checklist item of a step keeps that item open, not the step (32 item 4, OQ-15).
 9. Release verification is last (32).
 10. A step inserted later gets a suffix (`14a`, `28a`, `30a`), never a renumbering; a suffixed step runs after its base number and before the next number.
 11. (v1.2) The Šapa pomoći additions that upstream v1.3/v1.7 made to contracts earlier steps already own are built by Steps 28a–28c, not by those earlier steps: the CAP-08 columns, the `preference_type` value `message` and its default row (28a — added there only if Step 04, 05 or 08 did not already create them from TC v1.7), `Me.display_name` and `Me.marketplace` in `rpc:get_me` and `Organisation.donation` in `rpc:get_my_organisation` (28b), EP-13 / EP-15 `listing_photo` (28b), the composites `ListingTypeTag` and `ListingCard` (28b) and `ReportDialog` / `BlockDialog` (28c), the *Šapa pomoći* nav item (from the v1.6 `shells.tsx`, checked in 28b), the *Donacije* card of S29 (28b), the seventh `get_reminder_settings` row and the S12 *Poruke* card (28c), the S26 *Moderacija* tab and the *Poruke* / *Moderacija* badges (28c). An earlier step that meets one of these in a v1.3/v1.6/v1.7 section builds only its own part, leaves the Šapa pomoći part out, and records that in its Session log — it does not stop for it.
@@ -161,11 +162,9 @@ The cost of this policy is real (test volume grows with 72 requirements) and is 
 
 | Step | Blocked by | Origin | Question | Who answers | Unlocks |
 |---|---|---|---|---|---|
-| 31 Payments & pricing | OQ-11 | API | Which payment provider (Monri deferred)? | Keti (owner) | Checkout (EP-45 provider part), provider webhook (EP-46), renewal charging (EP-49 step 1), S17 purchase state |
-| 31 Payments & pricing | OQ-03 | Brief | Premium monthly/yearly and breeder plan prices | Keti (owner) | Seeding `plans` with prices, prices on S17 |
 | 32 Release verification — checklist item 4 only | OQ-15 | Design | Privacy policy and terms of use texts for S30 and S31, in Serbian and English | Keti (owner, with a lawyer) | Release Criterion 4 can pass once the placeholders on S30/S31 are replaced; every other Step 32 check runs now |
 
-Until Step 31 runs, Premium can only be granted for testing through seed data in the local database (Step 04 seeds a test Premium user); production users stay on Free, and S17 shows the "Plaćanje uskoro dostupno" state (Step 23, API EP-44/EP-45).
+Step 31 was unblocked on 2026-10-29: OQ-11 → Paddle Billing (TC ADR-09 v1.8) and OQ-03 → EUR prices (PRD BR-62). Until Step 31 runs, and locally whenever the `PADDLE_*` variables are empty, Premium can only be granted for testing through seed data in the local database (Step 04 seeds a test Premium user); production users stay on Free, and S17 shows the "Plaćanje uskoro dostupno" state (Step 23, API EP-44/EP-45).
 
 ---
 
@@ -6288,20 +6287,39 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 
 | | |
 |---|---|
-| **Status** | 🔒 blocked |
-| **Outcome** | Users can start Premium (with the one-time 7-day trial) or a breeder plan, pay through the chosen provider, and renew automatically; S17 shows real prices. |
-| **Implements** | FR-37, FR-42 (breeder plan); EP-44 (priced plans), EP-45 (provider checkout session — validation and the `503` stub exist from Step 23), EP-46, EP-49 (provider part — step 1 renewals); S17 `/premium` purchase state (the *payments_coming_soon* state exists from Step 23); plan seeding with prices; tables `plans` (price data), `subscriptions` (provider columns), `subscription_payments`, `payment_webhook_events`; BR-07, BR-11; ADR-09 |
+| **Status** | ⬜ not started |
+| **Outcome** | Owners can start Premium (with the one-time 7-day trial) and breeder Admins a breeder plan, and pay in EUR through the Paddle Billing overlay. Paddle's signed webhooks keep `subscriptions` in sync: trial, activation, renewal, payment failure, cancellation and expiry. S17 shows the real prices (3 € / 30 €, breeder 11 € / 110 €), and S18 links to the Paddle customer portal. With empty `PADDLE_*` variables everything stays in the *Plaćanje uskoro dostupno* local mode. |
+| **Implements** | FR-37, FR-42 (breeder plan), FR-38 (cancel / resume through Paddle); EP-44 (EUR prices), EP-45 (Paddle checkout — validation exists from Step 23), EP-46, EP-48 (Paddle cancel / resume), EP-49 (step 1 reconciliation; steps 2–4 exist from Step 30), EP-51 / EP-52 (Paddle cancellation on account deletion), EP-89; S17 `/premium` purchase state and breeder variant, S18 *Upravljaj plaćanjem*, S20 breeder banner link; BR-07, BR-08, BR-11, BR-51, BR-62; E-15, E-21; ADR-09 (TC v1.8), ADR-17 (`@paddle/paddle-js`); TC §5.1, §5.7 (`payment_webhook_events`), §8.1 (`PADDLE_*`); tables `plans` (EUR price rows, provider price ids), `subscriptions` (provider columns), `subscription_payments`, `payment_webhook_events`, `profiles` (`trial_used`) |
 | **Depends on** | Step 30a |
-| **Blocked by** | **OQ-11** (API) — which payment provider replaces the deferred Monri choice; **OQ-03** (Brief) — Premium monthly/yearly and breeder plan prices |
+| **Blocked by** | — (OQ-11 and OQ-03 resolved by the owner on 2026-10-29) |
 | **Track** | single |
 
-**Read before starting:** to be defined when unblocked (at minimum: PRD §6 FR-37, FR-42, §8 BR-07, BR-08, BR-11, §9 E-15, E-21; TC ADR-09, §5.1, §5.7 `payment_webhook_events`; Design §11–§12 S17; API §5.5 EP-44, §5.6 EP-45, EP-46, EP-49, §9.2, §9.4 payment row — each as revised after OQ-11; the Step 23 and Step 30 session logs for the EP-45 stub, S17 and the billing-nightly route).
+**Read before starting:**
+- `docs/product/02-prd.md` §6 FR-37, FR-38, FR-42; §8 BR-07, BR-08, BR-10, BR-11, BR-28, BR-51, BR-62; §9 E-15, E-16, E-21.
+- `docs/product/03-technical-constraints.md` ADR-09 (v1.8), ADR-15, ADR-16, ADR-17; §5.1 (`subscriptions`, `subscription_payments`, `plans`), §5.7 (`payment_webhook_events`, `idempotency_keys`), §5.7.1; §8.1; §9; §10 RISK-16.
+- `docs/product/04-design-system.md` §9 (plan-price format), §12 S17 (incl. the breeder variant), S18, S20.
+- `docs/product/05-api-integration-contract.md` §3.3, §3.5, §5.5 EP-44, §5.6 (intro incl. "Payment provider") EP-45, EP-46, EP-47, EP-48, EP-89, EP-49, EP-51, EP-52; §6 Plan, Subscription, CheckoutSession; §7.2; §9.2; §9.4 (Paddle row).
+- Session logs of Steps 04, 05, 23, 24, 30 and 30a (billing migration, the household read-only trigger, `lib/actions/checkout.ts` / `subscription.ts` / `data-control.ts`, S17 / S18, the breeder banner, the billing-nightly and retention-nightly routes, the archive builder).
 
-**Files this step may touch:** to be defined when unblocked.
+**Files this step may touch:**
+- `supabase/migrations/*_payments.sql` (new)
+- `supabase/tests/payments.test.sql` (new); `supabase/tests/billing.test.sql`, `public_plans.test.sql`, `subscription_read.test.sql`, `billing_job.test.sql` (updated to the new columns and the seeded prices only)
+- `lib/integrations/paddle.ts` (new)
+- `app/api/webhooks/payments/route.ts` (new)
+- `lib/actions/checkout.ts`, `lib/actions/subscription.ts` (add `getBillingPortalUrl`, EP-89; Paddle call in `setAutoRenew`), `lib/actions/data-control.ts` (EP-51 Paddle calls only)
+- `app/api/internal/billing-nightly/route.ts` (step 1 reconciliation and the response field only), `app/api/internal/retention-nightly/route.ts` (the EP-52 Paddle cancellation only)
+- `app/api/internal/exports/build-archive.ts` (the dropped `monri_*` keys → the provider ids only)
+- `app/(app)/premium/page.tsx`, `app/(app)/premium/premium-client.tsx`; `app/(app)/profil/profile-client.tsx`; `app/(org)/organizacija/org-animals-screen.tsx` (the breeder banner link only); `components/app/read-only-banner.tsx` (optional `action` prop only)
+- `lib/i18n/sr.ts`, `lib/i18n/en.ts`; the generated types file under `lib/supabase/` (via `npm run db:types` only)
+- `package.json`, `package-lock.json` (`@paddle/paddle-js` only)
+- `.env.example`, `tests/tooling/env-example.test.ts` (the four `PADDLE_*` names only); `README.md` (new "Payments (Paddle)" section only)
+- `docs/product/04-design/screens/premium.tsx`, `docs/product/04-design/screens/profile.tsx` (price constants and the payment-note copy only)
+- `tests/integrations/paddle.test.ts`, `tests/payments/payments-webhook.test.ts` (new); `tests/premium/start-checkout.test.ts`, `tests/premium/premium-screen.test.tsx`, `tests/subscription/set-auto-renew.test.ts`, `tests/subscription/profile-subscription-card.test.tsx`, `tests/subscription/billing-portal.test.ts` (new), `tests/data-control/account-deletion.test.ts`, `tests/jobs/billing-nightly.test.ts`, `tests/jobs/retention-nightly.test.ts`, `tests/jobs/data-export-builder.test.ts`, `tests/organisation/org-animals-screen.test.tsx`
+- `docs/product/06-build-plan.md` (§3 row for Step 31 and its session log only)
 
-**Out of bounds:** everything until unblocked.
+**Out of bounds:** any real call to Paddle (tests mock `fetch`; webhook tests sign their own payloads); storing card data or a payment token (TC §9); our own renewal charging, dunning emails or VAT calculation (Paddle owns them, API §14); a Paddle Node SDK or any package other than `@paddle/paddle-js` (ADR-17); provider price ids or secrets in a migration or in code (they are set per environment — see the README section); `app_settings` (it holds Operator switches only); the expiry, notice and household-flag logic of EP-49 steps 2–4 (Step 30 — unchanged); the Šapa pomoći tables and their RSD prices; OQ-16 / OQ-17 columns; Release verification (Step 32).
 
-**Acceptance criteria:** (PRD §6, verbatim — settled; implementation waits for the locks)
+**Acceptance criteria:** (PRD §6, verbatim)
 
 FR-37 — Subscribe to Premium with a trial
 - Given a user who never had a trial, When they start Premium, Then they get 7 days free before the first charge.
@@ -6310,24 +6328,131 @@ FR-37 — Subscribe to Premium with a trial
 FR-42 — Shelter approval and breeder plan *(breeder plan)*
 - Given a Breeder, Then breeder features require an active breeder plan (separate price).
 
-**Tests to ship:** to be defined when unblocked.
+Derived (PRD §8–§9, TC ADR-09, API EP-44 – EP-49, EP-51, EP-52, EP-89):
+- BR-62 / EP-44: `v_public_plans` returns `premium_monthly` 300 EUR, `premium_yearly` 3000 EUR, `breeder_monthly` 1100 EUR, `breeder_yearly` 11000 EUR; S17 renders *3 € mesečno* / *30 € godišnje (2 meseca gratis)* (breeder *11 € mesečno* / *110 € godišnje (2 meseca gratis)*), and en-GB *€3 a month* / *€30 a year (2 months free)*.
+- BR-07 / E-15: a user with `trial_used = false` gets the trial price id and `trial_applied = true`; with `trial_used = true` the plain price id, no trial; a breeder plan never gets a trial (BR-51).
+- EP-45 local mode: with `PADDLE_API_KEY` empty a valid request returns `503 payment_provider_unavailable` after validation and writes nothing; S17 shows *Plaćanje uskoro dostupno* while `PADDLE_API_KEY` or `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` is empty.
+- EP-46 signature: a correct `Paddle-Signature` is accepted; a wrong `h1`, a missing or malformed header, a `ts` older than 5 minutes or an empty secret → `401 invalid_signature`, and nothing is written.
+- EP-46 idempotency and order: the same `event_id` twice changes the database once; a subscription event older than `provider_event_at` changes nothing; a `transaction.completed` before its subscription → `500` and nothing recorded, then accepted on retry.
+- EP-46 mapping: every row of the EP-46 status table; `trial_used` set on trialing; `last_notice_days` reset when a renewal moves `current_period_end`; a renewal `transaction.completed` inserts one `renewal` payment row; a zero-amount trial transaction inserts none; `transaction.payment_failed` inserts one `failed` row; the household flag follows (BR-28).
+- BR-08 / EP-48: cancelling calls Paddle's cancel at period end and then sets `cancelled`; resuming removes the scheduled change; if the Paddle call fails → `503`, nothing changed; seeded rows without a provider id change in the database only.
+- EP-89: returns Paddle's portal URL for the caller's customer; `409 subscription_not_active` without a provider customer; `503` without a key.
+- EP-49 step 1: a provider row near its period end is read from Paddle and applied like a webhook; Paddle failing for a row skips that row; no charge is ever started.
+- EP-51 / EP-52 / E-16: a deletion request schedules the Paddle cancellation and sets `renewal_paused_for_deletion`; cancelling the deletion resumes renewal; permanent deletion cancels the Paddle subscription immediately, and a failed cancel skips that account for the night.
+- E-21: once a webhook activates a breeder plan for a breeder Admin, the breeder-only writes that returned `breeder_plan_required` succeed.
 
-**Verification:** to be defined when unblocked.
+**Tests to ship:**
+| Criterion | Test | File |
+|---|---|---|
+| FR-37 #1 | `startCheckout` for an owner with `trial_used = false` returns the Premium trial price id, `trial_applied = true`, `custom_data = {user_id, plan, idempotency_key}`, `environment`, `client_token`; a `subscription.trialing` webhook then inserts `trialing` with `trial_ends_at` from `items[0].trial_dates.ends_at` and sets `trial_used`; S17 opens the overlay with `Checkout.open({ items: [{ priceId }], customer: { email }, customData })` (mocked `@paddle/paddle-js`) | `tests/premium/start-checkout.test.ts`, `tests/payments/payments-webhook.test.ts`, `tests/premium/premium-screen.test.tsx`, `supabase/tests/payments.test.sql` |
+| FR-37 #2 | `subscription.updated` (active, later `current_billing_period.ends_at`) + `transaction.completed` (`origin = subscription_recurring`) → `current_period_end` moves, `status = active`, one `renewal` payment row, `last_notice_days` null; EP-49 step 1 applies a Paddle `GET /subscriptions/{id}` response (mocked) the same way | `supabase/tests/payments.test.sql`, `tests/payments/payments-webhook.test.ts`, `tests/jobs/billing-nightly.test.ts` |
+| FR-42 (breeder plan) | `startCheckout` for a breeder Admin returns the breeder plain price id, `trial_applied = false`; after `subscription.activated` for that Admin, `breeder_plan_active` is true and a breeder-only write that failed with `breeder_plan_required` succeeds; S17 breeder variant renders the breeder prices and no trial; the S20 banner links to `/premium` for Admins only | `tests/premium/start-checkout.test.ts`, `supabase/tests/payments.test.sql`, `tests/premium/premium-screen.test.tsx`, `tests/organisation/org-animals-screen.test.tsx` |
+| BR-62 / EP-44 | the four seeded EUR rows; S17 text in sr-Latn and en-GB as in the derived criteria; no `/* placeholder price — OQ-03 */` left in `app/` | `supabase/tests/public_plans.test.sql`, `tests/premium/premium-screen.test.tsx` |
+| BR-07 / E-15 | `trial_used = true` → plain price id, `trial_applied = false`; `expect_trial = true` → `409 trial_already_used` | `tests/premium/start-checkout.test.ts` |
+| EP-45 local mode | empty `PADDLE_API_KEY` → `503` after validation, nothing written; S17 *payments_coming_soon* when either Paddle variable is empty | `tests/premium/start-checkout.test.ts`, `tests/premium/premium-screen.test.tsx` |
+| EP-46 signature | valid, wrong `h1`, rotated second `h1`, missing header, `ts` 301 s old, empty secret | `tests/integrations/paddle.test.ts`, `tests/payments/payments-webhook.test.ts` |
+| EP-46 idempotency / order | duplicate `event_id`; older `occurred_at` ignored; transaction before subscription → `500` then success; duplicate purchase → `duplicate_subscription` and the route calls Paddle cancel immediately (mocked) | `supabase/tests/payments.test.sql`, `tests/payments/payments-webhook.test.ts` |
+| EP-46 mapping | each status-table row; zero-amount transaction; `payment_failed` row; `(provider_transaction_id, result)` dedupe; unknown price id → ignored `200`; household `read_only` after `subscription.canceled` of the owner | `supabase/tests/payments.test.sql` |
+| BR-08 / EP-48 | Paddle cancel (`effective_from: next_billing_period`) then `cancelled`; resume (`scheduled_change: null`); Paddle error → `503`, row unchanged; provider id null → no fetch | `tests/subscription/set-auto-renew.test.ts` |
+| EP-89 | portal URL returned from the mocked `POST /customers/{id}/portal-sessions`; `409` without customer; `503` without key; S18 shows *Upravljaj plaćanjem* only when `manage_billing_available` | `tests/subscription/billing-portal.test.ts`, `tests/subscription/profile-subscription-card.test.tsx` |
+| EP-51 / EP-52 / E-16 | deletion request → Paddle cancel at period end + flag; cancel deletion → resume + flag cleared; Paddle failure → `503`, nothing stored; nightly deletion cancels immediately, failure skips the account | `tests/data-control/account-deletion.test.ts`, `tests/jobs/retention-nightly.test.ts` |
+| TC §5.1 (derived) | the new and renamed columns, the dropped `monri_*` columns, `unique (provider_transaction_id, result)`, the trial-price check on breeder rows, EUR defaults; the archive omits the provider ids | `supabase/tests/billing.test.sql`, `tests/jobs/data-export-builder.test.ts` |
 
-#### 🔒 Lock notice
+**Verification:**
 ```
-LOCKED — no executable prompt.
+npm run typecheck      # exit 0
+npm run lint           # exit 0
+npm test               # all Vitest suites pass, incl. tests/integrations/paddle.test.ts and tests/payments/payments-webhook.test.ts
+npx supabase test db   # all pgTAP tests pass, incl. payments, billing, public_plans, subscription_read, billing_job
+npm run build          # exit 0; the routes include ƒ /api/webhooks/payments
+```
 
-Blocked by:
-- OQ-11 (origin: API Contract) — Which payment provider is used (Monri deferred)? Determines the checkout session (EP-45), the webhook signature header, algorithm and payload mapping (EP-46, API §9.2), the renewal charge call (EP-49 step 1), and the provider column names in subscriptions / subscription_payments. Who answers: Keti (owner), after the business registration and acquiring-bank contract (TC ADR-09, RISK-16).
-- OQ-03 (origin: Brief) — Premium monthly, Premium yearly and breeder plan prices. Determines the priced plans rows and the prices shown on S17 (purchase state) and S18. Who answers: Keti (owner).
+#### Prompt
+```
+You are executing Step 31 — Payments & pricing — of docs/product/06-build-plan.md for the Moj Ljubimac web app. One outcome: Premium (with the one-time 7-day trial) and the breeder plan can be bought in EUR through the Paddle Billing overlay, Paddle's signed webhooks keep subscriptions in sync, S17 shows the real prices and S18 links to the Paddle customer portal — and with empty PADDLE_* variables the app stays in the "Plaćanje uskoro dostupno" local mode.
 
-What unlocks when answered:
-- OQ-11 → revise 03-technical-constraints.md ADR-09 and 05-api-integration-contract.md EP-45 / EP-46 / EP-49 / §9.2 for the chosen provider, then write this step's file list, tests, verification and prompt.
-- OQ-03 → seed plans with real prices (EP-44 then returns prices and S17 leaves the payments_coming_soon state) and remove the "/* placeholder price — OQ-03 */" placeholders on S17 / S18.
+READ FIRST, in this order:
+1. docs/product/02-prd.md §6 FR-37, FR-38, FR-42; §8 BR-07, BR-08, BR-10, BR-11, BR-28, BR-51, BR-62; §9 E-15, E-16, E-21.
+2. docs/product/03-technical-constraints.md ADR-09 (v1.8), ADR-15, ADR-16, ADR-17; §5.1, §5.7, §5.7.1, §8.1, §9, §10 RISK-16.
+3. docs/product/04-design-system.md §9 (plan-price format) and §12 S17 (incl. the breeder variant), S18, S20.
+4. docs/product/05-api-integration-contract.md §3.3, §3.5, §5.5 EP-44, §5.6 (intro incl. "Payment provider") EP-45, EP-46, EP-47, EP-48, EP-89, EP-49, EP-51, EP-52; §6 Plan, Subscription, CheckoutSession; §7.2; §9.2; §9.4.
+5. The session logs of Steps 04, 05, 23, 24, 30 and 30a in docs/product/06-build-plan.md.
 
-Until then EP-45 answers 503 payment_provider_unavailable (Step 23 stub) and S17 shows "Plaćanje uskoro dostupno"; production users stay on Free; Premium exists only through local seed data (Step 04).
-Do not write a provisional prompt for this step.
+SETTLED UPSTREAM — apply exactly (owner decisions of 2026-10-29: OQ-11 = Paddle Billing, OQ-03 = EUR prices):
+- Prices (PRD BR-62): premium_monthly 300, premium_yearly 3000, breeder_monthly 1100, breeder_yearly 11000, currency EUR, before VAT (Paddle adds VAT). Premium has the one-time 7-day trial (BR-07); breeder plans have none (BR-51).
+- Provider price ids are environment data. The migration seeds plans.provider_price_id and provider_trial_price_id as null. The owner sets them per environment with the SQL update in the new README section. Do not use app_settings for them.
+- Checkout = the Paddle.js overlay. lib/actions/checkout.ts startCheckout keeps the Step 23 validation order. Then, while PADDLE_API_KEY is empty, it answers 503 payment_provider_unavailable. Otherwise it builds CheckoutSession per API §6: price_id = provider_trial_price_id when trial_applied, else provider_price_id; a needed null id → 500 internal_error, logged. Store the result with lib/server/idempotency.ts. No Paddle API call, no subscriptions row.
+- premium-client.tsx imports @paddle/paddle-js with await import() on click, calls initializePaddle({ environment, token: client_token, eventCallback }) and Checkout.open({ items: [{ priceId: price_id, quantity: 1 }], customer: { email: customer_email }, customData: custom_data, settings: { displayMode: "overlay" } }). On checkout.completed it closes the overlay, navigates to /profil and shows the Design S17 toast. environment = "production" only when NEXT_PUBLIC_PADDLE_ENV is exactly "production", else "sandbox".
+- S17 page.tsx: payments are enabled only when PADDLE_API_KEY and NEXT_PUBLIC_PADDLE_CLIENT_TOKEN are both non-empty; otherwise the Step 23 payments_coming_soon state. Owners get the Premium screen and breeder-organisation Admins get the Design S17 breeder variant; everyone else is still redirected to /organizacija (EP-47 forbidden_role). Prices are formatted per Design §9 (Intl EUR, no decimals for whole euros). Remove every "/* placeholder price — OQ-03 */" marker in app/.
+- lib/integrations/paddle.ts (server only):
+  - a fetch client per API §5.6 "Payment provider" (base URL by NEXT_PUBLIC_PADDLE_ENV, Bearer PADDLE_API_KEY, JSON): cancelSubscription(id, "next_billing_period" | "immediately"), resumeSubscription(id) (PATCH scheduled_change null), getSubscription(id), createPortalSession(customerId, subscriptionId) returning urls.general.overview, and paddleConfigured();
+  - verifyPaddleSignature(header, rawBody, secret, nowSeconds) per API EP-46: HMAC-SHA256 via Web Crypto, lowercase hex, constant-time compare, any h1 may match, |now − ts| ≤ 300;
+  - mapPaddleEvent(envelope) → the neutral event of EP-46.
+  Env vars are read at call time.
+- app/api/webhooks/payments/route.ts (EP-46): read the raw body before parsing, verify, map. Call the database function apply_payment_event with the service-role client. On "duplicate_subscription", cancel that Paddle subscription immediately and console.error for an Operator refund. Responses and errors exactly per EP-46. Unknown event types → 200 ignored.
+- Migration supabase/migrations/<timestamp>_payments.sql:
+  - subscriptions: drop monri_token_ref and monri_cit_id; add provider_customer_id text, provider_subscription_id text unique, provider_event_at timestamptz, renewal_paused_for_deletion boolean not null default false.
+  - subscription_payments: rename monri_transaction_id to provider_transaction_id; replace its unique constraint with unique (provider_transaction_id, result); currency default 'EUR'.
+  - plans: currency default 'EUR'; add provider_price_id text and provider_trial_price_id text with check (provider_trial_price_id is null or code in ('premium_monthly','premium_yearly')); insert the four EUR rows (active, ids null) with on conflict (code) do update of price_minor and currency.
+  - public.apply_payment_event(p_event jsonb, p_record_event boolean default true) returns text ('applied' | 'duplicate' | 'ignored' | 'duplicate_subscription'): security definer, set search_path = public, revoke from public, anon and authenticated, grant execute to service_role only. It applies EP-46 "Side effects" in one transaction: the payment_webhook_events insert when p_record_event; the status table; provider_event_at ordering; trial_used; last_notice_days reset; payment rows with the zero-amount rule and the dedupe. A transaction for an unknown subscription raises 'not_found:subscription'; missing required fields raise 'validation_failed' (TC §5.7.1).
+  - public.set_renewal_paused_for_deletion(p_paused boolean) returns void: security definer on auth.uid()'s running row, grant to authenticated.
+  - Recreate get_my_subscription with Subscription.manage_billing_available (API §6). The existing subscriptions trigger keeps the household flag (BR-28); do not add another.
+  Pre-approved exception 6 covers these functions; record them in the Session log with the follow-up to name them in API EP-46 / EP-51.
+- EP-48 (lib/actions/subscription.ts setAutoRenew): when the running row has a provider_subscription_id, call Paddle first (false → cancel next_billing_period, true → resume), then rpc:set_auto_renew. Without a key, or when Paddle fails → 503 payment_provider_unavailable with nothing changed. A row without a provider id → database only.
+- EP-89: getBillingPortalUrl in lib/actions/subscription.ts per the contract. S18 shows "Upravljaj plaćanjem" (outline, ExternalLink icon) when manage_billing_available and opens the URL in a new tab; an error shows the generic error toast.
+- EP-51 (lib/actions/data-control.ts):
+  - requestAccountDeletion: when the running row has a provider id and auto_renew = true, Paddle cancel next_billing_period + set_renewal_paused_for_deletion(true) before rpc:request_account_deletion; a Paddle failure → 503, nothing stored.
+  - cancelAccountDeletion: for a row with the flag, resume + set_renewal_paused_for_deletion(false).
+- EP-52 (retention-nightly): before an account's deletion, cancel its non-expired provider subscription immediately; a failure skips that account this run with a warning. An empty key → no call.
+- EP-49 (billing-nightly): replace step 1 with the reconciliation of API EP-49 (getSubscription → apply_payment_event with p_record_event = false and occurred_at = the response's updated_at). The response field renewals_attempted becomes reconciled. Steps 2–4 stay unchanged.
+- build-archive.ts: remove the monri_* deletions; omit provider_customer_id and provider_subscription_id from the archived subscriptions rows.
+- Copy: the new Design §12 S17 / S18 / S20 strings (sr from the Design text, en as given there); the Paddle note replaces the Monri note keys. The mockups docs/product/04-design/screens/premium.tsx and profile.tsx get the EUR price constants and the Paddle note text only (no markup change).
+- .env.example and tests/tooling/env-example.test.ts: append PADDLE_API_KEY, PADDLE_WEBHOOK_SECRET, NEXT_PUBLIC_PADDLE_CLIENT_TOKEN, NEXT_PUBLIC_PADDLE_ENV after OPERATOR_ALERT_EMAIL, in TC §8.1 order, with empty values and one-line comments.
+- README "Payments (Paddle)" section:
+  - in the Paddle sandbox, create one product per plan family; create the prices: plain prices for all four plans, plus a 7-day-trial price for each Premium plan; all in EUR, tax added on top;
+  - the notification destination ${NEXT_PUBLIC_SITE_URL}/api/webhooks/payments with the nine event types of API §9.2; its secret goes into PADDLE_WEBHOOK_SECRET;
+  - the SQL update that sets plans.provider_price_id / provider_trial_price_id per environment;
+  - the four variables; local mode with them empty; testing webhooks locally with a tunnel to the sandbox.
+
+BUILD:
+1. The migration as settled; regenerate types with npm run db:types.
+2. lib/integrations/paddle.ts, then app/api/webhooks/payments/route.ts.
+3. EP-45, EP-48, EP-89, EP-51 actions; EP-49 step 1; EP-52 Paddle cancellation; archive builder change.
+4. S17 (Premium and breeder variants, Paddle.js on click), S18 button, S20 banner link (ReadOnlyBanner gets an optional action { href, label } rendered as a link; Admins only).
+5. npm install @paddle/paddle-js; strings in lib/i18n/sr.ts and en.ts; .env.example and README.
+6. Tests: write every test in the Step 31 "Tests to ship" table in exactly those files. Mock fetch for every Paddle API call and mock @paddle/paddle-js in component tests. Webhook tests build Paddle-shaped JSON payloads and sign them in-test with a test secret. Update the earlier tests listed in the file list to the new columns, prices and behaviour (pre-approved exception 3) — never delete or skip them.
+
+FILES YOU MAY CREATE OR MODIFY (allowlist — nothing else):
+- supabase/migrations/<timestamp>_payments.sql; supabase/tests/payments.test.sql, billing.test.sql, public_plans.test.sql, subscription_read.test.sql, billing_job.test.sql
+- lib/integrations/paddle.ts; app/api/webhooks/payments/route.ts
+- lib/actions/checkout.ts, lib/actions/subscription.ts, lib/actions/data-control.ts
+- app/api/internal/billing-nightly/route.ts, app/api/internal/retention-nightly/route.ts, app/api/internal/exports/build-archive.ts
+- app/(app)/premium/page.tsx, app/(app)/premium/premium-client.tsx, app/(app)/profil/profile-client.tsx, app/(org)/organizacija/org-animals-screen.tsx, components/app/read-only-banner.tsx
+- lib/i18n/sr.ts, lib/i18n/en.ts; the generated types file under lib/supabase/ (via npm run db:types only)
+- package.json, package-lock.json (@paddle/paddle-js only); .env.example; README.md (the Payments section only)
+- docs/product/04-design/screens/premium.tsx, docs/product/04-design/screens/profile.tsx (price constants and payment-note copy only)
+- tests/integrations/paddle.test.ts, tests/payments/payments-webhook.test.ts, tests/premium/start-checkout.test.ts, tests/premium/premium-screen.test.tsx, tests/subscription/set-auto-renew.test.ts, tests/subscription/profile-subscription-card.test.tsx, tests/subscription/billing-portal.test.ts, tests/data-control/account-deletion.test.ts, tests/jobs/billing-nightly.test.ts, tests/jobs/retention-nightly.test.ts, tests/jobs/data-export-builder.test.ts, tests/organisation/org-animals-screen.test.tsx, tests/tooling/env-example.test.ts
+- docs/product/06-build-plan.md (Step 31 row in §3 and the Step 31 session log only)
+Touching any other file requires stopping and asking.
+
+FORBIDDEN:
+- No call to the real Paddle API or Paddle CDN in any test or build step; no library outside docs/product/03-technical-constraints.md ADR-17 (add @paddle/paddle-js only; no Paddle Node SDK).
+- No card data, payment token or Paddle secret stored or logged; no price id or secret in a migration, in code or in a test fixture that looks real.
+- No endpoint, field, error code or state outside docs/product/05-api-integration-contract.md; no renewal charge, dunning email or VAT calculation of our own.
+- No table, column, enum or constraint change beyond the migration settled above; production data never used in tests (ADR-10).
+
+DONE MEANS:
+- Every test in the Step 31 "Tests to ship" table exists and passes.
+- These commands all exit 0, in this order: npm run typecheck; npm run lint; npm test; npx supabase test db; npm run build.
+- In docs/product/06-build-plan.md: set the Step 31 row in §3 to ✅ with today's date and append a Step 31 session log entry with:
+  - the date and what was built;
+  - pass/fail per command;
+  - deviations;
+  - the database functions added (exception 6);
+  - owner follow-ups: the Paddle sandbox and production setup, the price ids per environment, the notification destination and the four variables, and one real sandbox purchase, renewal and cancellation before launch.
+- Commit with the message "Step 31: Payments & pricing".
+
+If anything above is ambiguous, if a referenced section doesn't contain what this prompt says it does, or if completing this step would require touching a file outside the list or making a decision the referenced documents don't settle — STOP and ask. Do not choose a reasonable default. Do not proceed with a partial implementation.
 ```
 
 #### Session log
@@ -6342,7 +6467,7 @@ _(empty — append after the step runs)_
 | **Status** | ⬜ not started |
 | **Outcome** | A recorded, item-by-item verdict on PRD §12 Release Criteria: all six ADR-15 end-to-end flows and the Šapa pomoći flow (PRD UC-11) pass, the automated accessibility check and the cost checks are done, and every gap that stands between the build and launch — including Release Criterion 4 until OQ-15 is answered — is listed with an owner. |
 | **Implements** | PRD §12 Release Criteria 1–6; ADR-15 (full Playwright run), ADR-17 (`@axe-core/playwright`); PRD UC-11 (e2e flow "give away an item and message the author", `e2e/sapa-pomoci.spec.ts`); NFR-03, NFR-04, NFR-10 (checks); Design §10; S30/S31 publication check (RC-4) |
-| **Depends on** | Step 30a, Step 28c (and Step 31 once unblocked, for Release Criterion 2) |
+| **Depends on** | Step 30a, Step 28c, Step 31 (for Release Criterion 2; unblocked 2026-10-29) |
 | **Blocked by** | — (the step runs now; checklist item 4 — Release Criterion 4 — stays open until OQ-15 is answered; Release Criterion 2 stays open until Step 31 runs) |
 | **Track** | single |
 
@@ -6494,7 +6619,7 @@ Regenerated for v1.2 by comparing every id against each step's **Implements** ro
 | FR-35 | 12 |
 | FR-36 | 13, 15, 16, 18, 21 |
 | FR-37 | 31 |
-| FR-38 | 23 |
+| FR-38 | 23, 31 |
 | FR-39 | 23, 30 |
 | FR-40 | 23, 30 |
 | FR-41 | 23, 30a |
@@ -6580,11 +6705,11 @@ Regenerated for v1.2 by comparing every id against each step's **Implements** ro
 | EP-45 | 23, 31 |
 | EP-46 | 31 |
 | EP-47 | 23 |
-| EP-48 | 23 |
+| EP-48 | 23, 31 |
 | EP-49 | 30, 31 |
 | EP-50 | 23, 30a |
-| EP-51 | 23 |
-| EP-52 | 28a, 30 |
+| EP-51 | 23, 31 |
+| EP-52 | 28a, 30, 31 |
 | EP-53 | 24, 28b |
 | EP-54 | 24 |
 | EP-55 | 24 |
@@ -6621,6 +6746,7 @@ Regenerated for v1.2 by comparing every id against each step's **Implements** ro
 | EP-86 | 28c |
 | EP-87 | 28b |
 | EP-88 | 28b |
+| EP-89 | 31 |
 
 ### 9.3 Screens
 | Screen | Route | Steps |
@@ -6642,9 +6768,9 @@ Regenerated for v1.2 by comparing every id against each step's **Implements** ro
 | S15 | `/registracija` | 12 |
 | S16 | `/prijava` | 11 |
 | S17 | `/premium` | 23, 31 |
-| S18 | `/profil` | 12, 23 |
+| S18 | `/profil` | 12, 23, 31 |
 | S19 | `/profil/podaci` | 23 |
-| S20 | `/organizacija` | 24 |
+| S20 | `/organizacija` | 24, 31 |
 | S21 | `/organizacija/zahtevi` | 25 |
 | S22 | `/organizacija/legla` | 26 |
 | S23 | `/o/[slug]` | 26 |
@@ -6699,7 +6825,7 @@ Regenerated for v1.2 by comparing every id against each step's **Implements** ro
 | `pet_status_history` | 09, 24 |
 | `pets` | 06, 13, 16, 22, 24 |
 | `plans` | 04, 23, 31 |
-| `profiles` | 04, 12, 23, 28a, 28b, 28c, 30 |
+| `profiles` | 04, 12, 23, 28a, 28b, 28c, 30, 31 |
 | `push_subscriptions` | 08, 18, 19, 28c |
 | `r2_deletion_queue` | 04, 13, 28a, 28b, 30 |
 | `rate_limit_counters` | 04, 11, 28c, 30 |
@@ -6749,8 +6875,8 @@ _None recorded by the owner. Highest upstream ids are ASM-10 (Brief v1.7) and RI
 
 | ID | Origin | Question | Locks |
 |---|---|---|---|
-| OQ-03 | Brief | Prices | Step 31 |
-| OQ-11 | API | Payment provider | Step 31 |
+| OQ-03 | Brief | Prices — ✅ resolved 2026-10-29: EUR, VAT added by Paddle (PRD BR-62) | — (Step 31 unlocked) |
+| OQ-11 | API | Payment provider — ✅ resolved 2026-10-29: Paddle Billing (TC ADR-09) | — (Step 31 unlocked) |
 | OQ-15 | Design | Privacy policy and terms of use texts (sr, en) for S30/S31 — owner, with a lawyer | Step 32 checklist item 4 only (Release Criterion 4 stays open; the step runs) |
 | OQ-16 | PRD (v1.7) | `[NEEDS CLARIFICATION]` Does an active breeder plan lift the Free limit of 3 active listings (BR-55)? Default until answered: no — only owner Premium and Shelter accounts are unlimited. Non-blocking (PRD §15, API §17). Who answers: Keti (owner). | — (affects Step 28a `listings_active_limit` and Step 28b `MarketplaceStatus.active_listing_limit`, S34/S35 counters; both apply the default. A "yes" needs TC §5.10 and API `MarketplaceStatus` revised first, then those two steps amended or a suffixed step if they already ran) |
 | OQ-17 | API (v1.3) | `[NEEDS CLARIFICATION]` Fields the Šapa pomoći screens render that TC v1.7 cannot supply exactly: (a) resolved date — no `listings.resolved_at`, derived from `updated_at`; (b) hidden time and the Operator's "Razlog za korisnika" — no columns, derived from the actioned report, note only in the email; (c) donation *Primalac* legal name and *Svrha* — `organisations.name` and "Donacija — <listing title>"; (d) Design limits differ from PRD/TC (description ≤ 1000 vs 2000, title ≥ 5 vs 1); (e) bank-account format has no TC check (EP-88 validates in the action); (f) no screen edits `display_name`; (g) S33's *resolved* state for a non-author vs FR-62 — the contract follows FR-62. Proposed: `listings.resolved_at`, `listings.hidden_at`, `listings.moderation_note`, `profiles.marketplace_suspension_note`, `organisations.donation_recipient`; align S34 to 2000. Non-blocking — "interim mappings are defined" (API §17). Who answers: Keti (owner). | — (Step 28a adds none of the proposed columns; Step 28b applies (a), (b) on S35, (c), (d), (e), (f), (g); Step 28c applies (b) on S26 and keeps the note out of storage) |
