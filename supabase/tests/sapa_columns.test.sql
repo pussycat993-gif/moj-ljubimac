@@ -3,7 +3,7 @@
 -- columns (plain text / https URL — BR-58; readable only through definer functions, writable by an
 -- Admin of the organisation, FR-72); the reminder_preferences type message (FR-69): every profile —
 -- seeded and new — has the row {email, push}, channels a subset of {email, push} and may be empty,
--- no reminders of type message, get_reminder_settings still returns the six reminder types until
+-- no reminders of type message; get_reminder_settings returns the message row as its seventh row since
 -- Step 28c (owner decision: preference_type = reminder_type).
 -- Seeded: Ivana (…01, Premium), Marko (…02, Free), Jelena (…03), Dragana (…07, admin of the
 -- approved shelter b2…03 Azil „Druga šansa“), Milica (…04, admin of the pending shelter b2…01).
@@ -190,12 +190,12 @@ select is(
   '{email}'::text[], 'the upserted message channels are stored'
 );
 select is(
-  jsonb_array_length(public.get_reminder_settings() -> 'preferences'), 6,
-  'get_reminder_settings keeps returning the six reminder types until Step 28c'
+  jsonb_array_length(public.get_reminder_settings() -> 'preferences'), 7,
+  'get_reminder_settings returns the six reminder types and, since Step 28c, the message row'
 );
 select ok(
-  not (public.get_reminder_settings() -> 'preferences') @> '[{"type":"message"}]',
-  'get_reminder_settings skips message'
+  (public.get_reminder_settings() -> 'preferences') @> '[{"type":"message","channels":["email"]}]',
+  'get_reminder_settings includes message (Step 28c)'
 );
 reset role;
 

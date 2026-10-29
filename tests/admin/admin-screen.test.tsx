@@ -8,7 +8,7 @@ import type { AdminPartner, PendingOrganisation } from "@/lib/actions/admin"
 // EP-71: the Kanali Viber Switch calls setAppSettings — switching on only after the cost-warning confirm.
 // Also FR-57 on the screen: approve / reject (with reason) through EP-68 and the notice; the Partneri table
 // with the Istaknut Switch "n / 3" / "3 / 3 — limit" and the toast for featured_limit_reached; the edit
-// Dialog saves through EP-69; loading / empty / error states; ?tab=moderacija falls back to Azili (Step 28c).
+// Dialog saves through EP-69; loading / empty / error states; ?tab=moderacija opens the Moderacija tab (Step 28c).
 
 const toast = Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() })
 vi.mock("@/components/ui/sonner", () => ({ toast }))
@@ -243,10 +243,9 @@ describe("S26 Azili na čekanju (FR-57 #1, EP-68)", () => {
     expect(screen.getByText("Nema azila na čekanju")).toBeInTheDocument()
   })
 
-  it("?tab=moderacija falls back to Azili (Moderacija is Step 28c)", () => {
+  it("?tab=moderacija opens the Moderacija tab (added by Step 28c)", () => {
     renderScreen(data(), "moderacija")
-    expect(screen.getByRole("heading", { name: "Azil Šapica" })).toBeInTheDocument()
-    expect(screen.queryByRole("tab", { name: /Moderacija/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: /Moderacija/ })).toHaveAttribute("aria-selected", "true")
   })
 
   it("loading state while the reads are in flight", () => {

@@ -1,8 +1,20 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { createContext, useContext, useEffect, useState, useTransition, type ReactNode } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { Building2, CircleCheck, Crosshair, MessageCircle, Pencil, Plus, TriangleAlert } from "lucide-react"
+import {
+  Building2,
+  CircleCheck,
+  Crosshair,
+  EyeOff,
+  Flag,
+  MessageCircle,
+  Pencil,
+  Plus,
+  RotateCcw,
+  TriangleAlert,
+  UserX,
+} from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,10 +53,15 @@ import {
   createPartnerLogoUpload,
   decideOrganisation,
   geocodeAddress,
+  listModeration,
+  moderate,
   savePartner,
   setAppSettings,
   type AdminPartner,
   type AppSettings,
+  type ModerateInput,
+  type ModerationItem,
+  type Restriction,
   type PartnerClickStatsPage,
   type PendingOrganisation,
   type SavePartnerInput,
@@ -59,10 +76,16 @@ import { format, type Dictionary, type Locale } from "@/lib/i18n"
 // "Pronađi koordinate" (Nominatim), latitude / longitude Inputs, logo upload, hours editor, city Select from
 // EP-67), Statistika (EP-70, month Select from available_periods) and Kanali (EP-71 Viber Switch with the
 // cost-warning confirm). States from real responses: loading (data null, or a period / "Učitaj još"
-// transition), default, empty (`[]`), error (retry = router.refresh()). Moderacija is Step 28c: ?tab=moderacija
-// falls back to Azili and the shell gets no moderacija count (owner decision, Step 28).
+// transition), default, empty (`[]`), error (retry = router.refresh()).
+// Step 28c — Moderacija (FR-71, EP-86): Otvorene prijave (oldest first; reason pill, Oglas / Korisnik, "Prijava za
+// isti oglas: N", author and reporter, the reporter's note) with Odbaci prijavu / Sakrij oglas / Isključi autora or
+// korisnika (AlertDialog with the optional "Razlog za korisnika", sent only in the email — OQ-17), "Obrađeno ovog
+// meseca: N", and Sakriveni oglasi i isključeni korisnici with Vrati oglas / Vrati pristup. The lists load through
+// listModeration when the tab opens; the tab label and the shell's moderacija badge show open_count (the layout
+// provides it through AdminCountsProvider; the tab's own reads keep it current). 409 already_decided → toast and
+// the list is read again (the card leaves it). The Operator never sees message bodies.
 
-export type AdminTab = "azili" | "partneri" | "statistika" | "kanali"
+export type AdminTab = "azili" | "partneri" | "statistika" | "kanali" | "moderacija"
 export type Loaded<T> = { ok: true; data: T } | { ok: false }
 export type AdminData = {
   pending: Loaded<{ items: PendingOrganisation[]; total: number }>
@@ -75,7 +98,21 @@ export type AdminCopy = Pick<Dictionary, "admin" | "common"> & { shell: AppShell
 
 type T = Dictionary["admin"]
 
-const TABS: readonly AdminTab[] = ["azili", "partneri", "statistika", "kanali"]
+const TABS: readonly AdminTab[] = ["azili", "partneri", "statistika", "kanali", "moderacija"]
+
+/** The shell's admin counts read by app/admin/layout.tsx (EP-86 open_count → counts.moderacija). */
+const AdminCountsContext = createContext<{ moderacija: number }>({ moderacija: 0 })
+
+export function AdminCountsProvider({ moderacija, children }: { moderacija: number; children: ReactNode }) {
+  return <AdminCountsContext.Provider value={{ moderacija }}>{children}</AdminCountsContext.Provider>
+}
+
+type ModerationState =
+  | { kind: "loading" }
+  | { kind: "error" }
+  | { kind: "ready"; reports: ModerationItem[]; restrictions: Restriction[]; openCount: number; handled: number }
+
+type ModAction = { report: ModerationItem; kind: "hide" | "suspend" }
 const PAGE = 20
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const
 
@@ -565,6 +602,41 @@ export function AdminScreen({
   const [viberOverride, setViberOverride] = useState<boolean | null>(null)
   const [confirmViber, setConfirmViber] = useState(false)
   const [savingViber, setSavingViber] = useState(false)
+  const layoutCounts = useContext(AdminCountsContext)
+  const [moderation, setModeration] = useState<ModerationState>({ kind: "loading" })
+  const [moderationReload, setModerationReload] = useState(0)
+  const [modAction, setModAction] = useState<ModAction | null>(null)
+  const [modReason, setModReason] = useState("")
+  const [moderating, setModerating] = useState<string | null>(null)
+  const openCount = moderation.kind === "ready" ? moderation.openCount : layoutCounts.moderacija
+
+  // Moderacija (EP-86 list) — read when the tab is open, and again after each decision.
+  useEffect(() => {
+    if (tab !== "moderacija") return
+    let active = true
+    Promise.resolve()
+      .then(() =>
+        Promise.all([
+          listModeration({ view: "open_reports", limit: 50, offset: 0 }),
+          listModeration({ view: "restrictions", limit: 50, offset: 0 }),
+        ]),
+      )
+      .then(([open, restricted]) => {
+        if (!active) return
+        if (!open.ok || !restricted.ok) return setModeration({ kind: "error" })
+        setModeration({
+          kind: "ready",
+          reports: open.data.items as ModerationItem[],
+          restrictions: restricted.data.items as Restriction[],
+          openCount: open.data.open_count,
+          handled: open.data.handled_this_month,
+        })
+      })
+      .catch(() => active && setModeration({ kind: "error" }))
+    return () => {
+      active = false
+    }
+  }, [tab, moderationReload])
 
   const loading = data === null || pending
   const ready = loading ? null : data
@@ -629,6 +701,69 @@ export function AdminScreen({
     refresh()
   }
 
+  // Moderacija (EP-86) ----------------------------------------------------------------------------
+  const personName = (name: string | null) => name ?? t.userFallback
+
+  async function runModeration(input: ModerateInput, key: string, notice: (result: { report: ModerationItem | null; restriction: Restriction | null }) => string) {
+    setModerating(key)
+    try {
+      const result = await moderate(input)
+      if (result.ok) setNotice(notice(result.data))
+      else toast(copy.common.error)
+    } catch {
+      toast(copy.common.error)
+    } finally {
+      setModerating(null)
+    }
+    setModerationReload((n) => n + 1)
+    refresh()
+  }
+
+  function dismissReport(r: ModerationItem) {
+    void runModeration({ op: "dismiss_report", report_id: r.report_id }, r.report_id, () => t.dismissedNotice)
+  }
+
+  function confirmModAction() {
+    if (!modAction) return
+    const { report: r, kind } = modAction
+    const reasonNote = modReason.trim() || null
+    const author = personName(r.reported_user.display_name)
+    setModAction(null)
+    void runModeration(
+      kind === "hide"
+        ? { op: "hide_listing", report_id: r.report_id, reason_note: reasonNote }
+        : { op: "suspend_user", report_id: r.report_id, reason_note: reasonNote },
+      r.report_id,
+      () =>
+        kind === "hide"
+          ? format(t.hiddenNotice, { title: r.listing.title ?? "", name: author })
+          : format(t.suspendedNotice, { name: author }),
+    )
+  }
+
+  function restore(x: Restriction) {
+    const name = personName(x.user_display_name)
+    void runModeration(
+      x.kind === "listing"
+        ? { op: "restore_listing", listing_id: x.listing_id ?? "" }
+        : { op: "restore_user", user_id: x.user_id },
+      x.listing_id ?? x.user_id,
+      () =>
+        x.kind === "listing"
+          ? format(t.restoredListingNotice, { title: x.listing_title ?? "" })
+          : format(t.restoredUserNotice, { name }),
+    )
+  }
+
+  function restrictionDetail(x: Restriction) {
+    const date = formatDate(x.restricted_at, locale)
+    const line =
+      x.kind === "listing"
+        ? format(t.restrictionListing, { name: personName(x.user_display_name), date })
+        : format(t.restrictionUser, { date })
+    return x.reason ? line + format(t.restrictionReason, { reason: t.reportReason[x.reason].toLowerCase() }) : line
+  }
+
   // Kanali (EP-71) ---------------------------------------------------------------------------------
   async function switchViber(value: boolean) {
     setSavingViber(true)
@@ -658,7 +793,7 @@ export function AdminScreen({
   }
 
   return (
-    <AppShell variant="admin" active={tab} user={user} labels={copy.shell}>
+    <AppShell variant="admin" active={tab} user={user} labels={copy.shell} counts={{ moderacija: openCount }}>
       <div className="space-y-6">
         <h1 className="font-heading text-[28px] leading-9 font-bold">{t.title}</h1>
 
@@ -669,6 +804,9 @@ export function AdminScreen({
               <TabsTrigger value="partneri">{t.tabPartners}</TabsTrigger>
               <TabsTrigger value="statistika">{t.tabStats}</TabsTrigger>
               <TabsTrigger value="kanali">{t.tabChannels}</TabsTrigger>
+              <TabsTrigger value="moderacija">
+                {openCount > 0 ? format(t.tabModerationCount, { n: openCount }) : t.tabModeration}
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -925,8 +1063,178 @@ export function AdminScreen({
               </>
             )}
           </TabsContent>
+          {/* Moderacija — Šapa pomoći reports queue (FR-71) */}
+          <TabsContent value="moderacija" className="mt-4 space-y-6">
+            {moderation.kind === "loading" && skeleton}
+            {moderation.kind === "error" && (
+              <ErrorState
+                message={copy.common.error}
+                labels={{ retry: copy.common.retry }}
+                onRetry={() => {
+                  setModeration({ kind: "loading" })
+                  setModerationReload((n) => n + 1)
+                }}
+              />
+            )}
+            {moderation.kind === "ready" && (
+              <>
+                <section aria-labelledby="reports-heading" className="space-y-4">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+                    <h2 id="reports-heading" className="font-heading text-[22px] leading-7 font-bold">
+                      {t.openReports}
+                    </h2>
+                    <p className="text-sm text-muted-foreground">{format(t.handledThisMonth, { n: moderation.handled })}</p>
+                  </div>
+                  {moderation.reports.length === 0 ? (
+                    <EmptyState icon={Flag} title={t.reportsEmptyTitle} description={t.reportsEmptyText} />
+                  ) : (
+                    moderation.reports.map((r) => {
+                      const author = personName(r.reported_user.display_name)
+                      return (
+                        <Card key={r.report_id} className="gap-4 p-4 md:p-6">
+                          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                            <div className="min-w-0 space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <StatusBadge status="missed" label={t.reportReason[r.reason]} />
+                                <Badge variant="secondary">{r.target === "listing" ? t.targetListing : t.targetUser}</Badge>
+                                {r.same_target_open_count > 1 && (
+                                  <span className="text-xs font-medium text-muted-foreground">
+                                    {format(t.sameTarget, { n: r.same_target_open_count })}
+                                  </span>
+                                )}
+                              </div>
+                              <h3 className="font-heading text-lg font-bold break-words">
+                                {r.target === "listing" ? (r.listing.title ?? "") : author}
+                              </h3>
+                              <p className="truncate text-sm text-muted-foreground">
+                                {r.target === "listing" ? format(t.reportAuthor, { name: author }) : ""}
+                                {format(t.reportReporter, { name: personName(r.reporter.display_name) })}
+                              </p>
+                            </div>
+                            <span className="shrink-0 text-xs font-medium text-muted-foreground">
+                              {formatDate(r.created_at, locale)}
+                            </span>
+                          </div>
+                          {r.note && <p className="rounded-sm bg-foreground/5 p-3 text-sm break-words">{r.note}</p>}
+                          <div className="flex flex-col gap-2 md:flex-row md:justify-end">
+                            <Button
+                              variant="ghost"
+                              className="h-11 md:h-9"
+                              disabled={moderating === r.report_id}
+                              onClick={() => dismissReport(r)}
+                            >
+                              {t.dismissReport}
+                            </Button>
+                            {r.target === "listing" && (
+                              <Button
+                                variant="outline"
+                                className="h-11 md:h-9"
+                                disabled={moderating === r.report_id}
+                                onClick={() => {
+                                  setModReason("")
+                                  setModAction({ report: r, kind: "hide" })
+                                }}
+                              >
+                                <EyeOff className="size-4" aria-hidden />
+                                {t.hideListing}
+                              </Button>
+                            )}
+                            <Button
+                              variant="destructive"
+                              className="h-11 md:h-9"
+                              disabled={moderating === r.report_id}
+                              onClick={() => {
+                                setModReason("")
+                                setModAction({ report: r, kind: "suspend" })
+                              }}
+                            >
+                              <UserX className="size-4" aria-hidden />
+                              {r.target === "listing" ? t.suspendAuthor : t.suspendUser}
+                            </Button>
+                          </div>
+                        </Card>
+                      )
+                    })
+                  )}
+                </section>
+
+                <section aria-labelledby="restrictions-heading" className="space-y-4">
+                  <h2 id="restrictions-heading" className="font-heading text-[22px] leading-7 font-bold">
+                    {t.restrictionsTitle}
+                  </h2>
+                  {moderation.restrictions.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">{t.restrictionsEmpty}</p>
+                  ) : (
+                    <Card className="gap-0 py-0">
+                      <ul className="divide-y divide-border">
+                        {moderation.restrictions.map((x) => (
+                          <li
+                            key={`${x.kind}-${x.listing_id ?? x.user_id}`}
+                            className="flex flex-col gap-2 p-4 md:flex-row md:items-center"
+                          >
+                            <div className="flex min-w-0 flex-1 items-start gap-3">
+                              {x.kind === "listing" ? (
+                                <EyeOff className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+                              ) : (
+                                <UserX className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+                              )}
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium">
+                                  {x.kind === "listing" ? (x.listing_title ?? "") : personName(x.user_display_name)}
+                                </p>
+                                <p className="truncate text-xs font-medium text-muted-foreground">{restrictionDetail(x)}</p>
+                              </div>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-11 shrink-0 md:h-8"
+                              disabled={moderating === (x.listing_id ?? x.user_id)}
+                              onClick={() => restore(x)}
+                            >
+                              <RotateCcw className="size-4" aria-hidden />
+                              {x.kind === "listing" ? t.restoreListing : t.restoreUser}
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    </Card>
+                  )}
+                </section>
+              </>
+            )}
+          </TabsContent>
         </Tabs>
       </div>
+
+      <AlertDialog open={modAction !== null} onOpenChange={(o) => !o && setModAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {modAction?.kind === "hide"
+                ? format(t.hideTitle, { title: modAction.report.listing.title ?? "" })
+                : format(t.suspendTitle, { name: personName(modAction?.report.reported_user.display_name ?? null) })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{modAction?.kind === "hide" ? t.hideText : t.suspendText}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="mod-reason">{t.reasonForUser}</Label>
+            <Textarea
+              id="mod-reason"
+              placeholder={t.reasonForUserPlaceholder}
+              maxLength={500}
+              value={modReason}
+              onChange={(e) => setModReason(e.target.value)}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t.cancel}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmModAction}>
+              {modAction?.kind === "hide" ? t.hideConfirm : t.suspendConfirm}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={rejecting !== null} onOpenChange={(o) => !o && setRejecting(null)}>
         <AlertDialogContent>

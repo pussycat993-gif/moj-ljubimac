@@ -11,8 +11,8 @@ import { buildPushHTTPRequest } from "@pushforge/builder";
 
 export type PushEndpoint = { id: string; endpoint: string; p256dh: string; auth: string };
 
-/** API §9.4 reminder payload, ≤ 4 KB. */
-export type PushPayload = { title: string; body: string; url: string; done_url: string | null };
+/** API §9.4 payload, ≤ 4 KB: reminders carry done_url; new-message pushes (EP-82) are { title, body, url }. */
+export type PushPayload = { title: string; body: string; url: string; done_url?: string | null };
 
 export type PushConfig = {
   privateJWK: string;

@@ -30,6 +30,7 @@ function unport(name: string, source: string) {
   if (name === "error-state") s = stripErrorStateLabels(s);
   if (name === "pet-header") s = stripPetHeaderLabels(s);
   if (name === "reminder-row") s = stripReminderRowLabels(s);
+  if (name === "reminder-type-icon") s = stripReminderTypeIconMessage(s);
   return s;
 }
 
@@ -99,6 +100,17 @@ function stripReminderRowLabels(source: string) {
     .replace(" label={labels.status?.[reminder.status]}", "")
     .replace('{reminder.status !== "done" && canMarkDone && (', '{reminder.status !== "done" && (')
     .replace("{labels.done}", defaultReminderRowLabels.done);
+}
+
+// Owner decision (Step 28c, carried from Step 28a): reminder_type has the value `message` (the S12 Poruke row), so
+// ReminderTypeIcon gets a `message` entry (MessageCircle, "Poruke"). That entry is the only allowed change and is
+// ignored here; everything else must still equal the docs mockup.
+function stripReminderTypeIconMessage(source: string) {
+  return source
+    .replace("Droplet, MessageCircle, Stethoscope", "Droplet, Stethoscope")
+    .replace(' | "manual" | "message"\n', ' | "manual"\n')
+    .replace("  manual: Bell,\n  message: MessageCircle,\n", "  manual: Bell,\n")
+    .replace('  manual: "Moj podsetnik",\n  message: "Poruke",\n', '  manual: "Moj podsetnik",\n');
 }
 
 describe("shadcn primitives (Design §6, ADR-14)", () => {

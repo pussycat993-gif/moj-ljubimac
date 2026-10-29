@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Switch } from "@/components/ui/switch"
 import { toast } from "@/components/ui/sonner"
 import { ErrorState } from "@/components/app/error-state"
 import { PremiumLock } from "@/components/app/premium-lock"
@@ -28,7 +29,10 @@ import { format, interpolate, type Dictionary } from "@/lib/i18n"
 // isključeno / uključeno / blokirano; "WhatsApp uskoro" (CR-13) for Premium users until the WhatsApp
 // channel goes live in Step 29 (no number form, WhatsApp checkboxes disabled and unchecked, monthly
 // counter card hidden). Viber is absent while app_settings.viber_enabled = false (BR-14b, E-27).
-// The Šapa pomoći "Poruke" card is Step 28c (Build Plan §4 invariant 11).
+// Step 28c: the Šapa pomoći "Poruke" card (FR-69) — the seventh EP-28 row, type message: Mejl and Push switches (no
+// lead time, no delivery time, never WhatsApp / Viber), saved by the same "Sačuvaj podešavanja" button through the
+// EP-28 upsert with type message (saveMessagePreference); the push hint while browser push is not on, and the
+// "only in the app" line when both are off.
 
 export type ReminderSettingsCopy = Pick<Dictionary, "reminderSettings" | "common">
 
@@ -57,9 +61,12 @@ export type ReminderSettings = {
   }
 }
 
+/** The six reminder types with a type card; `message` has the Poruke card. */
+type CardType = Exclude<ReminderType, "message">
+
 /** EP-28 update Request. */
 export type PreferenceInput = {
-  type: ReminderType
+  type: CardType
   lead_minutes: number[]
   delivery_time: string | null
   channels: Channel[]
@@ -70,9 +77,13 @@ export type PushSubscriptionRow = { id: string; endpoint: string; user_agent: st
 
 export type PushRegistration = { endpoint: string; p256dh: string; auth: string; user_agent: string | null }
 
+/** EP-28 update of the Poruke card (type message): channels ⊆ {email, push}, may be empty. */
+export type MessagePreferenceInput = { channels: ("email" | "push")[] }
+
 /** The EP-28 / EP-29 server calls (page.tsx). */
 export type ReminderSettingsActions = {
   savePreference: (input: PreferenceInput) => Promise<ActionResult<ReminderPreference>>
+  saveMessagePreference?: (input: MessagePreferenceInput) => Promise<ActionResult<{ channels: ("email" | "push")[] }>>
   registerPush: (input: PushRegistration) => Promise<ActionResult<PushSubscriptionRow>>
   checkPush: (endpoint: string) => Promise<ActionResult<PushSubscriptionRow[]>>
   unregisterPush: (endpoint: string) => Promise<ActionResult<null>>
@@ -81,7 +92,7 @@ export type ReminderSettingsActions = {
 type PushState = "checking" | "unsupported" | "off" | "on" | "blocked"
 
 type CardState = {
-  type: ReminderType
+  type: CardType
   exact: boolean
   /** Lead times in days (UI chips 0 / 1 / 3 / 7 / 14 / 30). */
   leads: number[]
@@ -101,7 +112,7 @@ const LEAD_LABEL: Record<(typeof LEAD_DAYS)[number], keyof T> = {
   30: "lead30",
 }
 
-const TYPE_COPY: Record<ReminderType, { label: keyof T; hint: keyof T }> = {
+const TYPE_COPY: Record<CardType, { label: keyof T; hint: keyof T }> = {
   vaccination: { label: "typeVaccination", hint: "typeVaccinationHint" },
   treatment_dose: { label: "typeTreatmentDose", hint: "typeTreatmentDoseHint" },
   vet_follow_up: { label: "typeVetFollowUp", hint: "typeVetFollowUpHint" },
@@ -113,7 +124,7 @@ const TYPE_COPY: Record<ReminderType, { label: keyof T; hint: keyof T }> = {
 // The WhatsApp channel goes live in Step 29; until then Premium users see the "uskoro" state (CR-13).
 const WHATSAPP_LIVE = false
 
-function toCard(p: ReminderPreference): CardState {
+function toCard(p: ReminderPreference & { type: CardType }): CardState {
   return {
     type: p.type,
     exact: p.fixed_time,
@@ -170,8 +181,17 @@ export function ReminderSettingsClient({
 }) {
   const router = useRouter()
   const t = copy.reminderSettings
-  const [cards, setCards] = useState<CardState[]>(() => (settings?.preferences ?? []).map(toCard))
-  const [dirty, setDirty] = useState<ReminderType[]>([])
+  const [cards, setCards] = useState<CardState[]>(() =>
+    (settings?.preferences ?? [])
+      .filter((p): p is ReminderPreference & { type: CardType } => p.type !== "message")
+      .map(toCard),
+  )
+  const [dirty, setDirty] = useState<CardType[]>([])
+  // Poruke card (type message); without a stored row the EP-28 default {email, push} applies (FR-69 #3).
+  const messageChannels = settings?.preferences.find((p) => p.type === "message")?.channels ?? ["email", "push"]
+  const [msgEmail, setMsgEmail] = useState(messageChannels.includes("email"))
+  const [msgPush, setMsgPush] = useState(messageChannels.includes("push"))
+  const [msgDirty, setMsgDirty] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
   const [locked, setLocked] = useState(!premium)
@@ -292,7 +312,7 @@ export function ReminderSettingsClient({
     setPushBusy(false)
   }
 
-  function update(type: ReminderType, patch: Partial<CardState>) {
+  function update(type: CardType, patch: Partial<CardState>) {
     setSaved(false)
     setCards((prev) => prev.map((c) => (c.type === type ? { ...c, ...patch } : c)))
     setDirty((prev) => (prev.includes(type) ? prev : [...prev, type]))
@@ -316,6 +336,12 @@ export function ReminderSettingsClient({
     if (cards.some(invalid)) return
     setSaving(true)
     const changed = cards.filter((c) => dirty.includes(c.type))
+    const saveMessage = msgDirty && actions.saveMessagePreference ? actions.saveMessagePreference : null
+    const messageResult = saveMessage
+      ? saveMessage({ channels: [...(msgEmail ? ["email" as const] : []), ...(msgPush ? ["push" as const] : [])] }).catch(
+          () => null,
+        )
+      : Promise.resolve(undefined)
     const results = await Promise.all(
       changed.map((c) =>
         actions
@@ -328,12 +354,18 @@ export function ReminderSettingsClient({
           .catch(() => null),
       ),
     )
+    const messageSaved = await messageResult
     setSaving(false)
+    if (messageSaved?.ok) {
+      setMsgEmail(messageSaved.data.channels.includes("email"))
+      setMsgPush(messageSaved.data.channels.includes("push"))
+      setMsgDirty(false)
+    }
 
     const stored = results.flatMap((r) => (r?.ok ? [r.data] : []))
     setCards((prev) => prev.map((c) => {
       const p = stored.find((s) => s.type === c.type)
-      return p ? toCard(p) : c
+      return p ? toCard({ ...p, type: c.type }) : c
     }))
     setDirty((prev) => prev.filter((type) => !stored.some((s) => s.type === type)))
 
@@ -341,7 +373,7 @@ export function ReminderSettingsClient({
       setLocked(true)
       return
     }
-    if (results.some((r) => !r || !r.ok)) {
+    if (results.some((r) => !r || !r.ok) || messageSaved === null || (messageSaved && !messageSaved.ok)) {
       toast.error(copy.common.error)
       return
     }
@@ -624,6 +656,66 @@ export function ReminderSettingsClient({
               </fieldset>
             </Card>
           ))}
+        </div>
+      </section>
+
+      {/* Šapa pomoći → Poruke (FR-69): new-message notifications by email and push only. */}
+      <section aria-labelledby="messages-heading" className="space-y-4">
+        <h2 id="messages-heading" className="font-heading text-[22px] leading-7 font-bold">
+          {t.messagesSection}
+        </h2>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Card className="gap-4 p-4 md:p-6">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-foreground/5">
+                <MessageCircle className="size-5 text-primary" aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <h3 className="font-heading text-lg font-bold">{t.typeMessage}</h3>
+                <p className="text-sm text-muted-foreground">{t.typeMessageHint}</p>
+              </div>
+            </div>
+            <Separator />
+            <div className="flex flex-col gap-2">
+              <div className="flex min-h-11 items-center gap-3 rounded-sm bg-foreground/5 px-3">
+                <Label htmlFor="msg-email" className="flex min-w-0 flex-1 items-center gap-2">
+                  <Mail className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="truncate">{t.channelEmail}</span>
+                </Label>
+                <Switch
+                  id="msg-email"
+                  checked={msgEmail}
+                  onCheckedChange={(v) => {
+                    setMsgEmail(v)
+                    setMsgDirty(true)
+                    setSaved(false)
+                  }}
+                />
+              </div>
+              <div className="flex min-h-11 items-center gap-3 rounded-sm bg-foreground/5 px-3">
+                <Label htmlFor="msg-push" className="flex min-w-0 flex-1 items-center gap-2">
+                  <Smartphone className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="truncate">{t.channelPush}</span>
+                </Label>
+                <Switch
+                  id="msg-push"
+                  checked={msgPush}
+                  onCheckedChange={(v) => {
+                    setMsgPush(v)
+                    setMsgDirty(true)
+                    setSaved(false)
+                  }}
+                  aria-describedby={push !== "on" ? "msg-push-hint" : undefined}
+                />
+              </div>
+            </div>
+            {push !== "on" && msgPush && (
+              <p id="msg-push-hint" className="text-sm text-muted-foreground">
+                {t.messagesPushHint}
+              </p>
+            )}
+            {!msgEmail && !msgPush && <p className="text-sm text-muted-foreground">{t.messagesOff}</p>}
+          </Card>
         </div>
       </section>
 

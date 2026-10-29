@@ -1772,11 +1772,29 @@ isOneToOne: false
             "accept_record_transfer":
 { Args: { "p_key_map": Json,"p_new_pet_id": string,"p_token_hash": string,"p_visit_id_map": Json }; Returns: Json
                            },
+"admin_decide_report":
+{ Args: { "p_op": string,"p_operator": string,"p_report_id": string }; Returns: Json
+                           },
+"admin_get_restriction":
+{ Args: { "p_id": string,"p_kind": string }; Returns: Json
+                           },
+"admin_list_moderation":
+{ Args: { "p_limit"?: number,"p_offset"?: number,"p_view": string }; Returns: Json
+                           },
 "admin_list_partners":
 { Args: { "p_city_id"?: string,"p_limit"?: number,"p_offset"?: number,"p_type"?: Database["public"]['Enums']["partner_type"] }; Returns: Json
                            },
 "admin_partner_click_stats":
 { Args: { "p_limit"?: number,"p_offset"?: number,"p_period"?: string }; Returns: Json
+                           },
+"admin_restore_listing":
+{ Args: { "p_id": string }; Returns: Database["public"]['Enums']["listing_status"]
+                           },
+"admin_restore_user":
+{ Args: { "p_user_id": string }; Returns: Json
+                           },
+"block_user":
+{ Args: { "p_user_id": string }; Returns: Json
                            },
 "cancel_account_deletion":
 { Args: Record<PropertyKey, never>; Returns: undefined
@@ -1830,6 +1848,9 @@ isOneToOne: false
                            },
 "get_channel_usage":
 { Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"get_conversation":
+{ Args: { "p_conversation_id": string,"p_limit"?: number,"p_offset"?: number }; Returns: Json
                            },
 "get_donation_info":
 { Args: { "p_listing_id": string }; Returns: Json
@@ -1888,6 +1909,9 @@ isOneToOne: false
 "list_litters":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
+"list_my_conversations":
+{ Args: { "p_limit"?: number,"p_offset"?: number }; Returns: Json
+                           },
 "list_my_listings":
 { Args: { "p_group": string,"p_limit"?: number,"p_offset"?: number }; Returns: Json
                            },
@@ -1907,6 +1931,9 @@ isOneToOne: false
                            },
 "log_dose":
 { Args: { "p_given_at"?: string,"p_occurrence_id"?: string,"p_treatment_id": string }; Returns: Json
+                           },
+"mark_conversation_read":
+{ Args: { "p_conversation_id": string }; Returns: Json
                            },
 "mark_listing_notices_sent":
 { Args: { "p_listing_ids": (string)[] }; Returns: number
@@ -1930,6 +1957,9 @@ isOneToOne: false
 { Args: { "p_listing": string }; Returns: {
               "hidden_at": string,"reason": Database["public"]['Enums']["report_reason"]
             }[]
+                           },
+"new_message_notification":
+{ Args: { "p_message_id": string }; Returns: Json
                            },
 "org_has_donation_info":
 { Args: { "p_org": string }; Returns: boolean
@@ -1980,6 +2010,9 @@ isOneToOne: false
 "save_partner":
 { Args: { "p_fields": Json,"p_hours"?: Json,"p_id": string }; Returns: Json
                            },
+"send_message":
+{ Args: { "p_body": string,"p_conversation_id": string,"p_listing_id": string }; Returns: Json
+                           },
 "set_auto_renew":
 { Args: { "p_auto_renew": boolean }; Returns: {
               "auto_renew": boolean,
@@ -2008,6 +2041,9 @@ isOneToOne: false
                            },
 "submit_org_request":
 { Args: { "p_email": string,"p_message": string,"p_name": string,"p_pet_id": string,"p_phone": string }; Returns: Json
+                           },
+"unblock_user":
+{ Args: { "p_user_id": string }; Returns: undefined
                            }
           }
           Enums: {

@@ -10,7 +10,7 @@ import { Toaster } from "@/components/ui/sonner"
 // type from EP-53 (rpc:get_my_organisation). The workspace admits anyone EP-53 returns an organisation for —
 // shelter and breeder accounts and team members with their own (owner) account (BR-53, owner decision,
 // Step 24); without an organisation (EP-53 404) → S01. Confirmations are Sonner toasts at bottom centre, 4 s
-// (Design §8).
+// (Design §8). The Poruke badge = EP-43 Me.marketplace.unread_conversations, read per page load (Step 28c).
 export default async function OrgLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient()
   const {
@@ -34,6 +34,8 @@ export default async function OrgLayout({ children }: { children: ReactNode }) {
     me?.organisation?.type ??
     "shelter"
 
+  const unread = Number((me as { marketplace?: { unread_conversations?: number } | null } | null)?.marketplace?.unread_conversations ?? 0)
+
   const dict = getDictionary(fromProfileLocale(me?.locale))
   return (
     <SignedInShell
@@ -41,6 +43,7 @@ export default async function OrgLayout({ children }: { children: ReactNode }) {
       orgType={orgType}
       user={{ name: me?.full_name || me?.email || user.email || "" }}
       labels={dict.shell.app}
+      counts={{ poruke: unread }}
     >
       {children}
       <Toaster position="bottom-center" duration={4000} />

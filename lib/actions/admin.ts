@@ -7,11 +7,12 @@ import { fail, fromDatabaseError, ok, type ActionResult, type ApiError } from "@
 import { sendEmail } from "@/lib/integrations/resend";
 import { geocode } from "@/lib/integrations/nominatim";
 import { r2, safeFileName } from "@/lib/integrations/r2";
-import { fromProfileLocale } from "@/lib/i18n";
+import { fromProfileLocale, getDictionary } from "@/lib/i18n";
 import type { City } from "@/lib/actions/registration";
 import type { Partner, PartnerHours, PartnerMessageChannel, PartnerType } from "@/lib/actions/partners";
 import type { UploadTicket } from "@/lib/actions/uploads";
 import type { Json } from "@/lib/supabase/database.types";
+import type { ReportReason } from "@/lib/actions/listings";
 
 // Operator admin (S26 /admin, EPIC-07): EP-68 decideOrganisation, EP-69 geocodeAddress /
 // createPartnerLogoUpload / savePartner, EP-71 setAppSettings. Every action runs the API §4.1 gates,
@@ -21,6 +22,12 @@ import type { Json } from "@/lib/supabase/database.types";
 // with the Operator's session. Partner logo (owner decision, Step 28): savePartner (create) → logo ticket →
 // PUT to R2 → savePartner({ id, logo_r2_key }); savePartner checks the key starts with p/<id>/ and, when R2
 // is configured, that the object exists (HEAD).
+// EP-86 moderate (Step 28c): dismiss_report / hide_listing / suspend_user through rpc:admin_decide_report (one
+// transaction), restore_listing through rpc:admin_restore_listing (owner decision: expired when the BR-55 limit
+// refuses active) and restore_user through rpc:admin_restore_user — all service-role only, called after the
+// explicit is_operator check. The emails listing_hidden / marketplace_suspended go to the author in their locale
+// with {reason} = reason_note or the report reason label; reason_note is never stored (OQ-17). listModeration is
+// the server wrapper of the EP-86 list rpc:admin_list_moderation (the Operator's session; empty for anyone else).
 
 /** API §6 PendingOrganisation. */
 export type PendingOrganisation = {
@@ -543,4 +550,152 @@ export async function setAppSettings(input: SetAppSettingsInput): Promise<Action
     .single();
   if (error) return { ok: false, error: fromDatabaseError(error) };
   return ok({ viber_enabled: data.viber_enabled, whatsapp_monthly_cap: WHATSAPP_MONTHLY_CAP, updated_at: data.updated_at });
+}
+
+// EP-86 ------------------------------------------------------------------------------------------------
+
+/** API §6 ModerationItem. */
+export type ModerationItem = {
+  report_id: string;
+  target: "listing" | "user";
+  reason: ReportReason;
+  note: string | null;
+  status: "open" | "actioned" | "dismissed";
+  created_at: string;
+  handled_at: string | null;
+  reporter: { user_id: string | null; display_name: string | null };
+  listing: { id: string | null; title: string | null; status: "active" | "resolved" | "expired" | "hidden" | null };
+  reported_user: { user_id: string | null; display_name: string | null; suspended_at: string | null };
+  same_target_open_count: number;
+};
+
+/** API §6 Restriction. */
+export type Restriction = {
+  kind: "listing" | "user";
+  listing_id: string | null;
+  listing_title: string | null;
+  user_id: string;
+  user_display_name: string | null;
+  restricted_at: string;
+  reason: ReportReason | null;
+};
+
+export type ModerationView = "open_reports" | "restrictions";
+
+/** EP-86 list Response. */
+export type ModerationPage<V extends ModerationView = ModerationView> = {
+  view: V;
+  items: V extends "open_reports" ? ModerationItem[] : Restriction[];
+  total: number;
+  open_count: number;
+  handled_this_month: number;
+};
+
+/** EP-86 moderate Request, discriminated by op. */
+export type ModerateInput =
+  | { op: "dismiss_report"; report_id: string }
+  | { op: "hide_listing"; report_id: string; reason_note?: string | null }
+  | { op: "suspend_user"; report_id: string; reason_note?: string | null }
+  | { op: "restore_listing"; listing_id: string }
+  | { op: "restore_user"; user_id: string };
+
+export type ModerateResult = { report: ModerationItem | null; restriction: Restriction | null };
+
+type DecidedReport = {
+  item: ModerationItem;
+  email:
+    | { template: "listing_hidden"; to: string | null; locale: string | null; listing: string; reason: ReportReason }
+    | { template: "marketplace_suspended"; to: string | null; locale: string | null; reason: ReportReason }
+    | null;
+};
+
+/** EP-86 list — the Operator's session; RLS-style empty result for everyone else. */
+export async function listModeration<V extends ModerationView>(input: {
+  view: V;
+  limit?: number;
+  offset?: number;
+}): Promise<ActionResult<ModerationPage<V>>> {
+  const supabase = await createClient();
+  const operator = await requireOperator(supabase, "read");
+  if (!operator.ok) return operator;
+  const { data, error } = await supabase.rpc("admin_list_moderation", {
+    p_view: input?.view,
+    p_limit: input?.limit ?? 20,
+    p_offset: input?.offset ?? 0,
+  });
+  if (error) return { ok: false, error: fromRpcError(error) };
+  return ok(data as unknown as ModerationPage<V>);
+}
+
+/** The author's email after hide / suspend; {reason} = reason_note or the report reason label (Design §9.1). */
+async function sendModerationEmail(email: NonNullable<DecidedReport["email"]>, reasonNote: string | null) {
+  if (!email.to) return;
+  const locale = fromProfileLocale(email.locale);
+  const reason = reasonNote || getDictionary(locale).sapa.common.reportReason[email.reason];
+  const sent = await sendEmail({
+    to: email.to,
+    locale,
+    template:
+      email.template === "listing_hidden"
+        ? { id: "listing_hidden", variables: { listing: email.listing, reason, url: `${siteUrl()}/sapa-pomoci/moje` } }
+        : { id: "marketplace_suspended", variables: { reason } },
+  });
+  if (sent.status === "failed") console.error(`[admin] moderate ${email.template} email failed:`, sent.error);
+}
+
+/** EP-86 moderate: dismiss / hide / suspend a report's target, or restore a hidden listing or a suspended user. */
+export async function moderate(input: ModerateInput): Promise<ActionResult<ModerateResult>> {
+  const supabase = await createClient();
+  const operator = await requireOperator(supabase, "write");
+  if (!operator.ok) return operator;
+
+  const op = input?.op;
+  const service = createServiceRoleClient();
+
+  if (op === "dismiss_report" || op === "hide_listing" || op === "suspend_user") {
+    const fields: Record<string, string> = {};
+    if (typeof input.report_id !== "string" || !UUID.test(input.report_id)) fields.report_id = "invalid";
+    let reasonNote: string | null = null;
+    if (op !== "dismiss_report") {
+      const raw = input.reason_note;
+      if (raw !== undefined && raw !== null && typeof raw !== "string") fields.reason_note = "invalid";
+      else if (typeof raw === "string") {
+        reasonNote = raw.trim() || null;
+        if (reasonNote && reasonNote.length > 500) fields.reason_note = "too_long";
+      }
+    }
+    if (Object.keys(fields).length > 0) return fail("validation_failed", { fields });
+
+    const { data, error } = await service.rpc("admin_decide_report", {
+      p_operator: operator.data.userId,
+      p_report_id: input.report_id,
+      p_op: op,
+    });
+    if (error) return { ok: false, error: fromRpcError(error) };
+    const decided = data as unknown as DecidedReport;
+    if (decided.email) await sendModerationEmail(decided.email, reasonNote);
+    return ok({ report: decided.item, restriction: null });
+  }
+
+  if (op === "restore_listing") {
+    if (typeof input.listing_id !== "string" || !UUID.test(input.listing_id)) {
+      return fail("validation_failed", { fields: { listing_id: "invalid" } });
+    }
+    const before = await service.rpc("admin_get_restriction", { p_kind: "listing", p_id: input.listing_id });
+    if (before.error) return { ok: false, error: fromRpcError(before.error) };
+    const { error } = await service.rpc("admin_restore_listing", { p_id: input.listing_id });
+    if (error) return { ok: false, error: fromRpcError(error) };
+    return ok({ report: null, restriction: before.data as unknown as Restriction });
+  }
+
+  if (op === "restore_user") {
+    if (typeof input.user_id !== "string" || !UUID.test(input.user_id)) {
+      return fail("validation_failed", { fields: { user_id: "invalid" } });
+    }
+    const { data, error } = await service.rpc("admin_restore_user", { p_user_id: input.user_id });
+    if (error) return { ok: false, error: fromRpcError(error) };
+    return ok({ report: null, restriction: data as unknown as Restriction });
+  }
+
+  return fail("validation_failed", { fields: { op: "invalid" } });
 }

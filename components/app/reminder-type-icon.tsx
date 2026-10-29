@@ -1,8 +1,8 @@
-import { Bell, Cake, Droplet, Stethoscope, Syringe, UtensilsCrossed, type LucideIcon } from "lucide-react"
+import { Bell, Cake, Droplet, MessageCircle, Stethoscope, Syringe, UtensilsCrossed, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { PetSex } from "@/components/app/pet-avatar"
 
-export type ReminderType = "treatment_dose" | "vaccination" | "vet_follow_up" | "meal" | "birthday" | "manual"
+export type ReminderType = "treatment_dose" | "vaccination" | "vet_follow_up" | "meal" | "birthday" | "manual" | "message"
 
 const typeIcon: Record<ReminderType, LucideIcon> = {
   treatment_dose: Droplet,
@@ -11,6 +11,7 @@ const typeIcon: Record<ReminderType, LucideIcon> = {
   meal: UtensilsCrossed,
   birthday: Cake,
   manual: Bell,
+  message: MessageCircle,
 }
 
 export const reminderTypeLabel: Record<ReminderType, string> = {
@@ -20,6 +21,7 @@ export const reminderTypeLabel: Record<ReminderType, string> = {
   meal: "Obrok",
   birthday: "Rođendan",
   manual: "Moj podsetnik",
+  message: "Poruke",
 }
 
 const sizes = { sm: "size-8", md: "size-12" } as const

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { checkGates } from "@/lib/server/gates"
 import { fail, fromDatabaseError, ok, type ActionResult, type ApiError } from "@/lib/server/result"
 import type { Me } from "@/lib/actions/registration"
+import { saveMessagePreference } from "@/lib/actions/messages"
 import { fromProfileLocale, getDictionary } from "@/lib/i18n"
 import {
   ReminderSettingsClient,
@@ -166,7 +167,7 @@ export default async function ReminderSettingsPage() {
       premium={profile?.entitlements.premium ?? false}
       vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""}
       copy={{ reminderSettings: dict.reminderSettings, common: dict.common }}
-      actions={{ savePreference, registerPush, checkPush, unregisterPush }}
+      actions={{ savePreference, registerPush, checkPush, unregisterPush, saveMessagePreference }}
     />
   )
 }

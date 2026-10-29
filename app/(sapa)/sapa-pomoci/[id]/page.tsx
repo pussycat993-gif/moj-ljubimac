@@ -2,6 +2,8 @@ import type { Metadata } from "next"
 import { createClient } from "@/lib/supabase/server"
 import { getVisitorLocale, type Me } from "@/lib/actions/registration"
 import { changeListing, getDonationInfo, type MarketplaceStatus } from "@/lib/actions/listings"
+import { sendMessage } from "@/lib/actions/messages"
+import { blockUser, submitReport } from "@/lib/actions/reports"
 import { fromProfileLocale, getDictionary, type Locale } from "@/lib/i18n"
 import { ListingDetailClient } from "./listing-detail-client"
 
@@ -15,7 +17,7 @@ export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = { title: "Moj Ljubimac" }
 
-const actions = { changeListing, getDonationInfo }
+const actions = { changeListing, getDonationInfo, sendMessage, submitReport, blockUser }
 
 type SapaMe = Me & { display_name: string | null; marketplace: MarketplaceStatus | null }
 

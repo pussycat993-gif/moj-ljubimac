@@ -2,28 +2,48 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, CalendarDays, ListChecks, MapPin, UserX } from "lucide-react"
+import { ArrowLeft, Ban, CalendarDays, Flag, ListChecks, MapPin, MoreHorizontal, UserX } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
+import { toast } from "@/components/ui/sonner"
 import { EmptyState } from "@/components/app/empty-state"
 import { ErrorState } from "@/components/app/error-state"
 import { ListingCard } from "@/components/app/listing-card"
+import { ReadOnlyBanner } from "@/components/app/read-only-banner"
+import { BlockDialog, ReportDialog, type ReportOutcome } from "@/components/app/safety-dialogs"
 import type { PublicProfile } from "@/lib/actions/listings"
+import type { SubmitReportInput, SubmitReportResult, UserBlock } from "@/lib/actions/reports"
+import type { ActionResult } from "@/lib/server/result"
 import { format, type Dictionary, type Locale } from "@/lib/i18n"
 import { listingCardLabels, toListingCard } from "../../sapa-pomoci/sapa-pomoci-client"
+import { blockDialogLabels, reportDialogLabels } from "../../poruke/messages-client"
 
 // S37 — Profil korisnika · /korisnik/[id] · FR-67 (EP-79). Port of docs/product/04-design/screens/user-profile.tsx
 // without the StateSwitcher; the (sapa) layout gives the shell. States per API §7.3 from GET /api/public/users/:id:
 // loading → default (header card: display name, initials, city, member since, active count; Aktivni oglasi grid);
 // signed_out (viewer.signed_in = false) renders the same content; empty when listings_total = 0; unavailable on 404;
 // error on any other failure (retry). Email and phone are never part of the response nor rendered (FR-67).
-// Step 28c adds the ⋯ menu (report / block) and the blocked state; until then a viewer.i_blocked response simply
-// renders what it carries (listings []).
+// Step 28c: the ⋯ menu (signed in, not the viewer's own profile): Prijavi korisnika → ReportDialog (EP-84) and
+// Blokiraj → BlockDialog (EP-85); the blocked state B (viewer.i_blocked → ReadOnlyBanner + Odblokiraj, listings
+// hidden, "Aktivnih oglasa: —"); after block / unblock the profile is read again (EP-79).
 
 /** Up to 50 active listings (API page maximum); a Free user has far fewer. */
 const LIMIT = 50
+
+/** EP-84, EP-85 (Step 28c). */
+export type UserProfileActions = {
+  submitReport: (input: SubmitReportInput) => Promise<ActionResult<SubmitReportResult>>
+  blockUser: (userId: string) => Promise<ActionResult<UserBlock>>
+  unblockUser: (userId: string) => Promise<ActionResult<null>>
+}
 
 export type UserProfileCopy = {
   common: Dictionary["common"]
@@ -81,16 +101,21 @@ export function UserProfileClient({
   userId,
   locale,
   copy,
+  actions,
 }: {
   userId: string
   locale: Locale
   copy: UserProfileCopy
+  actions?: UserProfileActions
 }) {
   const t = copy.profile
   const [attempt, setAttempt] = useState(0)
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const current = loaded?.key === attempt ? loaded : null
   const labels = useMemo(() => listingCardLabels(copy.sapa, locale), [copy.sapa, locale])
+  const [reportOpen, setReportOpen] = useState(false)
+  const [blockOpen, setBlockOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -119,6 +144,38 @@ export function UserProfileClient({
   const profile = current?.status === "ready" ? current.profile : null
   const name = profile?.display_name || copy.sapa.userFallback
   const cityName = profile?.city ? (locale === "en" ? profile.city.name_en : profile.city.name_sr) : null
+  const blocked = profile?.viewer.i_blocked ?? false
+  const showMenu = Boolean(actions && profile?.viewer.signed_in && !profile.viewer.is_me)
+
+  async function report(input: { reason: SubmitReportInput["reason"]; note: string | null }): Promise<ReportOutcome> {
+    try {
+      const result = await actions!.submitReport({ user_id: userId, reason: input.reason, note: input.note })
+      if (result.ok) return { status: result.data.already_submitted ? "already_submitted" : "sent" }
+    } catch {
+      // falls through to the error message
+    }
+    return { status: "error", message: copy.common.error }
+  }
+
+  // EP-85 block / unblock, then EP-79 again (the listings disappear / return, BR-59).
+  async function setBlocked(value: boolean) {
+    setBlockOpen(false)
+    if (!actions) return
+    setBusy(true)
+    try {
+      const result = value ? await actions.blockUser(userId) : await actions.unblockUser(userId)
+      if (result.ok) {
+        toast.success(format(value ? copy.sapa.blockedToast : copy.sapa.unblockedToast, { name }))
+        setAttempt((a) => a + 1)
+        return
+      }
+    } catch {
+      // falls through to the error toast
+    } finally {
+      setBusy(false)
+    }
+    toast.error(copy.common.error)
+  }
 
   return (
     <div className="space-y-6">
@@ -181,38 +238,92 @@ export function UserProfileClient({
                 </p>
                 <p className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
                   <ListChecks className="size-4 shrink-0" aria-hidden />
-                  <span className="truncate">{format(t.activeCount, { n: profile.active_listing_count })}</span>
+                  <span className="truncate">
+                    {blocked ? t.blockedCount : format(t.activeCount, { n: profile.active_listing_count })}
+                  </span>
                 </p>
               </div>
+              {showMenu && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-11 shrink-0 md:size-9" aria-label={copy.sapa.moreActions}>
+                      <MoreHorizontal className="size-5" aria-hidden />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => setReportOpen(true)}>
+                      <Flag className="size-4" aria-hidden />
+                      {copy.sapa.reportUser}
+                    </DropdownMenuItem>
+                    {!blocked && (
+                      <DropdownMenuItem variant="destructive" onSelect={() => setBlockOpen(true)}>
+                        <Ban className="size-4" aria-hidden />
+                        {copy.sapa.block}
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
             <p className="text-sm text-muted-foreground">{t.privacy}</p>
           </Card>
 
-          <section aria-labelledby="active-heading" className="space-y-4">
-            <h2 id="active-heading" className="font-heading text-[22px] leading-7 font-bold">
-              {t.activeHeading}
-            </h2>
-            {profile.listings.length === 0 ? (
-              <EmptyState
-                icon={ListChecks}
-                title={t.emptyTitle}
-                description={format(t.emptyText, { name })}
-                action={t.browse}
-                href="/sapa-pomoci"
-              />
-            ) : (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {profile.listings.map((l) => (
-                  <ListingCard
-                    key={l.id}
-                    listing={toListingCard(l, copy.sapa, locale)}
-                    labels={labels}
-                    coverUrl={l.cover_photo?.url ?? null}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
+          {blocked && (
+            <div className="space-y-3">
+              <ReadOnlyBanner reason={t.blocked} />
+              <Button variant="outline" className="h-11 md:h-9" disabled={busy} onClick={() => void setBlocked(false)}>
+                {copy.sapa.unblock}
+              </Button>
+            </div>
+          )}
+
+          {!blocked && (
+            <section aria-labelledby="active-heading" className="space-y-4">
+              <h2 id="active-heading" className="font-heading text-[22px] leading-7 font-bold">
+                {t.activeHeading}
+              </h2>
+              {profile.listings.length === 0 ? (
+                <EmptyState
+                  icon={ListChecks}
+                  title={t.emptyTitle}
+                  description={format(t.emptyText, { name })}
+                  action={t.browse}
+                  href="/sapa-pomoci"
+                />
+              ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {profile.listings.map((l) => (
+                    <ListingCard
+                      key={l.id}
+                      listing={toListingCard(l, copy.sapa, locale)}
+                      labels={labels}
+                      coverUrl={l.cover_photo?.url ?? null}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+        </>
+      )}
+
+      {showMenu && (
+        <>
+          <ReportDialog
+            open={reportOpen}
+            onOpenChange={setReportOpen}
+            target="user"
+            name={name}
+            labels={reportDialogLabels(copy.sapa)}
+            onSubmit={report}
+          />
+          <BlockDialog
+            open={blockOpen}
+            onOpenChange={setBlockOpen}
+            name={name}
+            labels={blockDialogLabels(copy.sapa)}
+            onConfirm={() => void setBlocked(true)}
+          />
         </>
       )}
     </div>

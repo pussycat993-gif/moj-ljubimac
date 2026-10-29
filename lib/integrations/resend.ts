@@ -117,6 +117,32 @@ export type ListingExpiredEmailVariables = {
   url: string;
 };
 
+export type NewMessageEmailVariables = {
+  /** First word of the recipient's profiles.full_name; null → the greeting without a name (as reminder_email). */
+  first_name: string | null;
+  /** listings.title, or the "listing deleted" label. */
+  listing: string;
+  /** The sender's display name (never declined, Design §9.1). */
+  sender: string;
+  /** The first 120 characters of the message. */
+  preview: string;
+  /** NEXT_PUBLIC_SITE_URL/poruke/<conversation_id> — S36. */
+  url: string;
+};
+
+export type ListingHiddenEmailVariables = {
+  listing: string;
+  /** The Operator's reason_note, or the report reason label (Design §9.1). */
+  reason: string;
+  /** NEXT_PUBLIC_SITE_URL/sapa-pomoci/moje — S35. */
+  url: string;
+};
+
+export type MarketplaceSuspendedEmailVariables = {
+  /** The Operator's reason_note, or the report reason label (Design §9.1). */
+  reason: string;
+};
+
 /** Template ids of Design §9.1 this adapter renders. Later steps add theirs here. */
 export type EmailTemplate =
   | { id: "reminder_email"; variables: ReminderEmailVariables }
@@ -131,7 +157,10 @@ export type EmailTemplate =
   | { id: "shelter_approved"; variables: ShelterApprovedEmailVariables }
   | { id: "shelter_rejected"; variables: ShelterRejectedEmailVariables }
   | { id: "listing_expiring"; variables: ListingExpiringEmailVariables }
-  | { id: "listing_expired"; variables: ListingExpiredEmailVariables };
+  | { id: "listing_expired"; variables: ListingExpiredEmailVariables }
+  | { id: "new_message"; variables: NewMessageEmailVariables }
+  | { id: "listing_hidden"; variables: ListingHiddenEmailVariables }
+  | { id: "marketplace_suspended"; variables: MarketplaceSuspendedEmailVariables };
 
 export type RenderedEmail = { subject: string; html: string; text: string };
 
@@ -205,6 +234,11 @@ function simple(
   };
 }
 
+/** "Razlog: {reason}." — no second full stop when the Operator's note already ends a sentence. */
+function withReason(body: string, reason: string): string {
+  return /[.!?…]$/.test(reason.trim()) ? body.replace("{reason}.", "{reason}") : body;
+}
+
 const RENDERERS: { [K in EmailTemplate["id"]]: (t: Dictionary, v: Extract<EmailTemplate, { id: K }>["variables"]) => EmailParts } = {
   record_transfer(t, v) {
     return simple(t.messages.record_transfer, { organisation: v.organisation, pet: v.pet, date: v.date }, v.url);
@@ -244,6 +278,41 @@ const RENDERERS: { [K in EmailTemplate["id"]]: (t: Dictionary, v: Extract<EmailT
       bodyHtml: format(escapeHtml(copy.body), { listing: `<strong>${escapeHtml(v.listing)}</strong>`, date: escapeHtml(v.date) }),
       bodyText: format(copy.body, { listing: v.listing, date: v.date }),
       buttons: [{ label: copy.button, url: v.url, primary: true }],
+      note: null,
+    };
+  },
+  new_message(t, v) {
+    const copy = t.messages.new_message;
+    const template = v.first_name ? copy.body : copy.bodyNoName;
+    const values = { first_name: v.first_name ?? "", sender: v.sender, preview: v.preview };
+    const escaped = Object.fromEntries(Object.entries(values).map(([k, value]) => [k, escapeHtml(value)]));
+    return {
+      subject: format(copy.subject, { listing: v.listing }),
+      bodyHtml: format(escapeHtml(template), { ...escaped, listing: `<strong>${escapeHtml(v.listing)}</strong>` }),
+      bodyText: format(template, { ...values, listing: v.listing }),
+      buttons: [{ label: copy.button, url: v.url, primary: true }],
+      note: null,
+    };
+  },
+  listing_hidden(t, v) {
+    const copy = t.messages.listing_hidden;
+    const body = withReason(copy.body, v.reason);
+    return {
+      subject: format(copy.subject, { listing: v.listing }),
+      bodyHtml: format(escapeHtml(body), { listing: `<strong>${escapeHtml(v.listing)}</strong>`, reason: escapeHtml(v.reason) }),
+      bodyText: format(body, { listing: v.listing, reason: v.reason }),
+      buttons: [{ label: copy.button, url: v.url, primary: true }],
+      note: null,
+    };
+  },
+  marketplace_suspended(t, v) {
+    const copy = t.messages.marketplace_suspended;
+    const body = withReason(copy.body, v.reason);
+    return {
+      subject: copy.subject,
+      bodyHtml: format(escapeHtml(body), { reason: escapeHtml(v.reason) }),
+      bodyText: format(body, { reason: v.reason }),
+      buttons: [],
       note: null,
     };
   },

@@ -5,17 +5,20 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
+  Ban,
   Building2,
   CalendarClock,
   Clock,
   Copy,
   ExternalLink,
+  Flag,
   HandHeart,
   ImageIcon,
   Landmark,
   LogIn,
   MapPin,
   MessageCircle,
+  MoreHorizontal,
   Pencil,
   RefreshCw,
   SearchX,
@@ -46,18 +49,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/sonner"
 import { EmptyState } from "@/components/app/empty-state"
 import { ErrorState } from "@/components/app/error-state"
 import { ListingTypeTag, formatRsd } from "@/components/app/listing-type-tag"
+import { BlockDialog, ReportDialog, type ReportOutcome } from "@/components/app/safety-dialogs"
 import { StatusBadge } from "@/components/app/status-badge"
 import type { ChangeListingInput, Listing, ListingOutcome, ListingType } from "@/lib/actions/listings"
 import type { DonationInfo } from "@/lib/actions/organisation"
+import type { SendMessageInput, SendMessageResult } from "@/lib/actions/messages"
+import type { SubmitReportInput, SubmitReportResult, UserBlock } from "@/lib/actions/reports"
 import type { ActionResult } from "@/lib/server/result"
 import { format, type Dictionary, type Locale } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
+import { blockDialogLabels, reportDialogLabels, sendErrorMessage } from "../../poruke/messages-client"
 
 // S33 — Oglas · /sapa-pomoci/[id] · FR-62, FR-66, FR-67 #3 (Step 28b; port of
 // docs/product/04-design/screens/listing-detail.tsx without the StateSwitcher). States from EP-74 (API §7.3):
@@ -68,8 +83,11 @@ import { cn } from "@/lib/utils"
 // Me.marketplace.suspended_at. Doniraj (need with has_donation_info) opens a Dialog loaded from EP-78: each block is
 // omitted when its field is null; has_any = false → the "no donation info yet" message; recipient =
 // organisations.name and purpose "Donacija — <title>" (OQ-17 (c)). No money is collected (BR-58): no amount field,
-// no payment call; the only outbound link is the shelter's payment_url. "Pošalji poruku" / "Pošalji poruku azilu"
-// have no action yet — the message Dialog and the ⋯ report / block menu are Step 28c.
+// no payment call; the only outbound link is the shelter's payment_url.
+// Step 28c: "Pošalji poruku" / "Pošalji poruku azilu" (also in the Doniraj Dialog) open the message Dialog (EP-82 with
+// listing_id; sent → "Poruka je poslata…" + Otvori razgovor) or, when viewer.my_conversation_id is set, the existing
+// thread /poruke/<id> (BR-61); the ⋯ menu (signed in, not the author) has Prijavi oglas → ReportDialog (EP-84) and —
+// not on shelter needs — Blokiraj korisnika → BlockDialog (EP-85), after which the listing is unavailable.
 
 export type ListingDetailCopy = {
   detail: Dictionary["sapa"]["detail"]
@@ -80,6 +98,10 @@ export type ListingDetailCopy = {
 export type ListingDetailActions = {
   changeListing: (input: ChangeListingInput) => Promise<ActionResult<Listing | { deleted_listing_id: string }>>
   getDonationInfo: (input: { listing_id: string }) => Promise<ActionResult<DonationInfo>>
+  /** EP-82, EP-84, EP-85 (Step 28c). */
+  sendMessage?: (input: SendMessageInput) => Promise<ActionResult<SendMessageResult>>
+  submitReport?: (input: SubmitReportInput) => Promise<ActionResult<SubmitReportResult>>
+  blockUser?: (userId: string) => Promise<ActionResult<UserBlock>>
 }
 
 type LoadState = { kind: "loading" } | { kind: "ready"; listing: Listing } | { kind: "unavailable" } | { kind: "error" }
@@ -207,18 +229,136 @@ function Gallery({ listing, t }: { listing: Listing; t: ListingDetailCopy["detai
   )
 }
 
+const MESSAGE_MAX = 2000
+
+/** The S33 "Pošalji poruku" Dialog (EP-82 with listing_id). One idempotency key per opened Dialog (API §3.3). */
+function MessageDialog({
+  open,
+  onOpenChange,
+  author,
+  title,
+  copy,
+  onSend,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  author: string
+  title: string
+  copy: ListingDetailCopy
+  onSend: (body: string, key: string) => Promise<ActionResult<SendMessageResult>>
+}) {
+  const t = copy.detail
+  const [text, setText] = useState(t.messageDefault)
+  const [sentTo, setSentTo] = useState<string | null>(null)
+  const [error, setError] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [key, setKey] = useState(() => crypto.randomUUID())
+
+  async function send() {
+    if (!text.trim()) {
+      setError(copy.sapa.sendEmpty)
+      return
+    }
+    setBusy(true)
+    try {
+      const result = await onSend(text, key)
+      if (result.ok) {
+        setError("")
+        setSentTo(result.data.conversation.id)
+      } else {
+        setError(sendErrorMessage(result.error, copy.sapa, copy.common))
+      }
+    } catch {
+      setError(copy.common.error)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o)
+        if (!o) {
+          if (sentTo) {
+            setText(t.messageDefault)
+            setKey(crypto.randomUUID())
+          }
+          setSentTo(null)
+          setError("")
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{format(t.messageTitle, { name: author })}</DialogTitle>
+          <DialogDescription className="break-words">{format(t.messageListing, { title })}</DialogDescription>
+        </DialogHeader>
+        {sentTo ? (
+          <p role="status" className="flex items-center gap-2 rounded-sm bg-foreground/5 p-3 text-sm">
+            <CircleCheck className="size-4 shrink-0 text-success" aria-hidden />
+            <span className="min-w-0">{t.messageSent}</span>
+          </p>
+        ) : (
+          <div className="space-y-2">
+            <Label htmlFor="first-message">{t.messageLabel}</Label>
+            <Textarea
+              id="first-message"
+              rows={4}
+              maxLength={MESSAGE_MAX}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              aria-invalid={!!error}
+              aria-describedby={error ? "first-message-error" : "first-message-count"}
+            />
+            {error ? (
+              <p id="first-message-error" className="text-sm text-destructive">
+                {error}
+              </p>
+            ) : (
+              <p id="first-message-count" className="text-right text-xs font-medium text-muted-foreground">
+                {text.length} / {MESSAGE_MAX}
+              </p>
+            )}
+          </div>
+        )}
+        <DialogFooter>
+          {sentTo ? (
+            <Button asChild className="h-11 md:h-9">
+              <Link href={`/poruke/${sentTo}`}>{t.openConversation}</Link>
+            </Button>
+          ) : (
+            <>
+              <Button variant="outline" className="h-11 md:h-9" onClick={() => onOpenChange(false)}>
+                {t.cancel}
+              </Button>
+              <Button className="h-11 md:h-9" disabled={busy} onClick={() => void send()}>
+                {t.send}
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function DonationDialog({
   state,
   shelterName,
   signInHref,
   t,
   onClose,
+  onMessage,
 }: {
   state: DonateState
   shelterName: string
   signInHref: string
   t: ListingDetailCopy["detail"]
   onClose: () => void
+  /** "Pošalji poruku azilu" — opens the message Dialog or the existing thread (Step 28c). */
+  onMessage: () => void
 }) {
   const [copied, setCopied] = useState(false)
   const info = state.kind === "ready" ? state.info : null
@@ -325,8 +465,15 @@ function DonationDialog({
 
         <DialogFooter>
           {info && (
-            // Step 28c opens the message Dialog from here.
-            <Button type="button" variant="outline" className="h-11 md:h-9">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 md:h-9"
+              onClick={() => {
+                setCopied(false)
+                onMessage()
+              }}
+            >
               <MessageCircle className="size-4" aria-hidden />
               {t.messageShelter}
             </Button>
@@ -367,6 +514,9 @@ export function ListingDetailClient({
   const [resolveOpen, setResolveOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [messageOpen, setMessageOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
+  const [blockOpen, setBlockOpen] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -436,6 +586,43 @@ export function ListingDetailClient({
     if (!result.ok) return showError(result.error.code)
     toast.success(format(t.deletedToast, { title: listing.title }))
     router.push("/sapa-pomoci/moje")
+  }
+
+  // EP-82 — the existing conversation opens instead of the Dialog (BR-61).
+  function openMessage(listing: Listing) {
+    if (listing.viewer.my_conversation_id) {
+      router.push(`/poruke/${listing.viewer.my_conversation_id}`)
+      return
+    }
+    setMessageOpen(true)
+  }
+
+  async function report(listing: Listing, input: { reason: SubmitReportInput["reason"]; note: string | null }): Promise<ReportOutcome> {
+    if (!actions.submitReport) return { status: "error", message: copy.common.error }
+    try {
+      const result = await actions.submitReport({ listing_id: listing.id, reason: input.reason, note: input.note })
+      if (result.ok) return { status: result.data.already_submitted ? "already_submitted" : "sent" }
+    } catch {
+      // falls through to the error message
+    }
+    return { status: "error", message: copy.common.error }
+  }
+
+  // EP-85 — after blocking from the menu the listing is hidden for the caller (unavailable).
+  async function block(listing: Listing, name: string) {
+    setBlockOpen(false)
+    if (!actions.blockUser) return
+    try {
+      const result = await actions.blockUser(listing.author.user_id)
+      if (result.ok) {
+        toast.success(format(copy.sapa.blockedToast, { name }))
+        setState({ kind: "unavailable" })
+        return
+      }
+    } catch {
+      // falls through to the error toast
+    }
+    toast.error(copy.common.error)
   }
 
   async function openDonate(listing: Listing) {
@@ -511,6 +698,8 @@ export function ListingDetailClient({
         ? format(t.expiredOn, { date: formatDate(listing.expires_at, locale) })
         : format(t.activeUntil, { date: formatDate(listing.expires_at, locale) })
   const authorMeta = [cityName(author.city), memberSince(author.member_since, t)].filter(Boolean).join(" · ")
+  // The ⋯ report / block menu: signed in and not the author (hidden signed out, Design S33).
+  const showSafety = viewer.signed_in && !isAuthor
 
   const conversationsLink =
     viewer.conversation_count !== null ? (
@@ -650,8 +839,12 @@ export function ListingDetailClient({
             {t.donate}
           </Button>
         )}
-        {/* Step 28c opens the message Dialog (or the existing thread, BR-61) from here. */}
-        <Button type="button" variant={canDonate ? "outline" : "default"} className="h-11 w-full md:h-9">
+        <Button
+          type="button"
+          variant={canDonate ? "outline" : "default"}
+          className="h-11 w-full md:h-9"
+          onClick={() => openMessage(listing)}
+        >
           <MessageCircle className="size-4" aria-hidden />
           {isNeed ? t.messageShelter : t.message}
         </Button>
@@ -675,7 +868,35 @@ export function ListingDetailClient({
                 <StatusBadge status="done" label={format(t.resolvedPill, { outcome: outcomeLabel })} />
               )}
             </div>
-            <h1 className="min-w-0 font-heading text-[28px] leading-9 font-bold break-words">{listing.title}</h1>
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <h1 className="min-w-0 font-heading text-[28px] leading-9 font-bold break-words">{listing.title}</h1>
+              {showSafety && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-11 shrink-0 md:size-9"
+                      aria-label={copy.sapa.moreActions}
+                    >
+                      <MoreHorizontal className="size-5" aria-hidden />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => setReportOpen(true)}>
+                      <Flag className="size-4" aria-hidden />
+                      {copy.sapa.reportListing}
+                    </DropdownMenuItem>
+                    {listing.type !== "need" && (
+                      <DropdownMenuItem variant="destructive" onSelect={() => setBlockOpen(true)}>
+                        <Ban className="size-4" aria-hidden />
+                        {copy.sapa.blockUser}
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
             {price && <p className="font-heading text-[22px] leading-7 font-bold">{price}</p>}
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <MapPin className="size-4 shrink-0" aria-hidden />
@@ -748,7 +969,44 @@ export function ListingDetailClient({
           signInHref={signInHref}
           t={t}
           onClose={() => setDonate({ kind: "closed" })}
+          onMessage={() => {
+            setDonate({ kind: "closed" })
+            openMessage(listing)
+          }}
         />
+      )}
+
+      {actions.sendMessage && viewer.signed_in && !isAuthor && (
+        <MessageDialog
+          key={listing.id}
+          open={messageOpen}
+          onOpenChange={setMessageOpen}
+          author={authorName}
+          title={listing.title}
+          copy={copy}
+          onSend={(body, key) =>
+            actions.sendMessage!({ listing_id: listing.id, body, idempotency_key: key })
+          }
+        />
+      )}
+      {showSafety && (
+        <>
+          <ReportDialog
+            open={reportOpen}
+            onOpenChange={setReportOpen}
+            target="listing"
+            name={listing.title}
+            labels={reportDialogLabels(copy.sapa)}
+            onSubmit={(input) => report(listing, input)}
+          />
+          <BlockDialog
+            open={blockOpen}
+            onOpenChange={setBlockOpen}
+            name={authorName}
+            labels={blockDialogLabels(copy.sapa)}
+            onConfirm={() => void block(listing, authorName)}
+          />
+        </>
       )}
 
       <AlertDialog open={resolveOpen} onOpenChange={setResolveOpen}>

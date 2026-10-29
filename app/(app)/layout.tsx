@@ -8,7 +8,8 @@ import { Toaster } from "@/components/ui/sonner"
 
 // App shell (Design §5.1). User, role and language come from EP-43 (profiles.locale, FR-35).
 // No profile yet → the S15 completion step. The Podsetnici count badge = EP-25 `total` for
-// filter=today (today's pending reminders); zero → no badge (Step 17).
+// filter=today (today's pending reminders); zero → no badge (Step 17). The Poruke badge = EP-43
+// Me.marketplace.unread_conversations, read on each page load (Step 28c, NFR-11).
 // Confirmations are Sonner toasts at bottom centre, 4 s (Design §8; owner decision, Step 13).
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient()
@@ -26,6 +27,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const me = (data ?? null) as Me | null
   if (!error && !me) redirect("/registracija")
   const todayTotal = today.error ? 0 : Number((today.data as { total?: number } | null)?.total ?? 0)
+  const unread = Number((me as { marketplace?: { unread_conversations?: number } | null } | null)?.marketplace?.unread_conversations ?? 0)
 
   const dict = getDictionary(fromProfileLocale(me?.locale))
   return (
@@ -34,7 +36,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       orgType={me?.organisation?.type}
       user={{ name: me?.full_name || me?.email || user.email || "" }}
       labels={dict.shell.app}
-      counts={{ podsetnici: todayTotal }}
+      counts={{ podsetnici: todayTotal, poruke: unread }}
     >
       {children}
       <Toaster position="bottom-center" duration={4000} />

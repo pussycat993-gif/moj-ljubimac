@@ -18,6 +18,8 @@ export const SIGNED_IN_PREFIXES = [
   // stay public. /sapa-pomoci/<id>/izmeni is matched below.
   "/sapa-pomoci/nova",
   "/sapa-pomoci/moje",
+  // S36 Poruke (Step 28c): /poruke and /poruke/<id>.
+  "/poruke",
 ] as const;
 
 /** Signed-in pages under a public prefix (S34 edit). */

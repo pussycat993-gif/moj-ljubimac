@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { createClient } from "@/lib/supabase/server"
 import { getVisitorLocale, type Me } from "@/lib/actions/registration"
+import { blockUser, submitReport, unblockUser } from "@/lib/actions/reports"
 import { fromProfileLocale, getDictionary, type Locale } from "@/lib/i18n"
 import { UserProfileClient } from "./user-profile-client"
 
@@ -40,6 +41,7 @@ export default async function UserProfilePage({ params }: { params: Promise<{ id
       userId={id}
       locale={locale}
       copy={{ common: dict.common, sapa: dict.sapa.common, profile: dict.sapa.profile }}
+      actions={{ submitReport, blockUser, unblockUser }}
     />
   )
 }

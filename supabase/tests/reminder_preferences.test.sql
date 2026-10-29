@@ -150,8 +150,8 @@ select is(
 
 -- EP-28 get: rpc:get_reminder_settings ------------------------------------------------------------
 select is(
-  jsonb_array_length(public.get_reminder_settings() -> 'preferences'), 6,
-  'get_reminder_settings returns one preference per reminder type (6)'
+  jsonb_array_length(public.get_reminder_settings() -> 'preferences'), 7,
+  'get_reminder_settings returns one preference per reminder type, message included since Step 28c (7)'
 );
 select is(
   (select p - 'updated_at' from jsonb_array_elements(public.get_reminder_settings() -> 'preferences') p
@@ -168,7 +168,7 @@ select is(
 select is(
   (select array_agg(p ->> 'type' order by ord) from jsonb_array_elements(public.get_reminder_settings() -> 'preferences')
      with ordinality as e (p, ord)),
-  array['vaccination', 'treatment_dose', 'vet_follow_up', 'meal', 'birthday', 'manual'],
+  array['vaccination', 'treatment_dose', 'vet_follow_up', 'meal', 'birthday', 'manual', 'message'],
   'preferences come in reminder-type order'
 );
 select is(public.get_reminder_settings() -> 'viber_enabled', 'false'::jsonb, 'viber_enabled is false (BR-14b)');
