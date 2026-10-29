@@ -91,7 +91,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 28a | Schema: Šapa pomoći | ✅ | 28 | — | 2026-10-28 |
 | 28b | Listings, public pages, profiles & donation info | ✅ | 28a, 21, 19 | — | 2026-10-29 |
 | 28c | Messaging, notifications, report/block & moderation | ✅ | 28b, 19 | — | 2026-10-29 |
-| 29 | WhatsApp channel | ⬜ | 19 | — | |
+| 29 | WhatsApp channel | ✅ | 19 | — | 2026-10-29 |
 | 30 | Nightly jobs | ⬜ | 23, 25, 29 | — | |
 | 30a | Backups & data export archives | ⬜ | 30, 23 | — | |
 | 31 | Payments & pricing | 🔒 | 30a | OQ-11, OQ-03 | |
@@ -5882,7 +5882,60 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-29** — Step 29 built (unattended overnight run; resumed after the first run hit the usage limit with `lib/integrations/whatsapp.ts`, `lib/actions/whatsapp.ts` and the `lib/server/action-tokens.ts` change uncommitted. Those files were reviewed against this prompt and the owner decisions and kept, with one fix: the `"use server"` actions file no longer exports its two rate-limit constants, because Next.js allows only async exports there).
+  - **Built:**
+    - No migration. Steps 08 and 18 already ship everything the database needs. The `reminder_preferences_before_write` trigger raises `premium_required:whatsapp`, `whatsapp_not_connected`, `whatsapp_not_connected:viber` and `channel_disabled`. `rpc:get_channel_usage` (EP-31) and the BR-14a `cap_used` in `claim_due_occurrences` come from Steps 18 and 19. `npm run db:types` produced no diff.
+    - `lib/integrations/whatsapp.ts`: a Meta Cloud API adapter that uses fetch only (Graph `v21.0`, `/{WHATSAPP_PHONE_NUMBER_ID}/messages`, Bearer `WHATSAPP_ACCESS_TOKEN`). It sends the two API §9.4 templates. `reminder_due` (Utility) has `{{1}}` pet or "Za mene", `{{2}}` title and `{{3}}` "{date} u {time}" in Europe/Belgrade, plus a quick-reply button whose payload is the `dn_` token. `verification_code` (Authentication) has the code in the body and the copy-code button. The language follows `profiles.locale` (sr-Latn → `sr`). `sendText` sends the free-form confirmation. Sending gets 2 tries (0 s, 1 s) on network errors, 429 and 5xx; other 4xx fail at once, and Meta codes 100/131009/131021/131026/131030 are flagged `undeliverable`. `verifyWebhookSignature` checks `X-Hub-Signature-256` over the raw body with `WHATSAPP_APP_SECRET` using Web Crypto verify, which compares in constant time. Fake mode is described under owner decisions.
+    - `lib/server/action-tokens.ts`: adds kind `wv` (EP-30 `verification_token`) with `signVerificationToken` / `checkVerificationToken`. The fields are user_id, phone and a code digest. Expiry and nonce come from the shared format, it lives 10 minutes, it is stateless and not single-use.
+    - `lib/actions/whatsapp.ts`: `whatsappConnection` (EP-30). It runs the API §4.1 gates. `send_code` and `verify_code` require Premium (`premium_required`, `details.limit = "whatsapp"`), and `disconnect` is always allowed. `send_code` validates E.164 (`fields.phone: invalid`) and the uuid v4 `idempotency_key`. It is idempotent for 24 h through `lib/server/idempotency.ts` and limited to 5 per hour through `lib/server/rate-limit.ts`. It sends a random 6-digit code and returns `CodeSent`: `expires_at` is now + 10 min and `resend_available_at` is now + 60 s. When Meta rejects the number the result is `fields.phone: undeliverable`. `verify_code` is limited to 10 per hour. A wrong code, an expired or tampered token, or another user's token all give `verification_code_invalid`. A correct code upserts `user_channels { whatsapp, address, opted_in_at: now() }`. `disconnect` deletes that row and removes `whatsapp` from every `reminder_preferences.channels` of the caller; a type left empty becomes `{email, push}`. `user_channels` has no client write path, so both writes use the service role and are scoped to the gated caller.
+    - `lib/server/dispatch.ts` (EP-33 steps 3–5) and `app/api/internal/dispatch/route.ts`. WhatsApp is live when a `sendWhatsApp` sender is wired; Viber is never live. The BR-14a cap is counted per message inside the run (`cap_used` plus WhatsApp messages delivered earlier in the run): the 30th message is sent and the 31st falls back to `{email, push}`. That fallback increments `fell_back` and records a `whatsapp` delivery row with `status = failed` and `error = whatsapp_cap_reached` (API §7.2). The template's quick-reply payload is the same `dn_` token as the email link. The number is read from the recipient's opted-in `user_channels` row, once per recipient per run. A failed WhatsApp send is recorded as `failed` and falls back to email + push for that occurrence (API §9.4). Members still get only `{email, push}` (BR-24). Email and push behaviour is unchanged. `whatsappCapReached` is exported for the cap rule.
+    - `app/api/webhooks/whatsapp/route.ts` (API §9.1). `GET` echoes `hub.challenge` when `hub.verify_token = WHATSAPP_VERIFY_TOKEN`, otherwise it returns 401 `invalid_signature`. `POST` checks the signature first (missing or wrong → 401 `invalid_signature`), then always answers 200 within a 4.5 s budget and logs any failure.
+      - Status events are matched by `provider_message_id`. `sent` changes nothing, because the row is already `delivered` when Meta accepts the message. `delivered` sets `delivered_at` to the event time. `failed` sets the row to `failed` with `whatsapp_<code>: <title>`.
+      - A button reply whose payload is a `dn_` token follows exactly the EP-32 rules: token check, then `mark_occurrence_done_for` as the recipient (naturally idempotent). It then replies in the recipient's locale.
+      - Everything else is ignored.
+    - S12 (`page.tsx`, `reminder-settings-client.tsx`): the live WhatsApp parts of the mockup replace Step 18's "WhatsApp uskoro" state. The `WHATSAPP_LIVE` flag and every uskoro branch are gone.
+      - The Kanali card connection runs number → "Pošalji kod" → "Poslali smo kod na …" → "Kod iz poruke" / "Potvrdi" → "Povezano: +381 64 123 4567" → "Prekini vezu". "Pošalji kod ponovo" waits until `resend_available_at` and sends with a new idempotency key; "Promeni broj" goes back to the number.
+      - The number accepts "+381 …", "064 …" and "00381 …" and is normalised to E.164.
+      - Inline errors: the mockup's "Upiši broj mobilnog telefona…" and "Kod ima 6 cifara…" for local checks, plus the owner-decision copy for 422 and 429.
+      - `premium_required` from EP-30 switches the screen to the G state.
+      - Each type card has a WhatsApp checkbox, with "Broj nije povezan" beside it while no number is connected. A disconnect mirrors the server clean-up in the cards.
+      - Premium users get the "WhatsApp poruke" counter card from EP-31: "n / 30 poruka ovog meseca", a Progress bar and the reset date. `page.tsx` reads EP-31 only for Premium users and passes `whatsappConnection`, `usage` and `locale`.
+      - Free users keep the G state. Viber stays absent while `viber_enabled = false`.
+    - `lib/i18n/sr.ts` / `en.ts` (keys added only): the `reminderSettings.whatsapp*` connection strings and `usage*` counter strings (mockup copy plus the owner-decision errors), and `messages.whatsapp_done_reply`.
+    - Tests:
+      - Vitest: `tests/integrations/whatsapp.test.ts` (10), `tests/whatsapp/connection.test.ts` (11), `tests/whatsapp/webhook.test.ts` (12), `tests/reminders/dispatch-whatsapp.test.ts` (9) and `tests/reminders/reminder-settings-whatsapp.test.tsx` (12).
+      - pgTAP: `supabase/tests/whatsapp_channel.test.sql` (17).
+      - The Meta API is faked everywhere.
+  - **Owner decisions applied (2026-10-24):**
+    - `lib/server/action-tokens.ts` gets kind `wv` with user_id, phone and a code digest. It expires in 10 minutes and is not single-use. See the deviation below on how the digest is computed.
+    - Fake mode: when `WHATSAPP_ACCESS_TOKEN` is empty, the adapter logs `console.info("[whatsapp:fake]", template, to, vars)`, which prints the code, and returns id `fake-<uuid>`.
+    - Webhook reply: "Označeno kao urađeno. {pet}: {title} — označeno u {time}." / "Marked as done. {pet}: {title} — marked at {time}." An invalid or expired token reuses the `action_expired_page` body. For not_found and household_read_only the same pattern reuses the `action_not_found_page` / `action_read_only_page` bodies from the Step 19 owner decisions.
+    - S12 errors: `verification_code_invalid` → "Kod nije tačan ili je istekao." / "The code is wrong or has expired."; `rate_limited` → "Previše pokušaja. Pokušaj ponovo za {minutes} min." / "Too many attempts. Try again in {minutes} min."; `undeliverable` → "Na ovaj broj ne možemo da pošaljemo WhatsApp poruku." / "We can't send a WhatsApp message to this number."
+    - Carried over: unmapped error codes (for example 409 `whatsapp_not_connected` on save) show the screen's existing form-level error, the toast "Nešto nije u redu. Pokušaj ponovo.". English is a faithful translation of the mockup's Serbian copy.
+  - **Owner-approved exception:**
+    - **Exception 1:** `tests/reminder-settings/reminder-settings.test.tsx` (Step 18) had the block "S12 — WhatsApp uskoro (Premium, until Step 29)". It asserted that Premium users have no number form, disabled "Uskoro dostupno" WhatsApp checkboxes, no counter card, and that a stored WhatsApp choice is not sent; this step replaces all of that. Only that block, and the matching header line, were changed. They now expect the live state: the number form, enabled checkboxes described "Broj nije povezan", and the stored WhatsApp choice sent on save. Nothing else in the file changed.
+  - **Verification:**
+    - `npm run typecheck` ✅ exit 0
+    - `npm run lint` ✅ exit 0. 0 errors and 2 warnings, both the unused eslint-disable directives in the generated `cloudflare-env.d.ts` that were already there.
+    - `npm test` ✅ `Test Files 140 passed (140)`, `Tests 1606 passed (1606)`
+    - `npx supabase test db` ✅ `Files=87, Tests=3006`, `Result: PASS`
+    - `npm run build` ✅ exit 0. The routes include `ƒ /api/webhooks/whatsapp` and `ƒ /api/internal/dispatch`.
+  - **Deviations / decisions:**
+    - **Verification token digest.** The owner decision says the token carries `sha256(code)`. The token payload is readable base64url and goes to the browser, so a plain SHA-256 of a 6-digit code can be reversed offline in about a million hashes. Anyone could then "verify" a number they don't own. The digest is therefore HMAC-SHA256 with `ACTION_TOKEN_SECRET` over `user_id|phone|code`, which is what EP-30 itself requires ("the code cannot be checked without the server secret"). The token format and everything else follow the decision.
+    - **WhatsApp in production without a token.** In production, the dispatch treats WhatsApp as live only when `WHATSAPP_ACCESS_TOKEN` is set. Otherwise the adapter's fake mode would record fake "delivered" WhatsApp rows that use up the cap and replace the email/push fallback. Outside production the fake mode is live, as the owner decision intends.
+    - **Status ordering ("last write wins by timestamp").** `reminder_deliveries` has no column for the last event time, and `updated_at` is set by trigger, so ordering uses the event timestamps:
+      - Within one POST, only the latest event per message is applied (a failure wins a tie).
+      - Across POSTs, `delivered` only updates a delivered row whose `delivered_at` is not later than the event. `failed` applies when the row's `delivered_at` is null or not later than the event.
+      - Meta timestamps are whole seconds, so an event counts as the end of its second.
+      - A failure is final: a later `delivered` never revives it. `read` is ignored.
+    - **Not-connected WhatsApp checkbox.** It stays enabled with "Broj nije povezan" beside it, as in the mockup, and the save sends what is checked. The database then answers 409 `whatsapp_not_connected`, which shows the form-level error.
+    - **Webhook reply copy.** The reply is its own key (`messages.whatsapp_done_reply`) rather than a join of `action_done_page.heading` and `.body`. A webhook DB error other than not_found or household_read_only is logged and gets no reply.
+    - **Webhook GET mismatch.** A wrong `hub.verify_token` returns 401 `invalid_signature`; API §9.1 names no other code.
+  - **Follow-ups:**
+    - **Owner, before production:** approve the `reminder_due` and `verification_code` templates (`sr` and `en`) in the Meta business account (API §9.4). Until then EP-30 and WhatsApp delivery work only against the Meta test number. Set `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET` and `WHATSAPP_VERIFY_TOKEN` per environment, and subscribe the app's webhook (`https://<site>/api/webhooks/whatsapp`, field `messages`) with the verify token.
+    - **Async failure fallback.** A WhatsApp failure reported later through the webhook marks the row `failed` but does not send the email + push fallback; only a synchronous send failure in the dispatch does. API §9.4 could say whether the late case needs a fallback.
+    - **Contract wording.** API §9.1 "last write wins by timestamp" has no stored event time (see the deviation above). EP-30 says "HMAC over … the code", while the owner decision says `sha256(code)`; the contract text and the decision should be aligned.
+    - The webhook does not check that the replying WhatsApp number matches the recipient's `user_channels` address. The signed token already binds occurrence and recipient.
 
 ---
 

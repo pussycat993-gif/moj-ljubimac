@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { BellOff, BellRing, Check, Clock, Mail, MessageCircle, Share, Smartphone } from "lucide-react"
+import { BellOff, BellRing, Check, Clock, Link2Off, Mail, MessageCircle, Share, Smartphone } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
@@ -18,7 +19,8 @@ import { PremiumLock } from "@/components/app/premium-lock"
 import { ReminderTypeIcon, type ReminderType } from "@/components/app/reminder-type-icon"
 import { StatusBadge } from "@/components/app/status-badge"
 import type { ActionResult } from "@/lib/server/result"
-import { format, interpolate, type Dictionary } from "@/lib/i18n"
+import type { CodeSent, WhatsAppConnection, WhatsAppConnectionInput } from "@/lib/actions/whatsapp"
+import { format, interpolate, type Dictionary, type Locale } from "@/lib/i18n"
 
 // S12 — Podešavanja podsetnika · /podesavanja/podsetnici · FR-22, FR-23, FR-36 (channels) · EP-28 (get:
 // rpc:get_reminder_settings, always one card per type; update: one reminder_preferences upsert per
@@ -26,9 +28,11 @@ import { format, interpolate, type Dictionary } from "@/lib/i18n"
 // Notification.permission = denied, no call), ADR-05 (iPhone home-screen hint, client-side detection).
 // States from real responses (API §7.3): default; premium_locked (Me.entitlements.premium = false, or 403
 // premium_required on save) → the WhatsApp form and every WhatsApp checkbox in the G state; push
-// isključeno / uključeno / blokirano; "WhatsApp uskoro" (CR-13) for Premium users until the WhatsApp
-// channel goes live in Step 29 (no number form, WhatsApp checkboxes disabled and unchecked, monthly
-// counter card hidden). Viber is absent while app_settings.viber_enabled = false (BR-14b, E-27).
+// isključeno / uključeno / blokirano. Viber is absent while app_settings.viber_enabled = false (BR-14b, E-27).
+// Step 29 — WhatsApp is live (replaces Step 18's "WhatsApp uskoro" state): the Kanali card connects a number
+// through EP-30 (number → "Pošalji kod" → code → "Povezano" → "Prekini vezu"; 422 inline field errors, 429
+// "try again in n min"), every type card offers the WhatsApp checkbox ("Broj nije povezan" beside it while no
+// number is connected), and Premium users see the "n / 30 poruka ovog meseca" counter card from EP-31.
 // Step 28c: the Šapa pomoći "Poruke" card (FR-69) — the seventh EP-28 row, type message: Mejl and Push switches (no
 // lead time, no delivery time, never WhatsApp / Viber), saved by the same "Sačuvaj podešavanja" button through the
 // EP-28 upsert with type message (saveMessagePreference); the push hint while browser push is not on, and the
@@ -87,6 +91,44 @@ export type ReminderSettingsActions = {
   registerPush: (input: PushRegistration) => Promise<ActionResult<PushSubscriptionRow>>
   checkPush: (endpoint: string) => Promise<ActionResult<PushSubscriptionRow[]>>
   unregisterPush: (endpoint: string) => Promise<ActionResult<null>>
+  /** EP-30 (Step 29). */
+  whatsappConnection?: (input: WhatsAppConnectionInput) => Promise<ActionResult<WhatsAppConnection | CodeSent>>
+}
+
+/** API §6 ChannelUsage (EP-31). */
+export type ChannelUsage = {
+  month: string
+  used: number
+  used_whatsapp: number
+  used_viber: number
+  cap: number
+  remaining: number
+  resets_on: string
+}
+
+type WaStep = "number" | "code" | "connected"
+
+/** "+381 64 123 4567", "064 123 4567", "00381…" → E.164; null when it cannot be a phone number. */
+function toE164(raw: string): string | null {
+  const trimmed = raw.trim()
+  const digits = trimmed.replace(/\D/g, "")
+  let e164: string
+  if (trimmed.startsWith("+")) e164 = `+${digits}`
+  else if (digits.startsWith("00")) e164 = `+${digits.slice(2)}`
+  else if (digits.startsWith("0")) e164 = `+381${digits.slice(1)}`
+  else e164 = `+${digits}`
+  return /^\+[1-9]\d{7,14}$/.test(e164) ? e164 : null
+}
+
+/** Serbian numbers as in the mockup ("+381 64 123 4567"); other countries stay E.164. */
+function formatPhone(e164: string) {
+  if (!e164.startsWith("+381")) return e164
+  const d = e164.slice(4)
+  return `+381 ${d.slice(0, 2)} ${d.slice(2, 5)} ${d.slice(5)}`
+}
+
+function newKey() {
+  return crypto.randomUUID()
 }
 
 type PushState = "checking" | "unsupported" | "off" | "on" | "blocked"
@@ -120,9 +162,6 @@ const TYPE_COPY: Record<CardType, { label: keyof T; hint: keyof T }> = {
   birthday: { label: "typeBirthday", hint: "typeBirthdayHint" },
   manual: { label: "typeManual", hint: "typeManualHint" },
 }
-
-// The WhatsApp channel goes live in Step 29; until then Premium users see the "uskoro" state (CR-13).
-const WHATSAPP_LIVE = false
 
 function toCard(p: ReminderPreference & { type: CardType }): CardState {
   return {
@@ -170,6 +209,8 @@ export function ReminderSettingsClient({
   vapidPublicKey,
   copy,
   actions,
+  usage = null,
+  locale = "sr",
 }: {
   /** null → the EP-28 read failed (error state). */
   settings: ReminderSettings | null
@@ -178,6 +219,10 @@ export function ReminderSettingsClient({
   vapidPublicKey: string
   copy: ReminderSettingsCopy
   actions: ReminderSettingsActions
+  /** EP-31 for Premium users (null: Free, or the read failed → no counter card). */
+  usage?: ChannelUsage | null
+  /** Date formats of the counter card (Design §9). */
+  locale?: Locale
 }) {
   const router = useRouter()
   const t = copy.reminderSettings
@@ -198,10 +243,29 @@ export function ReminderSettingsClient({
   const [push, setPush] = useState<PushState>("checking")
   const [pushBusy, setPushBusy] = useState(false)
   const [iphoneHint, setIphoneHint] = useState(false)
+  // EP-30 — the Kanali WhatsApp connection.
+  const connected = settings?.whatsapp.status === "connected" ? settings.whatsapp.phone : null
+  const [waStep, setWaStep] = useState<WaStep>(connected ? "connected" : "number")
+  const [waPhone, setWaPhone] = useState<string | null>(connected)
+  const [waNumber, setWaNumber] = useState("+381 ")
+  const [waCode, setWaCode] = useState("")
+  const [waError, setWaError] = useState("")
+  const [waBusy, setWaBusy] = useState(false)
+  const [waSent, setWaSent] = useState<CodeSent | null>(null)
+  const [resendLocked, setResendLocked] = useState(false)
 
   const isFree = locked
-  const waSoon = !isFree && !WHATSAPP_LIVE
   const viberEnabled = settings?.viber_enabled ?? false
+
+  // "Pošalji kod ponovo" is available again at resend_available_at (EP-30).
+  useEffect(() => {
+    if (!waSent || !resendLocked) return
+    const timer = setTimeout(
+      () => setResendLocked(false),
+      Math.max(0, new Date(waSent.resend_available_at).getTime() - Date.now()),
+    )
+    return () => clearTimeout(timer)
+  }, [waSent, resendLocked])
 
   const channels: { key: Channel; label: string; icon: typeof Mail; premium: boolean }[] = [
     { key: "email", label: t.channelEmail, icon: Mail, premium: false },
@@ -211,12 +275,103 @@ export function ReminderSettingsClient({
     ...(viberEnabled ? [{ key: "viber" as const, label: t.channelViber, icon: MessageCircle, premium: true }] : []),
   ]
 
-  /** The channels a card can actually use now: WhatsApp / Viber only when unlocked and live. */
+  /** The channels a card can actually use now: WhatsApp / Viber only when unlocked (Viber only when on). */
   function usable(ch: Channel) {
     if (ch === "email" || ch === "push") return true
     if (isFree) return false
-    if (ch === "whatsapp") return !waSoon
+    if (ch === "whatsapp") return true
     return viberEnabled
+  }
+
+  /** EP-30 errors → the inline message under the WhatsApp form (owner decisions, Step 29). */
+  function waErrorText(error: { code: string; fields?: Record<string, string>; details?: Record<string, unknown> }) {
+    if (error.code === "verification_code_invalid") return t.whatsappErrCodeInvalid
+    if (error.code === "rate_limited") {
+      const seconds = Number(error.details?.retry_after_s ?? 60)
+      return format(t.whatsappErrRateLimited, { minutes: Math.max(1, Math.ceil(seconds / 60)) })
+    }
+    if (error.code === "validation_failed") {
+      if (error.fields?.phone === "undeliverable") return t.whatsappErrUndeliverable
+      if (error.fields?.phone) return t.whatsappErrNumber
+      if (error.fields?.code) return t.whatsappErrCode
+    }
+    return null
+  }
+
+  async function runWhatsApp(input: WhatsAppConnectionInput): Promise<WhatsAppConnection | CodeSent | null> {
+    if (!actions.whatsappConnection) return null
+    setWaBusy(true)
+    try {
+      const result = await actions.whatsappConnection(input)
+      if (result.ok) {
+        setWaError("")
+        return result.data
+      }
+      if (result.error.code === "premium_required") {
+        setLocked(true)
+        return null
+      }
+      const text = waErrorText(result.error)
+      if (text) setWaError(text)
+      else toast.error(copy.common.error)
+      return null
+    } catch {
+      toast.error(copy.common.error)
+      return null
+    } finally {
+      setWaBusy(false)
+    }
+  }
+
+  async function sendCode(phone: string) {
+    const sent = await runWhatsApp({ op: "send_code", phone, idempotency_key: newKey() })
+    if (sent && "verification_token" in sent) {
+      setResendLocked(new Date(sent.resend_available_at).getTime() > Date.now())
+      setWaSent(sent)
+      setWaCode("")
+      setWaStep("code")
+    }
+  }
+
+  async function submitNumber() {
+    const phone = toE164(waNumber)
+    if (!phone) {
+      setWaError(t.whatsappErrNumber)
+      return
+    }
+    setWaError("")
+    await sendCode(phone)
+  }
+
+  async function confirmCode() {
+    if (!waSent) return
+    if (!/^\d{6}$/.test(waCode)) {
+      setWaError(t.whatsappErrCode)
+      return
+    }
+    const result = await runWhatsApp({ op: "verify_code", verification_token: waSent.verification_token, code: waCode })
+    if (result && "status" in result && result.status === "connected") {
+      setWaPhone(result.phone)
+      setWaStep("connected")
+      setWaCode("")
+      setWaSent(null)
+    }
+  }
+
+  async function disconnectWhatsApp() {
+    const result = await runWhatsApp({ op: "disconnect" })
+    if (!result) return
+    setWaPhone(null)
+    setWaNumber("+381 ")
+    setWaStep("number")
+    // EP-30 removed WhatsApp from every type on the server; a type left empty became {email, push}.
+    setCards((prev) =>
+      prev.map((c) => {
+        if (!c.channels.includes("whatsapp")) return c
+        const rest = c.channels.filter((ch) => ch !== "whatsapp")
+        return { ...c, channels: rest.length > 0 ? rest : ["email", "push"] }
+      }),
+    )
   }
 
   // EP-29 check: this browser's subscription (if any) against push_subscriptions.
@@ -391,30 +546,123 @@ export function ReminderSettingsClient({
 
   const waForm = (
     <div className="space-y-3">
-      <div className="space-y-2">
-        <Label htmlFor="wa-number">{t.whatsappNumber}</Label>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Input
-            id="wa-number"
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
-            className="h-11 min-w-0 flex-1 md:h-9"
-            defaultValue="+381 "
-            placeholder={t.whatsappNumberPlaceholder}
-            aria-describedby="wa-number-hint"
-            disabled
-          />
-          <Button className="h-11 md:h-9" disabled>
-            {t.whatsappSendCode}
+      {(isFree || waStep === "number") && (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="wa-number">{t.whatsappNumber}</Label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                id="wa-number"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                className="h-11 min-w-0 flex-1 md:h-9"
+                value={isFree ? "+381 " : waNumber}
+                onChange={(e) => setWaNumber(e.target.value)}
+                placeholder={t.whatsappNumberPlaceholder}
+                aria-invalid={!!waError}
+                aria-describedby={waError ? "wa-error" : "wa-number-hint"}
+                disabled={isFree}
+              />
+              <Button className="h-11 md:h-9" onClick={submitNumber} disabled={isFree || waBusy}>
+                {t.whatsappSendCode}
+              </Button>
+            </div>
+          </div>
+          {waError && !isFree ? (
+            <p id="wa-error" className="text-sm text-destructive">
+              {waError}
+            </p>
+          ) : (
+            <p id="wa-number-hint" className="text-sm text-muted-foreground">
+              {t.whatsappNumberHint}
+            </p>
+          )}
+        </>
+      )}
+
+      {!isFree && waStep === "code" && waSent && (
+        <>
+          <p className="text-sm">
+            {interpolate(t.whatsappCodeSent, {
+              phone: <span className="font-medium">{formatPhone(waSent.phone)}</span>,
+            })}
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="wa-code">{t.whatsappCode}</Label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                id="wa-code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                className="h-11 min-w-0 flex-1 tracking-widest md:h-9"
+                value={waCode}
+                onChange={(e) => setWaCode(e.target.value.replace(/\D/g, ""))}
+                placeholder={t.whatsappCodePlaceholder}
+                aria-invalid={!!waError}
+                aria-describedby={waError ? "wa-error" : undefined}
+              />
+              <Button className="h-11 md:h-9" onClick={confirmCode} disabled={waBusy}>
+                {t.whatsappConfirm}
+              </Button>
+            </div>
+          </div>
+          {waError && (
+            <p id="wa-error" className="text-sm text-destructive">
+              {waError}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="link"
+              size="sm"
+              className="px-0"
+              onClick={() => sendCode(waSent.phone)}
+              disabled={waBusy || resendLocked}
+            >
+              {t.whatsappResend}
+            </Button>
+            <Button
+              variant="link"
+              size="sm"
+              className="px-0"
+              onClick={() => {
+                setWaStep("number")
+                setWaError("")
+              }}
+            >
+              {t.whatsappChangeNumber}
+            </Button>
+          </div>
+        </>
+      )}
+
+      {!isFree && waStep === "connected" && waPhone && (
+        <div className="flex flex-col gap-3 rounded-sm bg-foreground/5 p-3 sm:flex-row sm:items-center">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <Check className="size-4 shrink-0 text-primary" aria-hidden />
+            <p role="status" className="min-w-0 truncate text-sm font-medium">
+              {format(t.whatsappConnected, { phone: formatPhone(waPhone) })}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" className="h-11 md:h-8" onClick={disconnectWhatsApp} disabled={waBusy}>
+            <Link2Off className="size-4" aria-hidden />
+            {t.whatsappDisconnect}
           </Button>
         </div>
-      </div>
-      <p id="wa-number-hint" className="text-sm text-muted-foreground">
-        {t.whatsappNumberHint}
-      </p>
+      )}
     </div>
   )
+
+  const resetsOn = usage
+    ? new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "sr-Latn", {
+        day: "numeric",
+        month: locale === "en" ? "short" : "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      }).format(new Date(`${usage.resets_on}T00:00:00Z`))
+    : ""
 
   return (
     <div className="space-y-6">
@@ -490,7 +738,7 @@ export function ReminderSettingsClient({
             )}
           </section>
 
-          {/* WhatsApp — Premium; "uskoro" until the channel is live (CR-13), G state on Free. */}
+          {/* WhatsApp — connect a phone number (Premium, EP-30); G state on Free. */}
           <section aria-labelledby="wa-heading" className="min-w-0 space-y-3">
             <div className="flex items-center gap-3">
               <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-foreground/5">
@@ -501,11 +749,6 @@ export function ReminderSettingsClient({
                   {t.whatsapp}
                 </h3>
                 <StatusBadge status="premium" label={copy.common.premium} />
-                {waSoon && (
-                  <Badge variant="outline" className="bg-card">
-                    {t.whatsappSoon}
-                  </Badge>
-                )}
               </div>
             </div>
             {isFree ? (
@@ -513,16 +756,36 @@ export function ReminderSettingsClient({
                 <div className="min-h-64">{waForm}</div>
               </PremiumLock>
             ) : (
-              waSoon && <p className="rounded-sm bg-foreground/5 p-3 text-sm text-muted-foreground">{t.whatsappSoonText}</p>
+              waForm
             )}
           </section>
         </div>
       </Card>
 
-      {/* The WhatsApp monthly counter card (EP-31) is shown only once WhatsApp is live (Step 29). */}
-      {iphoneHint && (
+      {((!isFree && usage) || iphoneHint) && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {/* WhatsApp monthly counter for Premium (BR-14a, EP-31) */}
+          {!isFree && usage && (
+            <Card className="gap-3 p-4 md:p-6">
+              <div className="flex items-center gap-3">
+                <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-foreground/5">
+                  <MessageCircle className="size-5 text-primary" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                  <h2 className="font-heading text-lg font-bold">{t.usageTitle}</h2>
+                  <p className="text-sm text-muted-foreground">{format(t.usageCount, { used: usage.used, cap: usage.cap })}</p>
+                </div>
+              </div>
+              <Progress
+                value={Math.min(100, (usage.used / usage.cap) * 100)}
+                aria-label={format(t.usageAria, { used: usage.used, cap: usage.cap })}
+              />
+              <p className="text-sm text-muted-foreground">{format(t.usageText, { cap: usage.cap, date: resetsOn })}</p>
+            </Card>
+          )}
+
           {/* iPhone push hint (ADR-05, RISK-09) */}
+          {iphoneHint && (
           <Card className="gap-3 p-4 md:p-6">
             <div className="flex items-center gap-3">
               <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-foreground/5">
@@ -543,6 +806,7 @@ export function ReminderSettingsClient({
               <li>{t.iphoneStep3}</li>
             </ol>
           </Card>
+          )}
         </div>
       )}
 
@@ -619,25 +883,25 @@ export function ReminderSettingsClient({
                   {channels.map((ch) => {
                     const Icon = ch.icon
                     const lockedChannel = ch.premium && isFree
-                    const soon = ch.key === "whatsapp" && waSoon
-                    const checked = !lockedChannel && !soon && c.channels.includes(ch.key)
+                    const notConnected = ch.key === "whatsapp" && !isFree && !waPhone
+                    const checked = !lockedChannel && c.channels.includes(ch.key)
                     const id = `ch-${c.type}-${ch.key}`
                     return (
                       <div key={ch.key} className="flex min-h-11 items-center gap-3 rounded-sm bg-foreground/5 px-3">
                         <Checkbox
                           id={id}
                           checked={checked}
-                          disabled={lockedChannel || soon}
+                          disabled={lockedChannel}
                           onCheckedChange={(v) => toggleChannel(c, ch.key, v === true)}
-                          aria-describedby={lockedChannel ? `${id}-lock` : soon ? `${id}-soon` : undefined}
+                          aria-describedby={lockedChannel ? `${id}-lock` : notConnected ? `${id}-nc` : undefined}
                         />
                         <Label htmlFor={id} className="flex min-w-0 flex-1 items-center gap-2">
                           <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                           <span className="truncate">{ch.label}</span>
                         </Label>
-                        {soon && (
-                          <span id={`${id}-soon`} className="shrink-0 text-xs font-medium text-muted-foreground">
-                            {t.whatsappSoon}
+                        {notConnected && (
+                          <span id={`${id}-nc`} className="shrink-0 text-xs font-medium text-muted-foreground">
+                            {t.whatsappNotConnected}
                           </span>
                         )}
                         {lockedChannel && (

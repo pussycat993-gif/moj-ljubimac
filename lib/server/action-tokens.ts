@@ -3,12 +3,13 @@ import "server-only";
 // Signed action tokens (API §9.3, TC ADR-16), signed with ACTION_TOKEN_SECRET (TC §8.1).
 //   token = "<kind>_" + base64url("<kind>|<field>|…|<exp_unix>|<nonce>") + "." + base64url(HMAC-SHA256)
 // The HMAC covers everything before the dot. Prefixes: dn_ reminder done (EP-32), hh_ household
-// invitation, og_ organisation team invitation, tr_ record transfer. Done tokens carry
+// invitation, og_ organisation team invitation, tr_ record transfer, wv_ WhatsApp verification (EP-30,
+// Step 29: 10 minutes, not single-use, stateless). Done tokens carry
 // (occurrence_id, recipient_id), live 24 h and are single-use through the occurrence's done state —
 // nothing is stored. Invitation and transfer tokens are random (randomToken) and stored hashed
 // (hashToken). Web Crypto only, so it runs on Cloudflare Workers.
 
-export type ActionTokenKind = "dn" | "hh" | "og" | "tr";
+export type ActionTokenKind = "dn" | "hh" | "og" | "tr" | "wv";
 
 export type ActionTokenPayload = { kind: ActionTokenKind; fields: string[]; expiresAt: Date };
 
@@ -20,7 +21,10 @@ export type ActionTokenCheck =
 /** dn_ tokens are valid 24 h from send (API §9.3, EP-32). */
 export const DONE_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
-const KINDS = new Set<string>(["dn", "hh", "og", "tr"]);
+/** wv_ tokens (EP-30 verification_token) are valid 10 minutes from send_code. */
+export const VERIFICATION_TOKEN_TTL_MS = 10 * 60 * 1000;
+
+const KINDS = new Set<string>(["dn", "hh", "og", "tr", "wv"]);
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
@@ -132,4 +136,43 @@ export function randomToken(prefix: ActionTokenKind): string {
 export async function hashToken(token: string): Promise<string> {
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(token)));
   return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * The code digest inside a wv_ token: HMAC-SHA256 with the server secret over user, phone and code, so the
+ * code cannot be checked (or brute-forced from the token) without ACTION_TOKEN_SECRET (EP-30).
+ */
+async function verificationCodeDigest(userId: string, phone: string, code: string): Promise<string> {
+  const signature = new Uint8Array(
+    await crypto.subtle.sign("HMAC", await hmacKey(), encoder.encode(`wv-code|${userId}|${phone}|${code}`)),
+  );
+  return Array.from(signature, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * EP-30 verification_token: wv_ over (user_id, phone, code digest), expiring with the code (10 minutes).
+ * Stateless — nothing is stored until verify_code; not single-use (the upsert on verify is idempotent).
+ */
+export async function signVerificationToken(userId: string, phone: string, code: string, expiresAt: Date): Promise<string> {
+  return signActionToken("wv", [userId, phone, await verificationCodeDigest(userId, phone, code)], expiresAt);
+}
+
+/**
+ * Checks a wv_ token against the caller and the typed code. Wrong code, expired or tampered token, or a
+ * token issued to another user → null (EP-30 verification_code_invalid); otherwise the verified phone.
+ */
+export async function checkVerificationToken(
+  token: string | null | undefined,
+  userId: string,
+  code: string,
+  now: Date = new Date(),
+): Promise<{ phone: string } | null> {
+  const check = await verifyActionToken(token, "wv", { now, fieldCount: 3 });
+  if (!check.ok) return null;
+  const [tokenUser, phone, digest] = check.token.fields;
+  if (tokenUser !== userId) return null;
+  const expected = await verificationCodeDigest(userId, phone, code);
+  let diff = expected.length ^ digest.length;
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ (digest.charCodeAt(i) || 0);
+  return diff === 0 ? { phone } : null;
 }

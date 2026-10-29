@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { format, fromProfileLocale, getDictionary, type Locale } from "@/lib/i18n";
 import type { EmailResult, EmailTemplate } from "@/lib/integrations/resend";
 import type { PushEndpoint, PushPayload, PushResult } from "@/lib/integrations/webpush";
+import type { WhatsAppResult } from "@/lib/integrations/whatsapp";
 import type { Database } from "@/lib/supabase/database.types";
 
 // EP-33 — dispatch due reminders (ADR-04, NFR-01). One run, in order, within a 45 s budget and in
@@ -14,8 +15,14 @@ import type { Database } from "@/lib/supabase/database.types";
 //   6. re-send final notices sent 30 min ago (claim_resend_occurrences) on the same rules →
 //   7. mark missed (mark_missed_occurrences) → 8. watchdog (dispatch_watchdog_due, RISK-14).
 // The SQL functions live in the reminder_dispatch migration; recipients and their channel inputs come
-// back with each claimed notice. WhatsApp / Viber sending is Step 29: until a channel is live it always
-// resolves to the fallback {email, push}.
+// back with each claimed notice. WhatsApp / Viber resolve to the fallback {email, push} unless the channel
+// is live (liveChannels).
+// Step 29 — WhatsApp (FR-23, BR-14a): a live WhatsApp channel sends the reminder_due template (API §9.4)
+// whose "Urađeno" quick-reply payload is the same signed dn_ token as the email link. The BR-14a cap is
+// counted per message inside the run (delivered this month + delivered in this run): the 30th is sent, the
+// 31st falls back to {email, push} and gets a whatsapp row with error whatsapp_cap_reached (API §7.2). A
+// failed WhatsApp send is recorded failed and falls back to {email, push} for that occurrence (API §9.4).
+// The number comes from the recipient's opted-in user_channels row. Viber is never sent (BR-14b).
 
 export type Channel = Database["public"]["Enums"]["delivery_channel"];
 
@@ -68,9 +75,9 @@ const CHANNEL_ORDER: Channel[] = ["email", "push", "whatsapp", "viber"];
 export type ChannelContext = {
   /** app_settings.viber_enabled (BR-14b). */
   viberEnabled: boolean;
-  /** Channels with a working sender. Empty until Step 29 adds WhatsApp. */
+  /** Channels with a working sender (Step 29: whatsapp when sendWhatsApp is wired). */
   liveChannels: ReadonlySet<Channel>;
-  /** WhatsApp/Viber messages already delivered this month (Step 29 adds the ones sent in this run). */
+  /** WhatsApp/Viber messages delivered this month, including the ones delivered earlier in this run. */
   capUsed: number;
 };
 
@@ -109,6 +116,24 @@ export function resolveChannels(
     }
   }
   return { channels: CHANNEL_ORDER.filter((channel) => result.has(channel)), fellBack };
+}
+
+/**
+ * BR-14a / API §7.2: true when WhatsApp would have been sent but the monthly cap is used up — the case the
+ * dispatch records on the delivery row as whatsapp_cap_reached.
+ */
+export function whatsappCapReached(
+  recipient: Pick<DispatchRecipient, "is_owner" | "premium" | "channels" | "whatsapp_opted_in">,
+  ctx: ChannelContext,
+): boolean {
+  return (
+    recipient.is_owner &&
+    recipient.channels.includes("whatsapp") &&
+    recipient.premium &&
+    recipient.whatsapp_opted_in &&
+    ctx.liveChannels.has("whatsapp") &&
+    ctx.capUsed >= MONTHLY_MESSAGE_CAP
+  );
 }
 
 function intlLocale(locale: Locale) {
@@ -160,6 +185,15 @@ export type DispatchDeps = {
   /** null when push is not configured (no VAPID keys): push is skipped without a row. */
   sendPush: ((endpoints: PushEndpoint[], payload: PushPayload) => Promise<PushResult>) | null;
   signDoneToken: (occurrenceId: string, recipientId: string, sentAt: Date) => Promise<string>;
+  /** Step 29: the reminder_due template (API §9.4). Without it WhatsApp is never live. */
+  sendWhatsApp?: (input: {
+    to: string;
+    locale: Locale;
+    pet: string;
+    title: string;
+    when: string;
+    payload: string;
+  }) => Promise<WhatsAppResult>;
   /** NEXT_PUBLIC_SITE_URL, no trailing slash. */
   siteUrl: string;
   liveChannels?: ReadonlySet<Channel>;
@@ -187,19 +221,44 @@ export async function runDispatch(deps: DispatchDeps): Promise<DispatchCounters>
   const now = deps.now ?? Date.now;
   const started = now();
   const budget = deps.budgetMs ?? RUN_BUDGET_MS;
-  const liveChannels = deps.liveChannels ?? new Set<Channel>();
+  const liveChannels = new Set<Channel>(deps.liveChannels ?? []);
+  // No sender, no live channel; Viber has no adapter in v1 (BR-14b).
+  if (!deps.sendWhatsApp) liveChannels.delete("whatsapp");
+  liveChannels.delete("viber");
   const counters: DispatchCounters = { claimed: 0, delivered: 0, failed: 0, fell_back: 0, resent: 0, missed: 0, duration_ms: 0 };
   let pushSkipLogged = false;
+  // BR-14a in-run count: WhatsApp messages delivered to each recipient during this run.
+  const sentThisRun = new Map<string, number>();
+  // Opted-in WhatsApp numbers (user_channels), read once per recipient per run.
+  const whatsappNumbers = new Map<string, string | null>();
+
+  async function whatsappNumber(userId: string): Promise<string | null> {
+    if (whatsappNumbers.has(userId)) return whatsappNumbers.get(userId) ?? null;
+    const { data, error } = await deps.supabase
+      .from("user_channels")
+      .select("address")
+      .eq("user_id", userId)
+      .eq("channel", "whatsapp")
+      .not("opted_in_at", "is", null)
+      .maybeSingle();
+    if (error) console.error("[dispatch] could not read the WhatsApp number:", userId, error.message);
+    const address = data?.address ?? null;
+    whatsappNumbers.set(userId, address);
+    return address;
+  }
 
   async function deliver(occurrence: ClaimedOccurrence) {
     const rows: DeliveryRow[] = [];
     for (const recipient of occurrence.recipients) {
-      const { channels, fellBack } = resolveChannels(recipient, {
+      const ctx: ChannelContext = {
         viberEnabled: occurrence.viber_enabled,
         liveChannels,
-        capUsed: recipient.cap_used,
-      });
-      counters.fell_back += fellBack;
+        capUsed: recipient.cap_used + (sentThisRun.get(recipient.id) ?? 0),
+      };
+      const resolved = resolveChannels(recipient, ctx);
+      let channels = resolved.channels;
+      counters.fell_back += resolved.fellBack;
+      const capReached = whatsappCapReached(recipient, ctx);
 
       const locale = fromProfileLocale(recipient.locale);
       const t = getDictionary(locale);
@@ -207,10 +266,52 @@ export async function runDispatch(deps: DispatchDeps): Promise<DispatchCounters>
       const date = formatBelgradeDate(occurrence.due_at, locale);
       const time = formatBelgradeTime(occurrence.due_at, locale);
       const sentAt = new Date(now());
-      const doneUrl = `${deps.siteUrl}/api/a/done?t=${encodeURIComponent(
-        await deps.signDoneToken(occurrence.occurrence_id, recipient.id, sentAt),
-      )}`;
+      const doneToken = await deps.signDoneToken(occurrence.occurrence_id, recipient.id, sentAt);
+      const doneUrl = `${deps.siteUrl}/api/a/done?t=${encodeURIComponent(doneToken)}`;
       const appUrl = `${deps.siteUrl}/podsetnici`;
+
+      if (capReached) {
+        rows.push({
+          occurrence_id: occurrence.occurrence_id,
+          recipient_id: recipient.id,
+          channel: "whatsapp",
+          status: "failed",
+          provider_message_id: null,
+          error: "whatsapp_cap_reached",
+          delivered_at: null,
+        });
+      }
+
+      // WhatsApp first: a failed send falls back to {email, push} for this occurrence (API §9.4).
+      if (channels.includes("whatsapp") && deps.sendWhatsApp) {
+        const to = await whatsappNumber(recipient.id);
+        const result: WhatsAppResult = to
+          ? await deps.sendWhatsApp({
+              to,
+              locale,
+              pet,
+              title,
+              when: format(t.messages.reminder_push.body, { date, time }),
+              payload: doneToken,
+            })
+          : { status: "failed", error: "whatsapp_not_connected", undeliverable: false };
+        rows.push({
+          occurrence_id: occurrence.occurrence_id,
+          recipient_id: recipient.id,
+          channel: "whatsapp",
+          status: result.status,
+          provider_message_id: result.status === "delivered" ? result.id : null,
+          error: result.status === "failed" ? result.error : null,
+          delivered_at: result.status === "delivered" ? new Date(now()).toISOString() : null,
+        });
+        if (result.status === "delivered") {
+          sentThisRun.set(recipient.id, (sentThisRun.get(recipient.id) ?? 0) + 1);
+        } else {
+          counters.fell_back++;
+          const before = channels;
+          channels = CHANNEL_ORDER.filter((c) => c === "email" || c === "push" || before.includes(c));
+        }
+      }
 
       for (const channel of channels) {
         if (channel === "email") {
@@ -256,12 +357,13 @@ export async function runDispatch(deps: DispatchDeps): Promise<DispatchCounters>
             delivered_at: result.status === "delivered" ? new Date(now()).toISOString() : null,
           });
         }
-        // whatsapp / viber: resolved only once live (Step 29).
+        // whatsapp: sent above; viber: never live in v1 (BR-14b).
       }
     }
     for (const row of rows) {
       if (row.status === "delivered") counters.delivered++;
-      else counters.failed++;
+      // A cap row records the fallback (counted in fell_back), not a failed send.
+      else if (row.error !== "whatsapp_cap_reached") counters.failed++;
     }
     if (rows.length > 0) {
       const { error } = await deps.supabase.from("reminder_deliveries").insert(rows);

@@ -742,6 +742,27 @@ export const sr = {
     whatsappNumberPlaceholder: "+381 64 123 4567",
     whatsappSendCode: "Pošalji kod",
     whatsappNumberHint: "Poslaćemo ti kod na WhatsApp da potvrdimo da je broj tvoj.",
+    // Step 29 — the live WhatsApp connection (EP-30) and the monthly counter (EP-31).
+    whatsappErrNumber: "Upiši broj mobilnog telefona, npr. +381 64 123 4567.",
+    whatsappCodeSent: "Poslali smo kod na {phone}.",
+    whatsappCode: "Kod iz poruke",
+    whatsappCodePlaceholder: "123456",
+    whatsappConfirm: "Potvrdi",
+    whatsappErrCode: "Kod ima 6 cifara. Proveri poruku na WhatsApp-u.",
+    whatsappResend: "Pošalji kod ponovo",
+    whatsappChangeNumber: "Promeni broj",
+    whatsappConnected: "Povezano: {phone}",
+    whatsappDisconnect: "Prekini vezu",
+    whatsappNotConnected: "Broj nije povezan",
+    // Owner decisions (Step 29): EP-30 errors.
+    whatsappErrCodeInvalid: "Kod nije tačan ili je istekao.",
+    whatsappErrRateLimited: "Previše pokušaja. Pokušaj ponovo za {minutes} min.",
+    whatsappErrUndeliverable: "Na ovaj broj ne možemo da pošaljemo WhatsApp poruku.",
+    usageTitle: "WhatsApp poruke",
+    usageCount: "{used} / {cap} poruka ovog meseca",
+    usageAria: "Iskorišćeno {used} od {cap} WhatsApp poruka ovog meseca",
+    // No period after {date}: the sr-Latn date ("1. 11. 2026.") already ends with one.
+    usageText: "Kad potrošiš svih {cap}, do kraja meseca podsetnici stižu mejlom i push-om. Brojač se vraća na nulu {date}",
     iphoneTitle: "Koristiš iPhone?",
     iphoneText: "Push obaveštenja rade tek kad dodaš aplikaciju.",
     iphoneStep1: "Otvori Moj Ljubimac u Safariju.",
@@ -2258,6 +2279,8 @@ export const sr = {
       body: "Vlasniku domaćinstva je istekao Premium, pa podsetnik ne možeš da označiš.",
       button: "Otvori aplikaciju",
     },
+    // Owner decision (Step 29): the WhatsApp reply after the "Urađeno" quick reply (API §9.1).
+    whatsapp_done_reply: "Označeno kao urađeno. {pet}: {title} — označeno u {time}.",
     // Step 22. Owner decision: no shared pets → the body without " ({pets})"; names joined with Intl.ListFormat.
     household_invitation: {
       subject: "{inviter} te poziva u domaćinstvo: {household}",

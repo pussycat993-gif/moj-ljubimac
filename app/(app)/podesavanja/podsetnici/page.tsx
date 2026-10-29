@@ -3,9 +3,11 @@ import { checkGates } from "@/lib/server/gates"
 import { fail, fromDatabaseError, ok, type ActionResult, type ApiError } from "@/lib/server/result"
 import type { Me } from "@/lib/actions/registration"
 import { saveMessagePreference } from "@/lib/actions/messages"
+import { whatsappConnection } from "@/lib/actions/whatsapp"
 import { fromProfileLocale, getDictionary } from "@/lib/i18n"
 import {
   ReminderSettingsClient,
+  type ChannelUsage,
   type PreferenceInput,
   type PushRegistration,
   type PushSubscriptionRow,
@@ -20,6 +22,8 @@ import {
 // enforces the rules (RLS self only, the reminder_preferences_before_write trigger for BR-13 and
 // premium_required / whatsapp_not_connected / channel_disabled, the check constraints for the lead-time set,
 // delivery time and channels, and the regeneration of future pending occurrences).
+// Step 29: EP-30 (lib/actions/whatsapp.ts) connects WhatsApp; EP-31 (rpc:get_channel_usage) feeds the monthly
+// counter card, read only for Premium users (a failed read hides the card).
 
 const TYPES = ["vaccination", "treatment_dose", "vet_follow_up", "meal", "birthday", "manual"] as const
 const LEADS = [0, 1440, 4320, 10080, 20160, 43200]
@@ -158,16 +162,22 @@ export default async function ReminderSettingsPage() {
   if (me.error) console.error("[podesavanja/podsetnici] get_me:", me.error.message)
   if (settings.error) console.error("[podesavanja/podsetnici] get_reminder_settings:", settings.error.message)
   const profile = (me.data ?? null) as Me | null
-  const dict = getDictionary(fromProfileLocale(profile?.locale))
+  const locale = fromProfileLocale(profile?.locale)
+  const dict = getDictionary(locale)
+  const premium = profile?.entitlements.premium ?? false
+  const usage = premium ? await supabase.rpc("get_channel_usage") : null
+  if (usage?.error) console.error("[podesavanja/podsetnici] get_channel_usage:", usage.error.message)
 
   return (
     <ReminderSettingsClient
       settings={settings.error ? null : (settings.data as unknown as ReminderSettings)}
       email={profile?.email ?? ""}
-      premium={profile?.entitlements.premium ?? false}
+      premium={premium}
+      usage={usage && !usage.error ? (usage.data as unknown as ChannelUsage) : null}
+      locale={locale}
       vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""}
       copy={{ reminderSettings: dict.reminderSettings, common: dict.common }}
-      actions={{ savePreference, registerPush, checkPush, unregisterPush, saveMessagePreference }}
+      actions={{ savePreference, registerPush, checkPush, unregisterPush, saveMessagePreference, whatsappConnection }}
     />
   )
 }

@@ -10,7 +10,7 @@ import type {
 // S12 Podešavanja podsetnika (Step 18): FR-22 lead-time chips and delivery time saved per type card,
 // doses and meals at the exact time; FR-23 email and push for everyone, several channels stored per type,
 // WhatsApp / Viber Premium-only on Free (FR-36), Viber absent while viber_enabled = false (BR-14b); the
-// "WhatsApp uskoro" state for Premium users until Step 29 (CR-13); premium_required on save → G state;
+// Step 29 replaced the "WhatsApp uskoro" state with the live WhatsApp channel (owner-approved exception 1); premium_required on save → G state;
 // error state when the EP-28 read fails.
 
 const refresh = vi.fn()
@@ -251,36 +251,28 @@ describe("S12 — FR-23 channels", () => {
   })
 })
 
-describe("S12 — WhatsApp uskoro (Premium, until Step 29)", () => {
-  it("shows the 'Uskoro dostupno' badge and line instead of the number form; WhatsApp checkboxes disabled and unchecked; no counter card", async () => {
+describe("S12 — WhatsApp live for Premium (Step 29 replaced the uskoro state)", () => {
+  it("shows the number form instead of the 'Uskoro dostupno' line; WhatsApp checkboxes enabled with 'Broj nije povezan'; a stored WhatsApp choice is sent", async () => {
     const user = userEvent.setup()
     renderScreen({ premium: true, settings: settings({}, { vaccination: { channels: ["email", "push", "whatsapp"] } }) })
     const wa = screen.getByRole("heading", { level: 3, name: "WhatsApp" }).closest("section") as HTMLElement
-    expect(within(wa).getByText("Uskoro dostupno")).toBeInTheDocument()
-    expect(
-      within(wa).getByText(
-        "WhatsApp podsetnici stižu uskoro. Javićemo ti mejlom kad budeš mogao/la da povežeš broj — do tada podsetnici stižu mejlom i push-om.",
-      ),
-    ).toBeInTheDocument()
-    expect(screen.queryByLabelText("Broj telefona za WhatsApp")).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Pošalji kod" })).not.toBeInTheDocument()
+    expect(within(wa).queryByText("Uskoro dostupno")).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Broj telefona za WhatsApp")).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Pošalji kod" })).toBeEnabled()
     expect(screen.queryByRole("heading", { name: "Dostupno u Premiumu" })).not.toBeInTheDocument()
 
     const boxes = screen.getAllByRole("checkbox", { name: "WhatsApp" })
     expect(boxes).toHaveLength(6)
     for (const box of boxes) {
-      expect(box).toBeDisabled()
-      expect(box).not.toBeChecked()
-      expect(box).toHaveAccessibleDescription("Uskoro dostupno")
+      expect(box).toBeEnabled()
+      expect(box).toHaveAccessibleDescription("Broj nije povezan")
     }
-    expect(screen.queryByText(/poruka ovog meseca/)).not.toBeInTheDocument()
-    expect(screen.queryByRole("heading", { name: "WhatsApp poruke" })).not.toBeInTheDocument()
+    expect(within(card("Vakcine")).getByRole("checkbox", { name: "WhatsApp" })).toBeChecked()
 
-    // A stored WhatsApp choice is not sent while the channel is not live.
     await user.click(within(card("Vakcine")).getByRole("button", { name: "1 dan pre" }))
     await user.click(screen.getByRole("button", { name: "Sačuvaj podešavanja" }))
     await waitFor(() => expect(savePreference).toHaveBeenCalledTimes(1))
-    expect(savePreference.mock.calls[0][0].channels).toEqual(["email", "push"])
+    expect(savePreference.mock.calls[0][0].channels).toEqual(["email", "push", "whatsapp"])
   })
 })
 
