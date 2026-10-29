@@ -92,7 +92,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 28b | Listings, public pages, profiles & donation info | ✅ | 28a, 21, 19 | — | 2026-10-29 |
 | 28c | Messaging, notifications, report/block & moderation | ✅ | 28b, 19 | — | 2026-10-29 |
 | 29 | WhatsApp channel | ✅ | 19 | — | 2026-10-29 |
-| 30 | Nightly jobs | ⬜ | 23, 25, 29 | — | |
+| 30 | Nightly jobs | ✅ | 23, 25, 29 | — | 2026-10-29 |
 | 30a | Backups & data export archives | ⬜ | 30, 23 | — | |
 | 31 | Payments & pricing | 🔒 | 30a | OQ-11, OQ-03 | |
 | 32 | Release verification | ⬜ | 30a, 28c (31 when unblocked) | — (checklist item 4 open until OQ-15) | |
@@ -6071,7 +6071,55 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-29** — Step 30 built (unattended overnight run).
+  - **Built:**
+    - Migration `20261029100000_nightly_jobs.sql`. It changes no table, column, enum or constraint. All new functions are security definer with `set search_path = ''`, revoked from public / anon / authenticated and granted to `service_role` only.
+      - EP-49: `billing_expire_subscriptions()` (step 2: cancelled, payment_failed, trialing/active with `auto_renew` off, and any running row of a user with a pending deletion, once `current_period_end <= now()`, become `expired`; returns `expired` and the ids of households whose flag the Step 05 trigger changed). `billing_expiry_notice_candidates(p_now default now())` (step 3: premium rows in trialing / active / cancelled with 30, 7 or 1 whole Europe/Belgrade days left and `last_notice_days` null or larger; a 30-day notice on or before a monthly period's first day is skipped). `mark_expiry_notice_sent(id, days)` (sets `last_notice_days`, only after Resend accepted; `validation_failed` / `p_days:invalid` for other values). `billing_refresh_household_flags()` (step 4: every household whose stored flag differs from `not is_premium(owner)`, which also closes the Step 05 follow-up on time-based expiry).
+      - EP-52: `retention_delete_due_accounts(p_limit)` (step 1; each account runs `private.nightly_delete_account` in its own subtransaction, a failure is logged as a warning and retried the next night). `private.nightly_delete_account` does BR-27 (heir = earliest `joined_at` member; the heir's membership row deleted, the shared pets and their pet reminders moved to the heir, `read_only = not is_premium(heir)`; a household without an heir is deleted), BR-46 (`private.nightly_delete_organisation`), queues the user's `data_exports` keys and deletes `auth.users` (profiles and everything owned cascade; the delete triggers queue pet, attachment, moment and listing photo keys). `r2_deletion_batch(p_limit)` / `r2_dequeue(keys)` (step 2). `r2_keys_in_use(keys)` (orphan scan). `retention_purge_deliveries()` (step 3). `retention_expire_invitations()` (step 4: household and team invitations and record transfers). `retention_expire_exports()` (step 5: ready exports past `expires_at` → expired, keys queued and returned). `retention_purge_server_support()` (TC §5.9).
+      - `public.pets_enforce_free_limits()` recreated: it skips the Free-limit checks (not the account-type check) while `app.nightly_job = on`, which only the account-deletion step sets for its transaction — the Step 25 `app.transfer_copy` pattern. Without it a Free heir with an active pet could not receive the shared pets (FR-31 #1).
+      - pg_cron jobs `billing-nightly` (`0 1,2 * * *`) and `retention-nightly` (`30 1,2 * * *`), both `select private.call_internal_route('/api/internal/…')` (Step 19 mechanism, Vault `dispatch_url` / `dispatch_secret`).
+      - `npm run db:types` regenerated `lib/supabase/database.types.ts`.
+    - `app/api/internal/billing-nightly/route.ts` (EP-49): `X-Dispatch-Secret` compared in constant time with `DISPATCH_SECRET`; missing / wrong / unset → `401 unauthenticated`. Works only when the Europe/Belgrade hour is 3, otherwise `200` with zero counts. Step 1 logs `console.warn` (OQ-11) and does nothing. Step 3 sends `premium_expiry_30 / _7 / _1` through `lib/integrations/resend.ts` in the recipient's locale (`{date}` = `current_period_end` as a Belgrade date, button → `/profil`) and records the notice only when Resend accepted it. Response `{renewals_attempted, expired, notices_sent, households_updated}`; errors → `500 internal_error`.
+    - `app/api/internal/retention-nightly/route.ts` (EP-52): same secret and Belgrade-hour-3 rules. Steps 1–5 in order, then the TC §5.9 purge. Accounts in batches of 100 (repeats while a batch is full). The queue in batches of 500, dequeued only for keys R2 confirmed. Orphan scan of `u/`, `o/`, `p/`, `exports/`, at most 1000 objects listed per run; objects older than 24 h that no row uses (and that are not queued) are deleted. Expired archives are deleted right after step 5. Without R2 credentials (`r2Configured()` false) R2 is skipped entirely and the keys stay queued. Response `{accounts_deleted, households_transferred, r2_objects_deleted, deliveries_purged, invitations_expired, transfers_expired, exports_expired}`; the extra counts (organisations deleted, failed accounts, idempotency / rate-limit purge) are only logged.
+    - `lib/integrations/r2.ts`: `list(prefix, { maxKeys, continuationToken })` (signed ListObjectsV2, XML parsed with the platform only) and `r2Configured()`.
+    - `lib/integrations/resend.ts`: the `premium_expiry_30`, `premium_expiry_7`, `premium_expiry_1` templates (`{renew_line}` from `auto_renew`; a Serbian date ending in "." drops the sentence's second full stop, as in Step 28b).
+    - `lib/i18n/sr.ts` / `en.ts`: `messages.premium_expiry_30 / _7 / _1` (subject, body, `renewOn`, `renewOff`, button) per Design §9.1.
+    - Tests: pgTAP `supabase/tests/billing_job.test.sql` (33), `retention_job.test.sql` (32), `succession_job.test.sql` (27). Vitest `tests/jobs/billing-nightly.test.ts` (18), `tests/jobs/retention-nightly.test.ts` (17, incl. two for the real R2 `list`).
+  - **Owner decisions applied (2026-10-23):**
+    - BR-46 grace = the last member's own 30-day account grace; when that account is deleted, the organisation is deleted in the same run with its animals (keys queued). Earliest-joined member by `organisation_memberships.created_at`.
+    - Expiry notices when `days_left` ∈ {30, 7, 1} and (`last_notice_days` is null or `days_left < last_notice_days`), then `last_notice_days` is set. Breeder-plan rows get no `premium_expiry` email (CR-24).
+    - Both nightly routes answer `401 unauthenticated` (EP-49, EP-52).
+    - `r2_keys_in_use(p_keys text[]) returns text[]`, security definer, service_role only, checking pets, attachments, moment_photos, organisations, partners, listing_photos and data_exports. Orphan scan of `u/`, `o/`, `p/`, `exports/`, at most 1000 objects per run; without R2 credentials R2 is skipped (`r2_objects_deleted: 0`, keys stay queued).
+    - Schedules `0 1,2 * * *` and `30 1,2 * * *`, each running only when the Europe/Belgrade hour is 3.
+  - **Owner-approved exception:**
+    - **Exception 1:** `supabase/tests/occurrence_schedule.test.sql` (Step 08) asserted that the nightly generation is the only cron job besides `reminder-dispatch` and `listings-daily`. Its two `jobname not in (…)` filters now also exclude `billing-nightly` and `retention-nightly`, which this step adds. Nothing else in the file changed.
+  - **Verification** (in order, after `npx supabase db reset`):
+    - `npm run typecheck` ✅ exit 0
+    - `npm run lint` ✅ exit 0 (0 errors; the 2 known warnings in the generated `cloudflare-env.d.ts`)
+    - `npm test` ✅ `Test Files 142 passed (142)`, `Tests 1641 passed (1641)`
+    - `npx supabase test db` ✅ `All tests successful. Files=90, Tests=3098`, `Result: PASS`
+    - `npm run build` ✅ exit 0; the routes include `ƒ /api/internal/billing-nightly` and `ƒ /api/internal/retention-nightly`.
+  - **Not sent (CR-24, no Design §9.1 template):** the EP-49 web-push expiry notices (30 / 7 / 1 days), the EP-52 heir email (BR-27 "the heir is emailed"), and `premium_expiry` for breeder plans.
+  - **Deviations / decisions:**
+    - **BR-27 heir who already owns a household:** `households.owner_id` is unique, so a member who owns a household of their own cannot inherit. The heir is the earliest-joined member who owns no household (and has an owner account); when no member qualifies, the household is deleted like one without members and the shared pets go with the account. EP-50's `heir_full_name` (Step 23) still names the earliest-joined member, so the two differ only in this case — see follow-ups.
+    - **Pet reminders move with the shared pets:** `reminders.user_id` cascades on account deletion, so the reminders of the moved pets are reassigned to the heir; otherwise the heir would silently lose the vaccination / treatment / birthday reminders of the pets they inherit.
+    - **Memorial pets (NFR-07):** a memorial pet shared in the household moves to the heir like the others; nothing purges memorials apart from the account that owns them.
+    - **Delivery purge:** failed delivery rows have no `delivered_at`, so the purge uses `coalesce(delivered_at, created_at)`; otherwise they would stay forever, against NFR-08's 12 months.
+    - **Rate-limit windows:** `rate_limit_counters` stores no window length. Rows whose `window_start` is 24 h or more in the past are purged — the longest API §11 window is one day, so these windows have all ended; hourly windows are purged at the latest a day after they end.
+    - **Export expiry:** step 5 marks the rows expired and queues their keys in one database call; the route deletes those objects right away and dequeues what R2 confirms, so an R2 failure or missing credentials leaves the key queued for the next run instead of losing it.
+    - **Notice candidates take `p_now`** (default `now()`): the route passes the request time and the pgTAP test fixes the Belgrade date, which makes the monthly first-day skip testable on any run date.
+    - **`r2_keys_in_use`** also treats queued keys as in use, so the orphan scan never deletes a key the queue already owns (the queue step handles it).
+    - **Orphan scan coverage:** without stored state the scan lists the first 1000 objects (in prefix order) each night; a bucket larger than that is not fully covered — see follow-ups.
+    - **Response fields:** only the EP-49 / EP-52 counts are returned; the extra counts are logged.
+    - **The internal job functions** (`billing_*`, `mark_expiry_notice_sent`, `retention_*`, `r2_deletion_batch`, `r2_dequeue`, `r2_keys_in_use`) are not client APIs; like Step 19's, they are service-role only.
+  - **Follow-ups:**
+    - Add the job functions above to `docs/product/05-api-integration-contract.md` as the database side of EP-49 and EP-52; align EP-49 step 3's "no column records sent notices" note with TC §5.1 `last_notice_days`.
+    - Owner / product: decide BR-27 for a heir who already owns a household (merge, next member, or delete as now), and align EP-50 `heir_full_name` with the rule.
+    - Step 31: reset `last_notice_days` on renewal (owner decision); renewal charging (EP-49 step 1).
+    - CR-24: copy for the EP-49 push notices and the BR-27 heir email.
+    - Production check: the account deletion deletes `auth.users` from a security definer function owned by `postgres`; confirm on the hosted project that this role may delete from `auth.users` (it works locally). If not, the route can call the Auth admin API after the database step.
+    - Orphan scan: if the bucket grows past ~1000 objects, add a stored cursor (needs a table/column change request) or a rotating start key so every object is reached over several nights.
+    - Owner, per environment: Vault secrets `dispatch_url` / `dispatch_secret` (already needed by Step 19) and the R2 credentials; without R2 credentials queued keys only accumulate.
 
 ---
 

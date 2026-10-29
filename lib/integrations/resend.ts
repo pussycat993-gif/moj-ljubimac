@@ -46,6 +46,15 @@ export type AccountDeletionScheduledEmailVariables = {
   url: string;
 };
 
+export type PremiumExpiryEmailVariables = {
+  /** subscriptions.current_period_end as a Europe/Belgrade date in the recipient's date format. */
+  date: string;
+  /** subscriptions.auto_renew: picks the {renew_line} variant (Design §9.1). */
+  auto_renew: boolean;
+  /** NEXT_PUBLIC_SITE_URL/profil — S18, the subscription card. */
+  url: string;
+};
+
 export type TeamInvitationEmailVariables = {
   /** profiles.full_name of the inviting Admin. */
   inviter: string;
@@ -148,6 +157,9 @@ export type EmailTemplate =
   | { id: "reminder_email"; variables: ReminderEmailVariables }
   | { id: "household_invitation"; variables: HouseholdInvitationEmailVariables }
   | { id: "account_deletion_scheduled"; variables: AccountDeletionScheduledEmailVariables }
+  | { id: "premium_expiry_30"; variables: PremiumExpiryEmailVariables }
+  | { id: "premium_expiry_7"; variables: PremiumExpiryEmailVariables }
+  | { id: "premium_expiry_1"; variables: PremiumExpiryEmailVariables }
   | { id: "team_invitation"; variables: TeamInvitationEmailVariables }
   | { id: "record_transfer"; variables: RecordTransferEmailVariables }
   | { id: "adoption_request_accepted"; variables: OrgRequestAcceptedEmailVariables }
@@ -230,6 +242,20 @@ function simple(
     bodyHtml: format(escapeHtml(copy.body), escaped),
     bodyText: format(copy.body, values),
     buttons: copy.button && url ? [{ label: copy.button, url, primary: true }] : [],
+    note: null,
+  };
+}
+
+/** premium_expiry_30 / _7 / _1 (EP-49 step 3): the body with the {renew_line} matching auto_renew. */
+function premiumExpiry(copy: Dictionary["messages"]["premium_expiry_30"], v: PremiumExpiryEmailVariables): EmailParts {
+  // A Serbian date already ends with a full stop ("19. 10. 2026."), and the sentence ends right after {date}.
+  const body = v.date.endsWith(".") ? copy.body.replace("{date}.", "{date}") : copy.body;
+  const renewLine = v.auto_renew ? copy.renewOn : copy.renewOff;
+  return {
+    subject: copy.subject,
+    bodyHtml: format(escapeHtml(body), { date: escapeHtml(v.date), renew_line: escapeHtml(renewLine) }),
+    bodyText: format(body, { date: v.date, renew_line: renewLine }),
+    buttons: [{ label: copy.button, url: v.url, primary: true }],
     note: null,
   };
 }
@@ -368,6 +394,15 @@ const RENDERERS: { [K in EmailTemplate["id"]]: (t: Dictionary, v: Extract<EmailT
       buttons: [{ label: copy.button, url: v.url, primary: true }],
       note: null,
     };
+  },
+  premium_expiry_30(t, v) {
+    return premiumExpiry(t.messages.premium_expiry_30, v);
+  },
+  premium_expiry_7(t, v) {
+    return premiumExpiry(t.messages.premium_expiry_7, v);
+  },
+  premium_expiry_1(t, v) {
+    return premiumExpiry(t.messages.premium_expiry_1, v);
   },
   team_invitation(t, v) {
     const copy = t.messages.team_invitation;

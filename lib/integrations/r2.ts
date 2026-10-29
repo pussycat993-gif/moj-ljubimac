@@ -35,7 +35,36 @@ export type R2 = {
    * transfer (API §10 step 6). Throws when R2 does not confirm the copy.
    */
   copy(sourceKey: string, targetKey: string): Promise<void>;
+  /**
+   * One page of S3 ListObjectsV2 under a prefix (EP-52 orphan scan, API §10 step 7). `next_token` is the
+   * continuation token for the next page, null on the last one. Throws when R2 does not answer 2xx.
+   */
+  list(prefix: string, opts?: { maxKeys?: number; continuationToken?: string | null }): Promise<ObjectPage>;
 };
+
+export type ListedObject = { key: string; last_modified: string };
+export type ObjectPage = { objects: ListedObject[]; next_token: string | null };
+
+/** R2 credentials are set (TC §8.1). The nightly job skips R2 entirely without them (owner decision, Step 30). */
+export function r2Configured(): boolean {
+  const { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET } = process.env;
+  return Boolean(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET);
+}
+
+function xmlText(value: string): string {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&amp;/g, "&");
+}
+
+function xmlTag(xml: string, tag: string): string | null {
+  const match = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(xml);
+  return match ? xmlText(match[1]) : null;
+}
 
 /** TC §8.1: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET. */
 export function r2ConfigFromEnv(): R2Config {
@@ -124,6 +153,25 @@ export function createR2(config: R2Config): R2 {
       // CopyObject can answer 200 with an <Error> body when the copy fails part-way.
       const body = response.ok ? await response.text().catch(() => "") : "";
       if (!response.ok || body.includes("<Error>")) throw new Error(`R2 copy failed with ${response.status}`);
+    },
+
+    async list(prefix, opts = {}) {
+      const url = new URL(`https://${config.accountId}.r2.cloudflarestorage.com/${encodeURIComponent(config.bucket)}`);
+      url.searchParams.set("list-type", "2");
+      url.searchParams.set("prefix", prefix);
+      url.searchParams.set("max-keys", String(Math.min(Math.max(opts.maxKeys ?? 1000, 1), 1000)));
+      if (opts.continuationToken) url.searchParams.set("continuation-token", opts.continuationToken);
+      const response = await doFetch(await client.sign(url.toString(), { method: "GET" }));
+      if (!response.ok) throw new Error(`R2 list failed with ${response.status}`);
+      const xml = await response.text();
+      const objects: ListedObject[] = [];
+      for (const match of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
+        const key = xmlTag(match[1], "Key");
+        const lastModified = xmlTag(match[1], "LastModified");
+        if (key !== null && lastModified !== null) objects.push({ key, last_modified: lastModified });
+      }
+      const truncated = xmlTag(xml, "IsTruncated") === "true";
+      return { objects, next_token: truncated ? xmlTag(xml, "NextContinuationToken") : null };
     },
   };
 }

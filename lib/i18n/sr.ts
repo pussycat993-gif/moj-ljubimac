@@ -2334,6 +2334,29 @@ export const sr = {
       body: "Nažalost, ovog puta ne možemo da odobrimo nalog za {organisation}. Ako misliš da je greška, odgovori na ovaj mejl.",
       reason: "Razlog: {reason}.",
     },
+    // Step 30 (EP-49 step 3, Design §9.1). {date} = current_period_end as a Belgrade date; {renew_line} = renewOn
+    // while auto_renew is on, renewOff when it is off. Pogledaj pretplatu → /profil (S18, the subscription card).
+    premium_expiry_30: {
+      subject: "Premium ističe za 30 dana",
+      body: "Tvoj Premium traje do {date}. {renew_line}",
+      renewOn: "Obnavlja se automatski — ne moraš ništa da radiš.",
+      renewOff: "Posle toga prelaziš na Free: ništa se ne briše, ali dodatni ljubimci i domaćinstvo postaju samo za čitanje.",
+      button: "Pogledaj pretplatu",
+    },
+    premium_expiry_7: {
+      subject: "Premium ističe za 7 dana",
+      body: "Tvoj Premium traje do {date}. {renew_line}",
+      renewOn: "Obnavlja se automatski — ne moraš ništa da radiš.",
+      renewOff: "Posle toga prelaziš na Free: ništa se ne briše, ali dodatni ljubimci i domaćinstvo postaju samo za čitanje.",
+      button: "Pogledaj pretplatu",
+    },
+    premium_expiry_1: {
+      subject: "Premium ističe sutra",
+      body: "Tvoj Premium traje do {date}. {renew_line}",
+      renewOn: "Obnavlja se automatski — ne moraš ništa da radiš.",
+      renewOff: "Posle toga prelaziš na Free: ništa se ne briše, ali dodatni ljubimci i domaćinstvo postaju samo za čitanje.",
+      button: "Pogledaj pretplatu",
+    },
     // Step 23 (EP-51 request). {url} = NEXT_PUBLIC_SITE_URL/profil/podaci (owner decision).
     account_deletion_scheduled: {
       subject: "Nalog će biti obrisan {date}",

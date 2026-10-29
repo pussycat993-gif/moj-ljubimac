@@ -2228,6 +2228,27 @@ export const en: Dictionary = {
       body: "Unfortunately we can't approve the account for {organisation} this time. If you think this is a mistake, reply to this email.",
       reason: "Reason: {reason}.",
     },
+    premium_expiry_30: {
+      subject: "Premium ends in 30 days",
+      body: "Your Premium runs until {date}. {renew_line}",
+      renewOn: "It renews automatically — nothing to do.",
+      renewOff: "After that you move to Free: nothing is deleted, but extra pets and the household become read-only.",
+      button: "View subscription",
+    },
+    premium_expiry_7: {
+      subject: "Premium ends in 7 days",
+      body: "Your Premium runs until {date}. {renew_line}",
+      renewOn: "It renews automatically — nothing to do.",
+      renewOff: "After that you move to Free: nothing is deleted, but extra pets and the household become read-only.",
+      button: "View subscription",
+    },
+    premium_expiry_1: {
+      subject: "Premium ends tomorrow",
+      body: "Your Premium runs until {date}. {renew_line}",
+      renewOn: "It renews automatically — nothing to do.",
+      renewOff: "After that you move to Free: nothing is deleted, but extra pets and the household become read-only.",
+      button: "View subscription",
+    },
     account_deletion_scheduled: {
       subject: "Your account will be deleted on {date}",
       body: "We got your request to delete your account. It's switched off now, and on {date} we delete it permanently with all its data. Changed your mind? Sign in before then and cancel the deletion.",

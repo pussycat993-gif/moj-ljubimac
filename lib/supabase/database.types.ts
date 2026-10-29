@@ -1793,6 +1793,17 @@ isOneToOne: false
 "admin_restore_user":
 { Args: { "p_user_id": string }; Returns: Json
                            },
+"billing_expire_subscriptions":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"billing_expiry_notice_candidates":
+{ Args: { "p_now"?: string }; Returns: {
+              "auto_renew": boolean,"current_period_end": string,"days_left": number,"email": string,"locale": Database["public"]['Enums']["app_locale"],"plan": Database["public"]['Enums']["subscription_plan"],"subscription_id": string,"user_id": string
+            }[]
+                           },
+"billing_refresh_household_flags":
+{ Args: Record<PropertyKey, never>; Returns: (string)[]
+                           },
 "block_user":
 { Args: { "p_user_id": string }; Returns: Json
                            },
@@ -1935,6 +1946,9 @@ isOneToOne: false
 "mark_conversation_read":
 { Args: { "p_conversation_id": string }; Returns: Json
                            },
+"mark_expiry_notice_sent":
+{ Args: { "p_days": number,"p_subscription_id": string }; Returns: boolean
+                           },
 "mark_listing_notices_sent":
 { Args: { "p_listing_ids": (string)[] }; Returns: number
                            },
@@ -1966,6 +1980,15 @@ isOneToOne: false
                            },
 "partners_nearby":
 { Args: { "p_city_id"?: string,"p_lat"?: number,"p_limit"?: number,"p_lng"?: number,"p_type"?: Database["public"]['Enums']["partner_type"] }; Returns: Json
+                           },
+"r2_deletion_batch":
+{ Args: { "p_limit"?: number }; Returns: string[]
+                           },
+"r2_dequeue":
+{ Args: { "p_keys": (string)[] }; Returns: number
+                           },
+"r2_keys_in_use":
+{ Args: { "p_keys": (string)[] }; Returns: (string)[]
                            },
 "record_partner_click":
 { Args: { "p_action": Database["public"]['Enums']["partner_click_action"],"p_partner_id": string }; Returns: undefined
@@ -2000,6 +2023,21 @@ isOneToOne: false
                            },
 "restore_pet_from_memorial":
 { Args: { "p_pet_id": string,"p_reenable_reminders"?: boolean }; Returns: Json
+                           },
+"retention_delete_due_accounts":
+{ Args: { "p_limit"?: number }; Returns: Json
+                           },
+"retention_expire_exports":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"retention_expire_invitations":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"retention_purge_deliveries":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           },
+"retention_purge_server_support":
+{ Args: Record<PropertyKey, never>; Returns: Json
                            },
 "sapa_author_card":
 { Args: { "p_author": string,"p_org": string }; Returns: Json
