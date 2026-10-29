@@ -9,7 +9,7 @@
 - `ivana.petrovic@mojljubimac.test` ima aktivan mesečni Premium. `marko.jovanovic@mojljubimac.test` je Free i nikad nije bio pretplaćen.
 - Brisanje naloga testiraj **samo na novom nalogu** (npr. `qa.brisanje@mojljubimac.test`), nikad na test nalozima iz seed-a.
 - Istekli Premium (TS-PREM-011, TS-PREM-012) priprema programer u bazi, jer noćni posao još ne postoji (Step 30).
-- Gotova arhiva podataka (link „Preuzmi ZIP") stiže tek sa Step 30a. Ovde se proverava samo zahtev i stanje „priprema". Ostatak je u fajlu 09, sekcija JOB.
+- Gotova arhiva podataka (link „Preuzmi ZIP") stiže tek sa Step 30a. Ovde se proverava samo zahtev i stanje „priprema". Ostatak je u fajlu 12 (TS-JOB-008, TS-JOB-009).
 
 ---
 

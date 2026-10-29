@@ -1,6 +1,6 @@
 # Vodič za QA — Moj Ljubimac
 
-> Verzija: 26. 10. 2026. · Izvori: `docs/product/01-product-brief.md` (v1.7), `02-prd.md` (v1.7), `04-design-system.md` (v1.6), `05-api-integration-contract.md` (v1.3), `06-build-plan.md` (§3)
+> Verzija: 29. 10. 2026. · Izvori: `docs/product/01-product-brief.md` (v1.7), `02-prd.md` (v1.7), `04-design-system.md` (v1.6), `05-api-integration-contract.md` (v1.3), `06-build-plan.md` (§3)
 
 ## Kome je namenjeno
 
@@ -23,14 +23,14 @@ Ovaj folder je namenjen **Jovani Vrtunić (QA)** — osobi koja ručno testira v
 | [02-slucajevi-koriscenja.md](02-slucajevi-koriscenja.md) | Svi slučajevi korišćenja (UC-01 … UC-13 iz PRD-a + dodatni QA slučajevi) sa tokovima, izuzecima i oblastima scenarija |
 | [03-sablon-prijave-greske.md](03-sablon-prijave-greske.md) | Šablon za GitHub Issue, prioriteti P1–P3, labele, snimci ekrana i šta se NE prijavljuje |
 | [04-automatsko-testiranje.md](04-automatsko-testiranje.md) | Podešavanje računara (Git, Node, Docker, VS Code), pokretanje lokalne aplikacije i svih automatskih testova, pisanje Playwright testova, gde se prijavljuju greške |
-| [test-scenariji/README.md](test-scenariji/README.md) | Pregled test scenarija po oblastima (AUTH, PET, REM, CARE, HH, PREM, ORG, PART, ADM, SAPA, WA, JOB) |
+| [test-scenariji/README.md](test-scenariji/README.md) | Pregled test scenarija po oblastima (AUTH, PET, REM, CARE, HH, PREM, ORG, PART, ADM, SAPA, WA, JOB, PAY, PROD) |
 
 ## Okruženja
 
 | Okruženje | Adresa | Mejlovi | Push / WhatsApp | Nalozi |
 |---|---|---|---|---|
 | **Lokalno (sada)** | http://localhost:3000 | Mailpit: http://127.0.0.1:54324 | Ne šalju se — samo zapis u logu | Test nalozi iz tabele ispod |
-| **Produkcija (posle prvog deploy-a)** | Adresa će biti dopisana | Pravi mejlovi na pravu adresu | Prema podešavanjima | Nalozi se prave registracijom; test nalozi iz seed-a **ne postoje** |
+| **Produkcija (posle prvog deploy-a)** | Adresa će biti dopisana (`https://moj-ljubimac.<poddomen>.workers.dev`) | Za sada stižu samo članovima Supabase tima; mejlovi aplikacije čekaju Resend | Push radi; WhatsApp se ne šalje dok se ne podesi Meta nalog | Nalozi se prave registracijom; test nalozi iz seed-a **ne postoje**; operatera određuje Ivana (fajl 14) |
 
 ## Test nalozi (lokalno)
 
@@ -43,7 +43,7 @@ Lozinka za sve naloge: **`MojLjubimac123!`**
 | jelena.nikolic@mojljubimac.test | Vlasnik | Free | Novi Sad | Drugi vlasnik — pozvani član domaćinstva (Ivana je poziva) |
 | milica.stojanovic@mojljubimac.test | Azil | Čeka odobrenje operatera | Bečej | Stanje „azil na čekanju" (sve samo za čitanje) i kasnije tokovi azila |
 | nikola.djordjevic@mojljubimac.test | Odgajivačnica | — | Beograd | Legla, upiti, cene, javna stranica odgajivačnice |
-| ana.markovic@mojljubimac.test | Vlasnik + Operater | — | Novi Sad | Admin deo `/admin` (S26) — čeka Step 28 |
+| ana.markovic@mojljubimac.test | Vlasnik + Operater | — | Novi Sad | Admin deo `/admin` (S26): azili, partneri, statistika, Viber, moderacija |
 
 > Napomena: Premium se do Step 31 može dobiti samo kroz seed podatke u lokalnoj bazi. Novi nalozi koje sama napraviš uvek su Free.
 
@@ -60,7 +60,7 @@ Svaki korisnik ima **tačno jedan tip naloga**: Vlasnik, Azil ili Odgajivačnica
 | **Azil — Volonter** | Član tima azila sa ulogom Volonter | Dodaje i menja zdravstvene unose i negu | Brisanje životinja, odluke o zahtevima, upravljanje timom, izmena javnog profila (BR-34, FR-60) | Admin azila poziva npr. Marka u tim kao Volontera (S20 → S14) |
 | **Odgajivačnica — Admin** | Član tima odgajivačnice sa ulogom Admin | Životinje, legla, cene, upiti, tim, javni profil, predaja kartona (uz aktivan odgajivački plan, BR-11) | Bez aktivnog plana — sve samo za čitanje (E-21) | `nikola.djordjevic` |
 | **Odgajivačnica — Volonter** | Član tima sa ulogom Volonter | Zdravstveni unosi i nega | Isto kao volonter azila | Nikola poziva npr. Jelenu u tim |
-| **Operater** | Osoba koja vodi proizvod | Admin deo: odobrava azile, partneri, statistika klikova, kanal Viber, moderacija Šape pomoći | — | `ana.markovic` (⏳ čeka Step 28) |
+| **Operater** | Osoba koja vodi proizvod | Admin deo: odobrava azile, partneri, statistika klikova, kanal Viber, moderacija Šape pomoći | — | `ana.markovic` (na produkciji ulogu daje Ivana) |
 | **Posetilac** | Neko ko nije prijavljen | Javni trenutak `/t/…`, javna stranica organizacije `/o/…`, pravne strane, pregled oglasa Šape pomoći | Sve što traži nalog (zahtev za udomljavanje, poruka, donacija) | Odjavi se ili koristi privatni prozor |
 
 ## Kako se radi ciklus testiranja
@@ -74,23 +74,21 @@ Svaki korisnik ima **tačno jedan tip naloga**: Vlasnik, Azil ili Odgajivačnica
 7. **Upiši broj Issue-a** u napomenu scenarija (npr. „Pao — #42"), da se zna šta treba ponovo proveriti kad greška bude ispravljena.
 8. **Ponovna provera:** kad Ivana javi da je greška ispravljena, ponovi isti scenario i zatvori Issue komentarom „Provereno — prošlo".
 
-## Šta trenutno nije spremno (stanje 26. 10. 2026.)
+## Šta trenutno nije spremno (stanje 29. 10. 2026.)
 
-Gotovo je i spremno za test: **Step 01–27** (registracija, prijava, profil, jezik, ljubimci, karton, uspomene, PDF, podsetnici sa mejlom i push-om, dnevnik nege, trenuci, domaćinstvo, Premium stranica bez plaćanja, izvoz podataka i brisanje naloga, organizacije, zahtevi i predaja kartona, legla i javne stranice, partneri).
+Gotovo je i spremno za test: **Step 01–30a** — sve iz ranijih koraka plus admin / operater (S26, sa „Moderacijom"), „Šapa pomoći" (S32–S37: oglasi, javne stranice, profili, donacije, poruke i obaveštenja o porukama, prijave, blokiranje, moderacija), WhatsApp kanal (lokalno lažno slanje — kod se čita iz loga), noćni poslovi (istek Premium-a, brisanje posle 30 dana, nasledstvo) i backup sa arhivom izvoza podataka. Step 32 (završna provera) sledi posle Step 31.
 
-Čeka izgradnju — scenariji postoje, ali su označeni „⏳ Čeka Step NN":
+Ne radi još (scenariji postoje, ali se ne izvršavaju ili je ponašanje „očekivano ne radi"):
 
-| Step | Šta | Ekrani / delovi |
+| Šta | Zašto | Scenariji |
 |---|---|---|
-| 28 | Admin / operater: odobravanje azila, partneri, statistika, kanal Viber | S26 `/admin` |
-| 28a–28c | „Šapa pomoći": oglasi, poruke, prijave, blokiranje, moderacija, podaci za donacije | S32–S37, kartica *Donacije* u S29, kartica *Poruke* u S12, tab *Moderacija* u S26 |
-| 29 | WhatsApp kanal (povezivanje broja, slanje podsetnika, „Urađeno" iz poruke) | Deo *Kanali* i WhatsApp u S12 |
-| 30 | Noćni poslovi: istek Premium-a i obaveštenja 30/7/1 dan, trajno brisanje naloga posle 30 dana, nasleđivanje domaćinstva i organizacije | — (pozadinski poslovi) |
-| 30a | Backup baze i arhiva izvoza podataka (fajl za preuzimanje) | S19 — priprema arhive |
-| 31 | Plaćanje i cene (čeka izbor provajdera plaćanja — OQ-11, i cene — OQ-03) | S17 — kupovina Premium-a, probni period, obnova |
-| 32 | Završna provera pre pokretanja | — |
+| Plaćanje (Premium 3 €/mes ili 30 €/god sa 7 dana probe, odgajivački plan 11 €/mes ili 110 €/god) | Step 31 je u izradi (Paddle) | fajl 13 — „⏳ Čeka Step 31 i Paddle sandbox" |
+| Otpremanje fajlova na produkciji (fotografije, prilozi, logo) | Skladište R2 nije podešeno na produkciji | fajl 14, TS-PROD-008 |
+| Mejlovi na produkciji za ljude van Supabase tima | Resend nije podešen | fajl 14, TS-PROD-005, TS-PROD-009 |
+| Pravo slanje WhatsApp poruka | Nema Meta naloga (lokalno i bez podešavanja: samo red `[whatsapp:fake]` u logu) | fajl 11 |
+| Pravni tekstovi na `/privatnost` i `/uslovi` | Tekst dostavlja vlasnica (OQ-15) | TS-AUTH-026, TS-PROD-015 |
 
-Do Step 28 odobrenje azila nije moguće iz aplikacije — ako ti treba odobren azil, zamoli Ivanu da ga odobri ručno.
+Ostale napomene: noćni poslovi rade u 03:00 i 03:30 po beogradskom vremenu (lokalno ih pokreće programer — fajl 12); bez R2 podešavanja brisanje fajlova se preskače; Viber je napravljen, ali isključen dok ga operater ne uključi.
 
 ## Kontakt
 

@@ -1,6 +1,6 @@
 # 08 — Partneri u blizini i predlog veterinara (oblast PART)
 
-**Status:** ✅ spremno za test (Step 27 gotov). Admin ekran za unos partnera i statistiku klikova stiže tek sa Step 28 (fajl 09, sekcija ADM).
+**Status:** ✅ spremno za test (Step 27 gotov). Admin ekran za unos partnera i statistiku klikova stiže tek sa Step 28 (fajl 09-admin.md).
 **Ekrani:** S24 Partneri u blizini (`/partneri`), S25 Profil partnera (`/partneri/[id]`), S03 Karton ljubimca (blok „Predlog veterinara u blizini")
 **Zahtevi:** FR-52 … FR-56, FR-58 (beleženje klika), BR-40 … BR-44, E-22 … E-24, UC-10
 **Okruženje:** lokalno http://localhost:3000 · lozinka `MojLjubimac123!`

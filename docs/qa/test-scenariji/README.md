@@ -2,7 +2,7 @@
 
 Ovaj folder sadrži ručne test scenarije za QA. Svaki fajl pokriva jednu oblast aplikacije. Svaki scenario ima ID (npr. `TS-HH-007`), zahteve iz PRD-a (FR, BR, E) i ekran (Sxx), prioritet, nalog, preduslove, korake, očekivani rezultat i red za rezultat.
 
-Stanje izgradnje: 26. 10. 2026. Izvor istine za to šta je gotovo je `docs/product/06-build-plan.md` §3.
+Stanje izgradnje: 29. 10. 2026. Izvor istine za to šta je gotovo je `docs/product/06-build-plan.md` §3.
 
 ## Indeks
 
@@ -14,12 +14,17 @@ Stanje izgradnje: 26. 10. 2026. Izvor istine za to šta je gotovo je `docs/produ
 | [04-dnevnik-nege-i-trenuci.md](04-dnevnik-nege-i-trenuci.md) | CARE — dnevnik ishrane i stolice, obroci, trenuci, javni link | 31 | ✅ spremno |
 | [05-domacinstvo.md](05-domacinstvo.md) | HH — domaćinstvo, pozivi, prava člana, samo za čitanje | 32 | ✅ spremno |
 | [06-premium-pretplata-i-podaci.md](06-premium-pretplata-i-podaci.md) | PREM — Premium stranica, pretplata, izvoz podataka, brisanje naloga | 26 | ✅ spremno |
-| [07-organizacije.md](07-organizacije.md) | ORG — azili, odgajivačnice, tim, zahtevi, predaja kartona, legla, javne stranice | 45 | ✅ spremno (odobrenje azila i odgajivački plan za sada postavlja programer) |
+| [07-organizacije.md](07-organizacije.md) | ORG — azili, odgajivačnice, tim, zahtevi, predaja kartona, legla, javne stranice | 45 | ✅ spremno (azil odobrava operater — TS-ADM-002; odgajivački plan za sada postavlja programer) |
 | [08-partneri.md](08-partneri.md) | PART — partneri u blizini, profil partnera, predlog veterinara | 23 | ✅ spremno |
-| [09-ceka-izgradnju.md](09-ceka-izgradnju.md) | ADM (9), SAPA (10), WA (8), JOB (9), PAY (4) | 40 | ⏳ čeka Step 28, 28a–28c, 29, 30, 30a i 31 |
-| **Ukupno** | | **297** (257 spremno + 40 čeka) | |
+| [09-admin.md](09-admin.md) | ADM — admin / operater: azili, partneri, statistika, Viber, moderacija | 26 | ✅ spremno |
+| [10-sapa-pomoci.md](10-sapa-pomoci.md) | SAPA — Šapa pomoći: oglasi, donacije, poruke, prijave, blokiranje, isključenje | 52 | ✅ spremno |
+| [11-whatsapp.md](11-whatsapp.md) | WA — WhatsApp kanal (lokalno lažno slanje, kod iz loga) | 13 | ✅ spremno (pravo slanje čeka Meta nalog) |
+| [12-nocni-poslovi-i-backup.md](12-nocni-poslovi-i-backup.md) | JOB — noćni poslovi, nasledstvo, arhiva podataka, backup | 17 | ✅ spremno (poslove pokreće programer) |
+| [13-placanje.md](13-placanje.md) | PAY — plaćanje preko Paddle-a, cene u evrima | 12 | ⏳ čeka Step 31 i Paddle sandbox |
+| [14-produkcija.md](14-produkcija.md) | PROD — smoke test na produkciji posle deploy-a | 22 | ⏳ čeka prvi deploy i adresu sajta |
+| **Ukupno** | | **399** (365 spremno + 34 čeka) | |
 
-Kad programer završi neki korak iz fajla 09, ta sekcija prelazi u ✅. U ovoj tabeli se tada ažuriraju status i broj scenarija.
+Kad Step 31 bude gotov, fajl 13 prelazi u ✅, a kad Ivana dopiše adresu produkcije, i fajl 14. U ovoj tabeli se tada ažuriraju status i broj scenarija (broj: `grep -c '^### TS-' <fajl>`).
 
 ## Okruženje i nalozi
 
@@ -35,7 +40,7 @@ Kad programer završi neki korak iz fajla 09, ta sekcija prelazi u ✅. U ovoj t
 | nikola.djordjevic@mojljubimac.test | odgajivačnica, Beograd |
 | ana.markovic@mojljubimac.test | vlasnik + operater (admin), Novi Sad |
 
-- Na produkciji test nalozi iz seed-a ne postoje, pa se nalozi prave registracijom. Adresa sajta biće dopisana posle prvog deploy-a.
+- Na produkciji test nalozi iz seed-a ne postoje, pa se nalozi prave registracijom, a ulogu operatera daje Ivana. Adresa sajta biće dopisana posle prvog deploy-a. Nalozi i očekivana ograničenja produkcije su u fajlu 14.
 - Scenariji koji nešto brišu (nalog, ljubimca) izvršavaju se na **novim** nalozima, nikad na nalozima iz tabele.
 
 ## Kako se beleže rezultati
@@ -59,9 +64,9 @@ Na kraju ciklusa upiši zbir u Issue ili u `README.md` foldera ciklusa: koliko j
 
 ## Preporučeni redosled prvog ciklusa
 
-### 1. Smoke test (10 najvažnijih P1 scenarija)
+### 1. Smoke test (14 najvažnijih P1 scenarija)
 
-Prvo izvrši ovih 10 scenarija. Ako neki padne, javi odmah, pre nastavka.
+Prvo izvrši ovih 14 scenarija. Ako neki padne, javi odmah, pre nastavka.
 
 | # | ID | Šta proverava | Fajl |
 |---|---|---|---|
@@ -75,12 +80,18 @@ Prvo izvrši ovih 10 scenarija. Ako neki padne, javi odmah, pre nastavka.
 | 8 | TS-PREM-001 | Premium stranica „Plaćanje uskoro dostupno" | 06 |
 | 9 | TS-ORG-025 | Slanje zahteva za udomljavanje sa javne stranice (azil mora biti odobren) | 07 |
 | 10 | TS-PART-014 | Predlog veterinara u kartonu ljubimca bez veterinara | 08 |
+| 11 | TS-ADM-002 | Operater odobrava azil iz admin dela | 09 |
+| 12 | TS-SAPA-003 | Novi oglas „Prodajem" i validacija | 10 |
+| 13 | TS-SAPA-006 | Poruka autoru oglasa i odgovor (vidi se posle osvežavanja) | 10 |
+| 14 | TS-SAPA-010 | Moderacija: sakrij, isključi, vrati, odbaci | 10 |
 
 ### 2. Ostatak ciklusa
 
 1. Fajlovi **01 → 02 → 03 → 04** po redu, jer ostali scenariji koriste naloge, ljubimce i podsetnike napravljene ovde.
 2. **05 Domaćinstvo**, pa **06 Premium**. Scenarije isteka Premium-a ostavi za kraj fajla, jer posle njih programer vraća Premium.
-3. **07 Organizacije** po redosledu iz „Pre početka" u fajlu: prvo azil na čekanju, pa odobrenje (programer), pa ostalo.
-4. **08 Partneri** (partnere u bazi priprema programer).
-5. Na kraju ciklusa ponovo pokreni svih 10 scenarija iz smoke testa da proveriš da ništa nije pokvareno.
-6. Fajl **09** se ne izvršava, nego samo pročitaj sekcije za korake koji su u međuvremenu završeni.
+3. **07 Organizacije** po redosledu iz „Pre početka" u fajlu: prvo azil na čekanju, pa odobrenje (kao Ana po TS-ADM-002 iz fajla 09, ili programer), pa ostalo.
+4. **08 Partneri** (partnere u bazi priprema programer), pa **09 Admin** (unos partnera, odobravanje azila).
+5. **10 Šapa pomoći** — posle odobrenja Miličinog azila (TS-ADM-002). Moderaciju u fajlu 09 (TS-ADM-019 … TS-ADM-023) radi kad u fajlu 10 napraviš prijave.
+6. **11 WhatsApp** i **12 Noćni poslovi** — uz programera (kod iz loga, ručno pokretanje poslova, pomeranje datuma).
+7. Na kraju ciklusa ponovo pokreni svih 14 scenarija iz smoke testa da proveriš da ništa nije pokvareno.
+8. Fajl **13** se ne izvršava dok Step 31 nije gotov. Fajl **14** se izvršava na produkciji posle svakog deploy-a.
