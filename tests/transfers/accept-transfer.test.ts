@@ -41,6 +41,8 @@ const state = {
   expired: false,
   failAccept: null as string | null,
   failCopyAt: -1,
+  noFiles: false,
+  r2Created: 0,
   objects: new Set<string>(),
   pets: [] as Pet[],
   rpcCalls: [] as { name: string; args: Row }[],
@@ -59,7 +61,7 @@ const storage = {
   presignGet: vi.fn(async (key: string) => ({ url: `https://r2.test/${key}?sig`, expires_at: "2026-10-23T10:10:00Z" })),
 };
 vi.mock("@/lib/integrations/r2", () => ({
-  r2: () => storage,
+  r2: () => (state.r2Created++, storage),
   safeFileName: (name: string) => name.toLowerCase().replace(/[^a-z0-9._-]/g, "-").slice(0, 100),
 }));
 vi.mock("@/lib/integrations/resend", () => ({ sendEmail: vi.fn() }));
@@ -117,9 +119,11 @@ async function rpc(name: string, args: Row) {
           data: {
             transfer_id: "f9260000-0000-4000-8000-0000000000b2",
             owner_id: state.user,
-            photo_r2_key: PHOTO,
+            photo_r2_key: state.noFiles ? null : PHOTO,
             vet_visits: [{ id: VISIT }],
-            attachments: [{ id: "a1", vet_visit_id: VISIT, r2_key: ATTACHMENT, file_name: "Nalaz krvi.pdf" }],
+            attachments: state.noFiles
+              ? []
+              : [{ id: "a1", vet_visit_id: VISIT, r2_key: ATTACHMENT, file_name: "Nalaz krvi.pdf" }],
           },
           error: null,
         }
@@ -143,7 +147,7 @@ async function rpc(name: string, args: Row) {
         attachments: [{ vet_visit_id: visitMap[VISIT], r2_key: keyMap[ATTACHMENT], file_name: "Nalaz krvi.pdf" }],
       });
       state.status = "accepted";
-      return { data: view({ status: "accepted", new_pet_id: newPet, animal: { ...view().animal, photo_r2_key: PHOTO } }), error: null };
+      return { data: view({ status: "accepted", new_pet_id: newPet, animal: { ...view().animal, photo_r2_key: state.noFiles ? null : PHOTO } }), error: null };
     }
     case "decline_record_transfer": {
       const failed = state.status !== "pending" ? dbError("invitation_used") : state.expired ? dbError("invitation_expired") : null;
@@ -189,6 +193,8 @@ beforeEach(() => {
   state.expired = false;
   state.failAccept = null;
   state.failCopyAt = -1;
+  state.noFiles = false;
+  state.r2Created = 0;
   state.objects = new Set([PHOTO, ATTACHMENT]);
   state.pets = [];
   state.rpcCalls = [];
@@ -222,6 +228,15 @@ describe("FR-50 #1 — accepting a transfer gives the recipient the full record"
     // The copies happen before the single database call that writes the record.
     const order = state.rpcCalls.map((c) => c.name);
     expect(order).toEqual(["get_transfer_copy_plan", "accept_record_transfer"]);
+  });
+
+  it("a record without a photo or attachments is accepted without creating the R2 client (Step F1)", async () => {
+    state.noFiles = true;
+    const result = await acceptTransfer({ token: TOKEN });
+    expect(result).toMatchObject({ ok: true, data: { status: "accepted", animal: { photo_url: null } } });
+    expect(state.r2Created).toBe(0);
+    expect(storage.copy).not.toHaveBeenCalled();
+    expect(state.rpcCalls.find((c) => c.name === "accept_record_transfer")?.args.p_key_map).toEqual({});
   });
 
   it("returns the TransferView with a presigned photo URL instead of the key", async () => {

@@ -67,8 +67,8 @@ export async function getPdfExportBundle(input: { pet_id: string }): Promise<Act
   const me = (meData ?? null) as unknown as Me | null;
   if (!me?.entitlements.pdf_export) return fail("premium_required", { details: { limit: "pdf_export" } });
 
-  const treatments = record.treatments as unknown as Treatment[];
-  const visits = record.vet_visits as unknown as VetVisit[];
+  const treatments = record.treatments;
+  const visits = record.vet_visits;
 
   // All dose logs of the pet's treatments, oldest first. Author names: EP-02 resolves them for the
   // latest doses (profiles are self-only under RLS); the owner's own name is known as well.

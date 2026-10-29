@@ -618,7 +618,7 @@ export function VetVisitFormClient({
           )}
 
           {limitHit ? (
-            <PremiumLock title={copy.common.premiumTitle} description={t.lockDescription} cta={copy.common.premiumCta} />
+            <PremiumLock title={copy.common.premiumTitle} description={t.lockDescription} cta={copy.common.premiumCta} ctaHref="/premium" />
           ) : (
             <div className="space-y-2">
               <div className="rounded-sm border border-dashed border-border p-6 text-center focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">

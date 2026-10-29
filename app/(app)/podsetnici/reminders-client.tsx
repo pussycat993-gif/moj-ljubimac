@@ -12,6 +12,7 @@ import { toast } from "@/components/ui/sonner"
 import { EmptyState } from "@/components/app/empty-state"
 import { ErrorState } from "@/components/app/error-state"
 import { ReminderRow, type Channel, type ReminderRowData, type ReminderRowLabels } from "@/components/app/reminder-row"
+import { reminderTypeIconLabels } from "@/lib/i18n/reminder-type-labels"
 import type { ReminderOccurrence } from "@/lib/actions/pets"
 import {
   listReminderOccurrences,
@@ -59,6 +60,7 @@ export function reminderRowLabels(t: Dictionary["reminders"]): ReminderRowLabels
     done: t.markDone,
     channels: { email: t.channelEmail, push: t.channelPush, whatsapp: t.channelWhatsapp },
     status: { today: t.statusToday, soon: t.statusSoon, missed: t.statusMissed, done: t.statusDone },
+    types: reminderTypeIconLabels(t),
   }
 }
 

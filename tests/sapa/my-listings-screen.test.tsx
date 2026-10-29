@@ -212,6 +212,7 @@ describe("S35 Premium limit (FR-64 #4)", () => {
       ),
     ).toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "Novi oglas" })).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Probaj 7 dana besplatno" })).toHaveAttribute("href", "/premium")
     await userEvent.click(screen.getByRole("tab", { name: "Istekli (1)" }))
     expect(await screen.findByRole("button", { name: "Objavi ponovo (30 dana)" })).toBeDisabled()
     expect(screen.getByText("Imaš 3 aktivna oglasa — reši jedan ili pređi na Premium da ponovo objaviš ovaj.")).toBeInTheDocument()

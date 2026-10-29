@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import type { Me } from "@/lib/actions/registration"
 import type { PetRecord } from "@/lib/actions/pets"
-import type { Vaccination } from "@/lib/actions/vaccinations"
 import { fromProfileLocale, getDictionary } from "@/lib/i18n"
 import { ErrorState } from "@/components/app/error-state"
 import { VaccinationFormClient } from "../nova/vaccination-form-client"
@@ -24,7 +23,7 @@ export default async function EditVaccinationPage({
   const locale = fromProfileLocale((me as Me | null)?.locale)
   const dict = getDictionary(locale)
   const record = error ? null : ((data ?? null) as PetRecord | null)
-  const vaccination = (record?.vaccinations as unknown as Vaccination[] | undefined)?.find((v) => v.id === vakcinaId)
+  const vaccination = record?.vaccinations.find((v) => v.id === vakcinaId)
 
   if (!record || !record.access.can_edit || !vaccination) {
     return <ErrorState message={dict.common.error} labels={{ retry: dict.common.retry }} />

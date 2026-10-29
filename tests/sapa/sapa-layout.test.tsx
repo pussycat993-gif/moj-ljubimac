@@ -121,11 +121,29 @@ describe("request interception — Šapa pomoći signed-in prefixes", () => {
   const request = (path: string) => new NextRequest(`http://localhost:3000${path}`)
 
   it.each(["/sapa-pomoci/nova", "/sapa-pomoci/moje", "/sapa-pomoci/f3000000-0000-4000-8000-000000000003/izmeni"])(
-    "unauthenticated %s redirects to /prijava",
+    "unauthenticated %s redirects to /prijava with next (Step F1)",
     async (path) => {
       const { updateSession } = await import("@/lib/supabase/middleware")
       const response = await updateSession(request(path))
-      expect(response.headers.get("location")).toBe("http://localhost:3000/prijava")
+      const location = new URL(response.headers.get("location")!)
+      expect(location.pathname).toBe("/prijava")
+      expect(location.searchParams.get("next")).toBe(path)
+    },
+  )
+
+  it("keeps the query of an email link in next (listing_expiring Produži)", async () => {
+    const { updateSession } = await import("@/lib/supabase/middleware")
+    const response = await updateSession(request("/sapa-pomoci/moje?produzi=f3000000-0000-4000-8000-000000000003"))
+    const location = new URL(response.headers.get("location")!)
+    expect(location.searchParams.get("next")).toBe("/sapa-pomoci/moje?produzi=f3000000-0000-4000-8000-000000000003")
+  })
+
+  it.each(["/poruke", "/poruke/c1000000-0000-4000-8000-000000000001"])(
+    "unauthenticated %s redirects to /prijava with next",
+    async (path) => {
+      const { updateSession } = await import("@/lib/supabase/middleware")
+      const response = await updateSession(request(path))
+      expect(new URL(response.headers.get("location")!).searchParams.get("next")).toBe(path)
     },
   )
 

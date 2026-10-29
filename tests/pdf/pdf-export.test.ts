@@ -1,5 +1,5 @@
 import { createElement, isValidElement, type ReactElement, type ReactNode } from "react"
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -391,6 +391,7 @@ describe("S03 — Izvezi PDF", () => {
     expect(lock).toHaveTextContent("Dostupno u Premiumu")
     expect(lock).toHaveTextContent("Izvezi ceo karton u PDF — za veterinara, groomera ili granicu.")
     expect(lock).toHaveTextContent("Probaj 7 dana besplatno")
+    expect(within(lock).getByRole("link", { name: "Probaj 7 dana besplatno" })).toHaveAttribute("href", "/premium")
     expect(lock).toHaveTextContent("Karton ljubimca — Luna")
     expect(state.rpcCalls).toEqual([])
   })

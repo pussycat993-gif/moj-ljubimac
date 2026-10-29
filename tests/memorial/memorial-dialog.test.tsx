@@ -192,7 +192,7 @@ describe("EP-06 — Premesti u Uspomene", () => {
 
     expect(within(dialog).getByRole("heading", { name: "Dostupno u Premiumu" })).toBeInTheDocument()
     expect(within(dialog).getByText(dictionaries.sr.petRecord.memorialLockDescription)).toBeInTheDocument()
-    expect(within(dialog).getByRole("button", { name: "Probaj 7 dana besplatno" })).toBeInTheDocument()
+    expect(within(dialog).getByRole("link", { name: "Probaj 7 dana besplatno" })).toHaveAttribute("href", "/premium")
     expect(within(dialog).queryByRole("button", { name: "Premesti u Uspomene" })).not.toBeInTheDocument()
     expect(push).not.toHaveBeenCalled()
     expect(toast).not.toHaveBeenCalled()

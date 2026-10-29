@@ -485,7 +485,7 @@ export function MyListingsClient({
       )}
 
       {page && !suspended && limitReached && (
-        <PremiumLock title={copy.common.premiumTitle} cta={copy.common.premiumCta} description={m.premiumLock} />
+        <PremiumLock title={copy.common.premiumTitle} cta={copy.common.premiumCta} ctaHref="/premium" description={m.premiumLock} />
       )}
 
       <Tabs value={tab} onValueChange={(v) => changeTab(v as TabKey)}>

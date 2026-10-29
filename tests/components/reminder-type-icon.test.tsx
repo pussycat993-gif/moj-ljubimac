@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ReminderTypeIcon, reminderTypeLabel, type ReminderType } from "@/components/app/reminder-type-icon";
 import { dictionaries } from "@/lib/i18n";
+import { reminderTypeIconLabels } from "@/lib/i18n/reminder-type-labels";
 
 // Design §6 ReminderTypeIcon mapping; `message` (the S12 Poruke row) since Step 28c.
 const CASES: [ReminderType, string][] = [
@@ -25,6 +26,13 @@ describe("ReminderTypeIcon", () => {
     expect(reminderTypeLabel.message).toBe("Poruke");
     expect(dictionaries.sr.reminderSettings.typeMessage).toBe("Poruke");
     expect(dictionaries.en.reminderSettings.typeMessage).toBe("Messages");
+  });
+
+  it("takes the dictionary's sr-only labels (Step F1); the sr defaults equal the sr dictionary", () => {
+    render(<ReminderTypeIcon type="vet_follow_up" labels={reminderTypeIconLabels(dictionaries.en.reminders)} />);
+    expect(screen.getByText("Follow-up")).toHaveClass("sr-only");
+    expect(screen.queryByText("Kontrola")).not.toBeInTheDocument();
+    expect(reminderTypeIconLabels(dictionaries.sr.reminders)).toEqual(reminderTypeLabel);
   });
 
   it("defaults to the manual Bell icon", () => {

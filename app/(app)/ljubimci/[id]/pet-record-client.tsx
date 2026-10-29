@@ -82,7 +82,7 @@ import { reminderRowLabels, toReminderRow } from "@/app/(app)/podsetnici/reminde
 import { deletePet, type PetRecord, type WeightUnit } from "@/lib/actions/pets"
 import { deleteTreatment, logDose, type Treatment } from "@/lib/actions/treatments"
 import { deleteVaccination, type Vaccination } from "@/lib/actions/vaccinations"
-import { deleteVetVisit, type Attachment, type VetVisit } from "@/lib/actions/vet-visits"
+import { deleteVetVisit, type Attachment } from "@/lib/actions/vet-visits"
 import { createWeightEntry, deleteWeightEntry, updateWeightEntry, type WeightEntry } from "@/lib/actions/weights"
 import type { Me } from "@/lib/actions/registration"
 import { format, getDictionary, type Dictionary, type Locale } from "@/lib/i18n"
@@ -615,11 +615,11 @@ export function PetRecordClient({
   const t = copy.petRecord
   const router = useRouter()
   const pet = record.pet
-  const vaccines = record.vaccinations as unknown as Vaccination[]
-  const treatments = record.treatments as unknown as Treatment[]
-  const visits = record.vet_visits as unknown as VetVisit[]
+  const vaccines = record.vaccinations
+  const treatments = record.treatments
+  const visits = record.vet_visits
   // EP-02 returns measured_on desc; the trend reads oldest → newest (FR-04).
-  const weightsDesc = record.weights as unknown as WeightEntry[]
+  const weightsDesc = record.weights
   const weights = [...weightsDesc].sort(
     (a, b) => a.measured_on.localeCompare(b.measured_on) || a.created_at.localeCompare(b.created_at),
   )
@@ -978,7 +978,7 @@ export function PetRecordClient({
 
       {pdfLockOpen && (
         <section aria-label={t.pdfLockLabel}>
-          <PremiumLock title={copy.common.premiumTitle} description={t.pdfLockDescription} cta={copy.common.premiumCta}>
+          <PremiumLock title={copy.common.premiumTitle} description={t.pdfLockDescription} cta={copy.common.premiumCta} ctaHref="/premium">
             <Card className="gap-3 p-6">
               <p className="font-heading text-lg font-bold">{format(t.pdfTitle, { name: pet.name })}</p>
               <Separator />
@@ -1465,6 +1465,7 @@ export function PetRecordClient({
               title={copy.common.premiumTitle}
               description={t.memorialLockDescription}
               cta={copy.common.premiumCta}
+              ctaHref="/premium"
             />
           ) : (
             <div className="space-y-4">

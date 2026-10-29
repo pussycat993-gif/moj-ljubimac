@@ -252,7 +252,7 @@ describe("S05 — new vet visit", () => {
     expect(
       screen.getByText("Na Free planu možeš da sačuvaš 10 priloga po ljubimcu. Premium nema ograničenje — čuvaj sve nalaze i snimke."),
     ).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Probaj 7 dana besplatno" })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Probaj 7 dana besplatno" })).toHaveAttribute("href", "/premium")
     expect(picker()).toBeNull()
 
     // Removing a file frees the slot and brings the picker back.

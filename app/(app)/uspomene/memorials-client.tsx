@@ -214,6 +214,7 @@ export function MemorialsClient({
           <PremiumLock
             title={copy.common.premiumTitle}
             cta={copy.common.premiumCta}
+            ctaHref="/premium"
             description={format(t.lockDescription, { slot: slotPetName ?? "", name: blocked.name })}
           />
         </section>

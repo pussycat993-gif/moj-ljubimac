@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import type { Me } from "@/lib/actions/registration"
 import type { PetRecord } from "@/lib/actions/pets"
-import type { VetVisit } from "@/lib/actions/vet-visits"
 import { fromProfileLocale, getDictionary } from "@/lib/i18n"
 import { ErrorState } from "@/components/app/error-state"
 import { VetVisitFormClient } from "../novi/vet-visit-form-client"
@@ -26,7 +25,7 @@ export default async function EditVetVisitPage({
   const locale = fromProfileLocale(me?.locale)
   const dict = getDictionary(locale)
   const record = error ? null : ((data ?? null) as PetRecord | null)
-  const visit = (record?.vet_visits as unknown as VetVisit[] | undefined)?.find((v) => v.id === pregledId)
+  const visit = record?.vet_visits.find((v) => v.id === pregledId)
 
   if (!record || !record.access.can_edit || !visit) {
     return <ErrorState message={dict.common.error} labels={{ retry: dict.common.retry }} />

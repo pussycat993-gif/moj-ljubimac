@@ -604,6 +604,14 @@ export const en: Dictionary = {
     errFollowUp: "The check-up must be after the date of the visit.",
   },
   reminders: {
+    // Step F1: ReminderTypeIcon's sr-only type label.
+    iconTreatmentDose: "Treatment dose",
+    iconVaccination: "Vaccination",
+    iconVetFollowUp: "Follow-up",
+    iconMeal: "Meal",
+    iconBirthday: "Birthday",
+    iconManual: "My reminder",
+    iconMessage: "Messages",
     title: "Reminders",
     subtitle: "Pets: {pets} — and reminders for you.",
     settings: "Settings",

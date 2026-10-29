@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import { ReminderRow, defaultReminderRowLabels } from "@/components/app/reminder-row"
 import { dictionaries } from "@/lib/i18n"
+import { reminderTypeIconLabels } from "@/lib/i18n/reminder-type-labels"
 
 // ReminderRow (Design §6) with the optional `labels` and `canMarkDone` props (owner decision, Step 17, FR-35).
 const row = { id: "o1", title: "Kupi seno", when: "Danas u 17:30", status: "today" as const, channels: ["email" as const] }
@@ -35,5 +36,12 @@ describe("ReminderRow", () => {
     expect(screen.getByLabelText("Email")).toBeInTheDocument()
     expect(screen.getByText("Today")).toBeInTheDocument()
     expect(screen.queryByRole("button")).not.toBeInTheDocument()
+  })
+
+  it("passes the type labels to the icon (Step F1)", () => {
+    const t = dictionaries.en.reminders
+    render(<ReminderRow reminder={{ ...row, type: "meal" }} labels={{ ...defaultReminderRowLabels, types: reminderTypeIconLabels(t) }} />)
+    expect(screen.getByText("Meal")).toHaveClass("sr-only")
+    expect(screen.queryByText("Obrok")).not.toBeInTheDocument()
   })
 })

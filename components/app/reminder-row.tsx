@@ -4,7 +4,7 @@ import Link from "next/link"
 import { Mail, MessageCircle, Smartphone } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { PetSex } from "@/components/app/pet-avatar"
-import { ReminderTypeIcon, type ReminderType } from "@/components/app/reminder-type-icon"
+import { ReminderTypeIcon, type ReminderType, type ReminderTypeIconLabels } from "@/components/app/reminder-type-icon"
 import { StatusBadge, type Status } from "@/components/app/status-badge"
 
 export type Channel = "email" | "push" | "whatsapp"
@@ -19,6 +19,8 @@ export type ReminderRowLabels = {
   done: string
   channels: Record<Channel, string>
   status?: Partial<Record<Status, string>>
+  /** The type icon's sr-only label (Step F1). */
+  types?: ReminderTypeIconLabels
 }
 
 export const defaultReminderRowLabels: ReminderRowLabels = { forMe: "Za mene", done: "Urađeno", channels: channelLabel }
@@ -49,7 +51,7 @@ export function ReminderRow({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-sm bg-foreground/5 p-3">
-      <ReminderTypeIcon type={reminder.type} sex={reminder.pet?.sex} forMe={!reminder.pet} />
+      <ReminderTypeIcon type={reminder.type} sex={reminder.pet?.sex} forMe={!reminder.pet} labels={labels.types} />
       <div className="min-w-0 flex-1">
         {reminder.href ? (
           <Link

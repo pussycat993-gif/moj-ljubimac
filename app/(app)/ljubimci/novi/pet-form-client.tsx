@@ -376,7 +376,7 @@ export function PetFormClient({
       )}
 
       {premiumLocked && (
-        <PremiumLock title={copy.common.premiumTitle} description={copy.petsHome.lockDescription} cta={copy.common.premiumCta} />
+        <PremiumLock title={copy.common.premiumTitle} description={copy.petsHome.lockDescription} cta={copy.common.premiumCta} ctaHref="/premium" />
       )}
 
       <form noValidate onSubmit={submit} className="space-y-6">

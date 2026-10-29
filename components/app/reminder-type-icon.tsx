@@ -24,6 +24,11 @@ export const reminderTypeLabel: Record<ReminderType, string> = {
   message: "Poruke",
 }
 
+// labels:start — FR-35 (Step F1): the sr-only type label, defaulting to today's Serbian copy; the app passes the
+// dictionary's labels.
+export type ReminderTypeIconLabels = Record<ReminderType, string>
+// labels:end
+
 const sizes = { sm: "size-8", md: "size-12" } as const
 const iconSizes = { sm: "size-4", md: "size-5" } as const
 
@@ -35,12 +40,14 @@ export function ReminderTypeIcon({
   forMe = false,
   size = "sm",
   className,
+  labels = reminderTypeLabel,
 }: {
   type?: ReminderType
   sex?: PetSex
   forMe?: boolean
   size?: keyof typeof sizes
   className?: string
+  labels?: ReminderTypeIconLabels
 }) {
   const Icon = typeIcon[type]
   return (
@@ -54,7 +61,7 @@ export function ReminderTypeIcon({
       )}
     >
       <Icon className={iconSizes[size]} aria-hidden />
-      <span className="sr-only">{reminderTypeLabel[type]}</span>
+      <span className="sr-only">{labels[type]}</span>
     </span>
   )
 }

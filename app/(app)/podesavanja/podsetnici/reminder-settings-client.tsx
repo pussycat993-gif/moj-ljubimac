@@ -20,7 +20,8 @@ import { ReminderTypeIcon, type ReminderType } from "@/components/app/reminder-t
 import { StatusBadge } from "@/components/app/status-badge"
 import type { ActionResult } from "@/lib/server/result"
 import type { CodeSent, WhatsAppConnection, WhatsAppConnectionInput } from "@/lib/actions/whatsapp"
-import { format, interpolate, type Dictionary, type Locale } from "@/lib/i18n"
+import { format, getDictionary, interpolate, type Dictionary, type Locale } from "@/lib/i18n"
+import { reminderTypeIconLabels } from "@/lib/i18n/reminder-type-labels"
 
 // S12 — Podešavanja podsetnika · /podesavanja/podsetnici · FR-22, FR-23, FR-36 (channels) · EP-28 (get:
 // rpc:get_reminder_settings, always one card per type; update: one reminder_preferences upsert per
@@ -752,7 +753,7 @@ export function ReminderSettingsClient({
               </div>
             </div>
             {isFree ? (
-              <PremiumLock title={copy.common.premiumTitle} description={t.whatsappLocked} cta={copy.common.premiumCta}>
+              <PremiumLock title={copy.common.premiumTitle} description={t.whatsappLocked} cta={copy.common.premiumCta} ctaHref="/premium">
                 <div className="min-h-64">{waForm}</div>
               </PremiumLock>
             ) : (
@@ -818,7 +819,11 @@ export function ReminderSettingsClient({
           {cards.map((c) => (
             <Card key={c.type} className="gap-4 p-4 md:p-6">
               <div className="flex min-w-0 items-start gap-3">
-                <ReminderTypeIcon type={c.type} forMe={c.type === "manual"} />
+                <ReminderTypeIcon
+                  type={c.type}
+                  forMe={c.type === "manual"}
+                  labels={reminderTypeIconLabels(getDictionary(locale).reminders)}
+                />
                 <div className="min-w-0">
                   <h3 className="font-heading text-lg font-bold">{t[TYPE_COPY[c.type].label]}</h3>
                   <p className="text-sm text-muted-foreground">{t[TYPE_COPY[c.type].hint]}</p>

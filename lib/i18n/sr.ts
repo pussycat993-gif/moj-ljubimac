@@ -633,6 +633,14 @@ export const sr = {
   },
   // S10 Podsetnici and the reminder rows on S01 / S03 (Step 17).
   reminders: {
+    // Step F1: ReminderTypeIcon's sr-only type label.
+    iconTreatmentDose: "Doza terapije",
+    iconVaccination: "Vakcina",
+    iconVetFollowUp: "Kontrola",
+    iconMeal: "Obrok",
+    iconBirthday: "Rođendan",
+    iconManual: "Moj podsetnik",
+    iconMessage: "Poruke",
     title: "Podsetnici",
     subtitle: "Ljubimci: {pets} — i podsetnici za tebe.",
     settings: "Podešavanja",

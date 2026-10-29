@@ -166,4 +166,14 @@ describe("S18 Profil — name, city, language (EP-43, EP-67)", () => {
     render(<ProfileClient me={null} cities={[]} copy={copy} />)
     expect(within(screen.getByRole("alert")).getByText("Nešto nije u redu. Pokušaj ponovo.")).toBeInTheDocument()
   })
+
+  it("the error state's button text comes from the dictionary and retries (Step F1)", async () => {
+    const user = userEvent.setup()
+    fakeSupabase()
+    refresh.mockClear()
+    // me = null falls back to the sr copy; serving the en dictionary there proves the label is not hardcoded.
+    render(<ProfileClient me={null} cities={[]} copy={{ sr: copy.en, en: copy.en }} />)
+    await user.click(within(screen.getByRole("alert")).getByRole("button", { name: "Try again" }))
+    expect(refresh).toHaveBeenCalled()
+  })
 })

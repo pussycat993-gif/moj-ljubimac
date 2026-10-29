@@ -567,7 +567,7 @@ export function MomentsClient({
       )}
 
       {canAdd && atLimit && (
-        <PremiumLock title={copy.common.premiumTitle} description={t.lockDescription} cta={copy.common.premiumCta} />
+        <PremiumLock title={copy.common.premiumTitle} description={t.lockDescription} cta={copy.common.premiumCta} ctaHref="/premium" />
       )}
 
       {items.length === 0 ? (

@@ -3,6 +3,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { checkGates } from "@/lib/server/gates";
 import { fail, fromDatabaseError, ok, type ActionResult } from "@/lib/server/result";
+import type { Treatment } from "@/lib/actions/treatments";
+import type { Vaccination } from "@/lib/actions/vaccinations";
+import type { VetVisit } from "@/lib/actions/vet-visits";
+import type { WeightEntry } from "@/lib/actions/weights";
 
 // EP-03 create_pet and EP-04 update_pet (Data API writes run here on the server because the
 // session lives in httpOnly cookies — owner decision, Step 13) and EP-05 delete_pet.
@@ -135,10 +139,11 @@ export type PetRecord = {
   owner_name: string | null;
   memorial: MemorialRecord | null;
   upcoming_reminders: ReminderOccurrence[];
-  vaccinations: Record<string, unknown>[];
-  treatments: Record<string, unknown>[];
-  vet_visits: Record<string, unknown>[];
-  weights: Record<string, unknown>[];
+  // EP-02 entry arrays, typed by their EP-07 … EP-12 shapes (Step 14/15 follow-up, done in Step F1).
+  vaccinations: Vaccination[];
+  treatments: Treatment[];
+  vet_visits: VetVisit[];
+  weights: WeightEntry[];
   attachment_count: number;
 };
 

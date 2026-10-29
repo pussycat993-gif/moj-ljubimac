@@ -68,6 +68,7 @@ function renderScreen(
       premium={props.premium ?? false}
       vapidPublicKey=""
       copy={copy(props.locale ?? "sr")}
+      locale={props.locale ?? "sr"}
       actions={actions}
     />,
   )
@@ -201,6 +202,7 @@ describe("S12 — FR-23 channels", () => {
     const wa = screen.getByRole("heading", { level: 3, name: "WhatsApp" }).closest("section") as HTMLElement
     const lock = within(wa).getByRole("heading", { level: 2, name: "Dostupno u Premiumu" })
     expect(lock).toBeInTheDocument()
+    expect(within(wa).getByRole("link", { name: "Probaj 7 dana besplatno" })).toHaveAttribute("href", "/premium")
     expect(within(wa).getByText("Poveži broj telefona i primaj važne podsetnike i na WhatsApp-u, pored mejla i push obaveštenja.")).toBeInTheDocument()
     const number = wa.querySelector("#wa-number") as HTMLInputElement
     expect(number).toBeDisabled()
@@ -292,5 +294,12 @@ describe("S12 — states and locale", () => {
     expect(within(card("Meals")).getByText("They arrive exactly at the set time.")).toBeInTheDocument()
     expect(screen.getAllByRole("checkbox", { name: "Email" })).toHaveLength(6)
     expect(screen.getByRole("button", { name: "Save settings" })).toBeInTheDocument()
+  })
+
+  it("the type icons' hidden labels follow the locale (Step F1)", () => {
+    renderScreen({ locale: "en", premium: true })
+    expect(within(card("Vaccinations")).getByText("Vaccination")).toHaveClass("sr-only")
+    expect(within(card("Meals")).getByText("Meal")).toHaveClass("sr-only")
+    expect(screen.queryByText("Vakcina")).not.toBeInTheDocument()
   })
 })

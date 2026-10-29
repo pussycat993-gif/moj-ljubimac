@@ -75,7 +75,7 @@ describe("S01 — FR-01 / FR-36: second active pet on Free", () => {
     expect(lock).toHaveAttribute("id", "premium-lock")
     expect(within(lock).getByText("Dostupno u Premiumu")).toBeInTheDocument()
     expect(within(lock).getByText(/Na Free planu imaš jednog aktivnog ljubimca/)).toBeInTheDocument()
-    expect(within(lock).getByRole("button", { name: "Probaj 7 dana besplatno" })).toBeInTheDocument()
+    expect(within(lock).getByRole("link", { name: "Probaj 7 dana besplatno" })).toHaveAttribute("href", "/premium")
     expect(screen.getByText("Free · 1 / 1 aktivan ljubimac")).toBeInTheDocument()
   })
 

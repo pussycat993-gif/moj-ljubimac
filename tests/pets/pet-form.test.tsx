@@ -178,6 +178,7 @@ describe("S02 create — FR-01", () => {
     await user.click(screen.getByRole("button", { name: "Sačuvaj ljubimca" }))
     expect(await screen.findByText("Dostupno u Premiumu")).toBeInTheDocument()
     expect(screen.getByText(/Na Free planu imaš jednog aktivnog ljubimca/)).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Probaj 7 dana besplatno" })).toHaveAttribute("href", "/premium")
     expect(push).not.toHaveBeenCalled()
   })
 

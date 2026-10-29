@@ -131,7 +131,7 @@ describe("S08 Free counter and limit (FR-17, FR-36)", () => {
     expect(
       screen.getByText("Na Free planu čuvaš do 5 trenutaka po ljubimcu. Uz Premium ih beležiš bez ograničenja."),
     ).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Probaj 7 dana besplatno" })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Probaj 7 dana besplatno" })).toHaveAttribute("href", "/premium")
   })
 
   it("has no counter and no limit on Premium", () => {

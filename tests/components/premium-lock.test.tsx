@@ -22,4 +22,10 @@ describe("PremiumLock (Design §8)", () => {
     expect(wrapper).toHaveAttribute("aria-hidden");
     expect(screen.getByRole("button", { name: "Probaj 7 dana besplatno" })).toBeInTheDocument();
   });
+
+  it("ctaHref turns the call to action into a link (Step F1; /premium)", () => {
+    render(<PremiumLock description="Dodaj neograničen broj ljubimaca." cta="Try 7 days free" ctaHref="/premium" />);
+    expect(screen.getByRole("link", { name: "Try 7 days free" })).toHaveAttribute("href", "/premium");
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
 });

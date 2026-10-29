@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { defaultErrorStateLabels } from "@/components/app/error-state";
 import { defaultPetHeaderLabels } from "@/components/app/pet-header";
 import { defaultReminderRowLabels } from "@/components/app/reminder-row";
+import { defaultBlockDialogLabels, defaultReportDialogLabels } from "@/components/app/safety-dialogs";
 import { defaultAppShellLabels, defaultPublicShellLabels } from "@/components/app/shells";
 
 const path = (p: string) => join(process.cwd(), p);
@@ -20,6 +21,8 @@ const PRIMITIVES = [
 const COMPOSITES = [
   "shells", "empty-state", "error-state", "logo-mark", "pet-avatar", "pet-header", "premium-lock",
   "read-only-banner", "reminder-row", "reminder-type-icon", "status-badge",
+  // Šapa pomoći composites (Steps 28b, 28c), added in Step F1.
+  "listing-card", "listing-type-tag", "safety-dialogs",
 ];
 
 // Undo the only changes the port allows: "@/components/app/x" imports and the hex-free logo comment.
@@ -32,6 +35,10 @@ function unport(name: string, source: string) {
   if (name === "reminder-row") s = stripReminderRowLabels(s);
   if (name === "reminder-type-icon") s = stripReminderTypeIconMessage(s);
   if (name === "read-only-banner") s = stripReadOnlyBannerAction(s);
+  if (name === "premium-lock") s = stripPremiumLockHref(s);
+  if (name === "listing-type-tag") s = stripListingTypeTagLabel(s);
+  if (name === "listing-card") s = stripListingCardLabels(s);
+  if (name === "safety-dialogs") s = stripSafetyDialogs(s);
   return s;
 }
 
@@ -100,14 +107,22 @@ function stripReminderRowLabels(source: string) {
     .replace("aria-label={labels.channels[c]}", "aria-label={channelLabel[c]}")
     .replace(" label={labels.status?.[reminder.status]}", "")
     .replace('{reminder.status !== "done" && canMarkDone && (', '{reminder.status !== "done" && (')
-    .replace("{labels.done}", defaultReminderRowLabels.done);
+    .replace("{labels.done}", defaultReminderRowLabels.done)
+    // Step F1: the type icon's labels pass-through.
+    .replace("import { ReminderTypeIcon, type ReminderType, type ReminderTypeIconLabels } from", "import { ReminderTypeIcon, type ReminderType } from")
+    .replace(" labels={labels.types} />", " />");
 }
 
 // Owner decision (Step 28c, carried from Step 28a): reminder_type has the value `message` (the S12 Poruke row), so
 // ReminderTypeIcon gets a `message` entry (MessageCircle, "Poruke"). That entry is the only allowed change and is
-// ignored here; everything else must still equal the docs mockup.
+// ignored here; everything else must still equal the docs mockup. Step F1 (FR-35) adds an optional `labels` prop (the
+// sr-only type label, Serbian defaults), also ignored here.
 function stripReminderTypeIconMessage(source: string) {
   return source
+    .replace(/\/\/ labels:start[\s\S]*?\/\/ labels:end\n\n/, "")
+    .replace("  className,\n  labels = reminderTypeLabel,\n}: {", "  className,\n}: {")
+    .replace("  className?: string\n  labels?: ReminderTypeIconLabels\n}) {", "  className?: string\n}) {")
+    .replace("{labels[type]}", "{reminderTypeLabel[type]}")
     .replace("Droplet, MessageCircle, Stethoscope", "Droplet, Stethoscope")
     .replace(' | "manual" | "message"\n', ' | "manual"\n')
     .replace("  manual: Bell,\n  message: MessageCircle,\n", "  manual: Bell,\n")
@@ -125,6 +140,108 @@ function stripReadOnlyBannerAction(source: string) {
       "export function ReadOnlyBanner({ reason }: { reason: string }) {",
     )
     .replace(/\n {6}\{action && \([\s\S]*?\n {6}\)\}/, "");
+}
+
+// Step 28b (FR-35): ListingTypeTag takes an optional `label` (the dictionary's type label). That prop and its comment
+// line are the only allowed changes and are ignored here (Step F1 follow-up of Steps 28b/28c).
+function stripListingTypeTagLabel(source: string) {
+  return source
+    .replace(/\/\/ FR-35 \(Step 28b\): an optional `label`[^\n]*\n/, "")
+    .replace(
+      "export function ListingTypeTag({ type, className, label: labelOverride }: { type: ListingType; className?: string; label?: string }) {\n  const { label: defaultLabel, icon: Icon, surface } = config[type]\n  const label = labelOverride ?? defaultLabel\n",
+      "export function ListingTypeTag({ type, className }: { type: ListingType; className?: string }) {\n  const { label, icon: Icon, surface } = config[type]\n",
+    );
+}
+
+// Step 28b (FR-35): ListingCard takes an optional `labels` prop (every visible string, Serbian defaults) and an
+// optional `coverUrl` (the signed cover photo in place of the placeholder). Those two props are the only allowed
+// changes and are ignored here; everything else must still equal the docs mockup.
+function stripListingCardLabels(source: string) {
+  return source
+    .replace("  listingSpeciesLabel,\n  listingTypeLabel,\n", "  listingSpeciesLabel,\n")
+    .replace(/\/\/ labels:start[\s\S]*?\/\/ labels:end\n\n/, "")
+    .replace(
+      "export function listingPriceLine(\n  l: Pick<ListingSummary, \"type\" | \"priceRsd\" | \"negotiable\">,\n  labels: ListingCardLabels = defaultListingCardLabels,\n) {",
+      'export function listingPriceLine(l: Pick<ListingSummary, "type" | "priceRsd" | "negotiable">) {',
+    )
+    .replace("labels.negotiable : labels.formatPrice(l.priceRsd)", '"Po dogovoru" : formatRsd(l.priceRsd)')
+    .replace("return labels.free", 'return "Besplatno"')
+    .replace(
+      "export function ListingCard({\n  listing,\n  className,\n  labels = defaultListingCardLabels,\n  coverUrl,\n}: {\n  listing: ListingSummary\n  className?: string\n  labels?: ListingCardLabels\n  coverUrl?: string | null\n}) {\n  const price = listingPriceLine(listing, labels)",
+      "export function ListingCard({ listing, className }: { listing: ListingSummary; className?: string }) {\n  const price = listingPriceLine(listing)",
+    )
+    .replace(
+      /\{coverUrl \? \([\s\S]*?\) : \(\n\s*(<ImageIcon[^\n]*\/>)\n\s*\)\}/,
+      "$1",
+    )
+    .replace(" label={labels.type[listing.type]}", "")
+    .replace("{labels.photos(listing.photoCount)}", "{listing.photoCount} fotografije")
+    .replace("{labels.category[listing.category]} · {labels.species[listing.species]}", "{listingCategoryLabel[listing.category]} · {listingSpeciesLabel[listing.species]}");
+}
+
+// Step 28c (FR-35, FR-70): ReportDialog and BlockDialog take an optional `labels` prop (Serbian defaults), and
+// ReportDialog an optional `onSubmit` (EP-84) with its busy and "already submitted" states. Those additions are the
+// only allowed changes and are ignored here; everything else must still equal the docs mockup.
+function stripSafetyDialogs(source: string) {
+  const r = defaultReportDialogLabels;
+  const b = defaultBlockDialogLabels;
+  return source
+    .replace(/\/\/ labels:start[\s\S]*?const fill = [^\n]*\n\n/, "")
+    .replace("  name,\n  onSubmit,\n  labels = defaultReportDialogLabels,\n}: {", "  name,\n}: {")
+    .replace(/  \/\*\* EP-84;[^\n]*\n  onSubmit\?:[^\n]*\n  labels\?: ReportDialogLabels\n/, "")
+    .replace(
+      '  const [sent, setSent] = useState<false | "sent" | "already_submitted">(false)\n  const [busy, setBusy] = useState(false)\n',
+      "  const [sent, setSent] = useState(false)\n",
+    )
+    .replace("  async function submit() {", "  function submit() {")
+    .replace("setError(labels.errReason)", `setError("${r.errReason}")`)
+    .replace("setError(labels.errNote)", `setError("${r.errNote}")`)
+    .replace(/    if \(!onSubmit\) \{[\s\S]*?else setSent\(outcome\.status\)\n/, "    setSent(true)\n")
+    .replace(/\{sent === "already_submitted" \? \([\s\S]*?\) : sent \? \(/, "{sent ? (")
+    .replace("<DialogTitle>{labels.sentTitle}</DialogTitle>", `<DialogTitle>${r.sentTitle}</DialogTitle>`)
+    .replace(
+      "<DialogDescription>{labels.sentText}</DialogDescription>",
+      `<DialogDescription>\n                ${r.sentText}\n              </DialogDescription>`,
+    )
+    .replace("{labels.sentHint}", r.sentHint)
+    .replace(/\{labels\.ok\}/g, r.ok)
+    .replace(
+      "{target === \"listing\" ? labels.titleListing : labels.titleUser}",
+      `{target === "listing" ? "${r.titleListing}" : "${r.titleUser}"}`,
+    )
+    .replace(
+      "{fill(target === \"listing\" ? labels.targetListing : labels.targetUser, name)}",
+      "{target === \"listing\" ? `Oglas: ${name}` : `Korisnik: ${name}`}",
+    )
+    .replace("{labels.reason}", r.reason)
+    .replace("{labels.reasons[r]}", "{reportReasonLabel[r]}")
+    .replace(
+      '<Label htmlFor="report-note">\n                {labels.note}\n                {reason === "other" ? labels.noteRequired : labels.noteOptional}\n              </Label>',
+      `<Label htmlFor="report-note">${r.note}{reason === "other" ? "${r.noteRequired}" : "${r.noteOptional}"}</Label>`,
+    )
+    .replace("placeholder={labels.notePlaceholder}", `placeholder="${r.notePlaceholder}"`)
+    .replace("{labels.cancel}", r.cancel)
+    .replace('<Button className="h-11 md:h-9" disabled={busy} onClick={() => void submit()}>', '<Button className="h-11 md:h-9" onClick={submit}>')
+    .replace("{labels.submit}", r.submit)
+    .replace("  onConfirm,\n  labels = defaultBlockDialogLabels,\n", "  onConfirm,\n")
+    .replace("  onConfirm: () => void\n  labels?: BlockDialogLabels\n", "  onConfirm: () => void\n")
+    .replace("<AlertDialogTitle>{fill(labels.title, name)}</AlertDialogTitle>", "<AlertDialogTitle>Blokirati korisnika {name}?</AlertDialogTitle>")
+    .replace(
+      "<AlertDialogDescription>{labels.text}</AlertDialogDescription>",
+      "<AlertDialogDescription>\n            Ta osoba više neće moći da ti šalje poruke, a ti više nećeš videti njene oglase. Ne dobija obaveštenje o\n            blokadi. Blokadu skidaš na profilu te osobe.\n          </AlertDialogDescription>",
+    )
+    .replace(`<AlertDialogCancel>{labels.cancel}</AlertDialogCancel>`, `<AlertDialogCancel>${b.cancel}</AlertDialogCancel>`)
+    .replace("{labels.confirm}", b.confirm);
+}
+
+// Step F1 (owner decision of Step 22: PremiumLock CTAs go to /premium): PremiumLock takes an optional `ctaHref` that
+// renders the CTA as a link. That prop is the only allowed change and is ignored here.
+function stripPremiumLockHref(source: string) {
+  return source
+    .replace('import Link from "next/link"\n', "")
+    .replace('  cta = "Probaj 7 dana besplatno",\n  ctaHref,\n', '  cta = "Probaj 7 dana besplatno",\n')
+    .replace(/ {2}\/\*\* Step F1[^\n]*\n {2}ctaHref\?: string\n/, "")
+    .replace(/ {6}\{ctaHref \? \([\s\S]*?\) : \(\n {8}(<Button[^\n]*)\n {6}\)\}\n/, "      $1\n");
 }
 
 describe("shadcn primitives (Design §6, ADR-14)", () => {

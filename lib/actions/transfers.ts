@@ -270,12 +270,14 @@ export async function acceptTransfer(input: { token: string }): Promise<ActionRe
       `${prefix}/visits/${visit}/${crypto.randomUUID()}-${nameFromKey(attachment.r2_key, attachment.file_name)}`;
   }
 
-  const storage = r2();
+  // Only files need R2: a record without a photo or attachments is accepted without creating the R2 client, so a
+  // local run without R2_* works (Step 26 follow-up, done in Step F1).
+  const storage = Object.keys(keyMap).length > 0 ? r2() : null;
   const copied: string[] = [];
-  const cleanUp = () => Promise.all(copied.map((key) => storage.remove(key)));
+  const cleanUp = () => Promise.all(storage ? copied.map((key) => storage.remove(key)) : []);
   try {
     for (const [source, target] of Object.entries(keyMap)) {
-      await storage.copy(source, target);
+      await storage!.copy(source, target);
       copied.push(target);
     }
   } catch (error) {

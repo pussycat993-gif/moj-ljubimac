@@ -25,6 +25,15 @@ export const SIGNED_IN_PREFIXES = [
 /** Signed-in pages under a public prefix (S34 edit). */
 const SIGNED_IN_PATTERNS = [/^\/sapa-pomoci\/[^/]+\/izmeni\/?$/] as const;
 
+/**
+ * Šapa pomoći surfaces (S34, S35, S36) keep the requested path as `next`, so a signed-out user who opens an email
+ * link (e.g. `listing_expiring` "Produži" → /sapa-pomoci/moje?produzi=<id>) returns to it after signing in.
+ * /prijava follows `next` only for same-site paths (`safeNextPath`). Other surfaces keep the plain redirect.
+ */
+export function keepsNext(pathname: string) {
+  return pathname.startsWith("/sapa-pomoci/") || pathname === "/poruke" || pathname.startsWith("/poruke/");
+}
+
 export function isSignedInSurface(pathname: string) {
   return (
     SIGNED_IN_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) ||
@@ -64,8 +73,9 @@ export async function updateSession(request: NextRequest) {
 
   if (!data.user && isSignedInSurface(request.nextUrl.pathname)) {
     const url = request.nextUrl.clone();
+    const next = request.nextUrl.pathname + request.nextUrl.search;
     url.pathname = "/prijava";
-    url.search = "";
+    url.search = keepsNext(request.nextUrl.pathname) ? `?${new URLSearchParams({ next })}` : "";
     const redirect = NextResponse.redirect(url);
     for (const cookie of response.cookies.getAll()) redirect.cookies.set(cookie);
     return redirect;

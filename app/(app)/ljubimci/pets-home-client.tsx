@@ -20,6 +20,7 @@ import { getFileUrls } from "@/lib/actions/files"
 import type { PetSummary, ReminderOccurrence } from "@/lib/actions/pets"
 import { markOccurrenceDone } from "@/lib/actions/reminders"
 import { reminderRowLabels, toReminderRow } from "@/app/(app)/podsetnici/reminders-client"
+import { reminderTypeIconLabels } from "@/lib/i18n/reminder-type-labels"
 import { format, getDictionary, type Dictionary, type Locale } from "@/lib/i18n"
 
 // S01 — Moji ljubimci · /ljubimci · FR-01, FR-24, FR-36, FR-59 · EP-01 (view:pet_summaries_api, active
@@ -122,7 +123,7 @@ function TodayCard({
   return (
     <Card className="min-w-0 gap-3 p-4">
       <div className="flex min-w-0 items-start gap-3">
-        <ReminderTypeIcon type={reminder.type} sex={reminder.pet?.sex} forMe={!reminder.pet} size="md" />
+        <ReminderTypeIcon type={reminder.type} sex={reminder.pet?.sex} forMe={!reminder.pet} size="md" labels={labels.types} />
         <div className="min-w-0 flex-1">
           {reminder.href ? (
             <Link
@@ -204,7 +205,11 @@ function PetCard({
           <p className="text-xs font-medium text-muted-foreground">{t.nextReminder}</p>
           {next ? (
             <div className="flex min-w-0 items-center gap-3 rounded-sm bg-foreground/5 p-3">
-              <ReminderTypeIcon type={next.type} sex={pet.sex} />
+              <ReminderTypeIcon
+                type={next.type}
+                sex={pet.sex}
+                labels={reminderTypeIconLabels(copy.reminders ?? getDictionary(locale).reminders)}
+              />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{reminderTitle(next, pet, copy.pet)}</p>
                 <p className="truncate text-xs font-medium text-muted-foreground">{reminderWhen(next, copy, locale)}</p>
@@ -525,7 +530,7 @@ export function PetsHomeClient({
 
       {locked && (
         <section id="premium-lock" aria-label={t.lockLabel}>
-          <PremiumLock title={copy.common.premiumTitle} description={t.lockDescription} cta={copy.common.premiumCta}>
+          <PremiumLock title={copy.common.premiumTitle} description={t.lockDescription} cta={copy.common.premiumCta} ctaHref="/premium">
             <Card className="gap-4 p-6">
               <div className="flex items-center gap-4">
                 <PetAvatar name="Maks" sex="male" species="dog" size="lg" />

@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import type { Me } from "@/lib/actions/registration"
 import type { PetRecord } from "@/lib/actions/pets"
-import type { Treatment } from "@/lib/actions/treatments"
 import { fromProfileLocale, getDictionary } from "@/lib/i18n"
 import { ErrorState } from "@/components/app/error-state"
 import { TreatmentFormClient } from "../nova/treatment-form-client"
@@ -24,7 +23,7 @@ export default async function EditTreatmentPage({
   const locale = fromProfileLocale((me as Me | null)?.locale)
   const dict = getDictionary(locale)
   const record = error ? null : ((data ?? null) as PetRecord | null)
-  const treatment = (record?.treatments as unknown as Treatment[] | undefined)?.find((t) => t.id === terapijaId)
+  const treatment = record?.treatments.find((t) => t.id === terapijaId)
 
   if (!record || !record.access.can_edit || !treatment) {
     return <ErrorState message={dict.common.error} labels={{ retry: dict.common.retry }} />
