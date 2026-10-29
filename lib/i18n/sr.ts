@@ -2357,6 +2357,13 @@ export const sr = {
       renewOff: "Posle toga prelaziš na Free: ništa se ne briše, ali dodatni ljubimci i domaćinstvo postaju samo za čitanje.",
       button: "Pogledaj pretplatu",
     },
+    // Step 30a (EP-50 archive builder). {size} = size_bytes with Intl ("12,4 MB"), {date} = expires_at as a
+    // Belgrade date; the button opens NEXT_PUBLIC_SITE_URL/profil/podaci (owner decision).
+    data_export_ready: {
+      subject: "Tvoji podaci su spremni",
+      body: "Arhiva sa svim tvojim podacima i kartonima je spremna ({size}). Link važi do {date}.",
+      button: "Preuzmi podatke",
+    },
     // Step 23 (EP-51 request). {url} = NEXT_PUBLIC_SITE_URL/profil/podaci (owner decision).
     account_deletion_scheduled: {
       subject: "Nalog će biti obrisan {date}",

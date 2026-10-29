@@ -93,7 +93,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 28c | Messaging, notifications, report/block & moderation | ✅ | 28b, 19 | — | 2026-10-29 |
 | 29 | WhatsApp channel | ✅ | 19 | — | 2026-10-29 |
 | 30 | Nightly jobs | ✅ | 23, 25, 29 | — | 2026-10-29 |
-| 30a | Backups & data export archives | ⬜ | 30, 23 | — | |
+| 30a | Backups & data export archives | ✅ | 30, 23 | — | 2026-10-29 |
 | 31 | Payments & pricing | 🔒 | 30a | OQ-11, OQ-03 | |
 | 32 | Release verification | ⬜ | 30a, 28c (31 when unblocked) | — (checklist item 4 open until OQ-15) | |
 
@@ -6240,7 +6240,47 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+- **2026-10-29** — Step 30a built (unattended overnight run).
+  - **Built:**
+    - `scripts/backup.sh` (new, git mode 100755): `set -euo pipefail`; requires `SUPABASE_DB_URL`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BACKUP_BUCKET`; `pg_dump --format=custom` (binary from `PG_DUMP`, default `pg_dump`); `aws s3 cp` to `s3://$R2_BACKUP_BUCKET/db/moj-ljubimac-<UTC yyyymmddThhmmssZ>.dump` over `https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com`, region `auto` (`AWS_REQUEST_CHECKSUM_CALCULATION` / `AWS_RESPONSE_CHECKSUM_VALIDATION = when_required`, which R2 needs with newer AWS CLI versions); then `aws s3api list-objects-v2` with `Contents[?LastModified<cutoff].Key` (cutoff = now − 14 days) under `db/` and `delete-object` for each.
+    - `.github/workflows/nightly-backup.yml` (new): `schedule` cron `17 1 * * *` and `workflow_dispatch`; `permissions: contents: read`; one job on `ubuntu-24.04` that installs `postgresql-client-17` through the PGDG script (`/usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y`; 17 = `major_version` in `supabase/config.toml`) and runs `bash scripts/backup.sh` with `PG_DUMP=/usr/lib/postgresql/17/bin/pg_dump` and the five TC §8.1 GitHub Actions secrets by name. No application secret, no deploy. The runner's preinstalled AWS CLI v2 is used.
+    - Migration `20261029120000_export_schedule.sql`: pg_cron job `data-exports`, `*/5 * * * *`, `select private.call_internal_route('/api/internal/exports')` (Step 19 function: Vault `dispatch_url` / `dispatch_secret`, pg_net, no-op while either is unset). No table, column, enum, constraint or function change; no secret or URL value.
+    - `app/api/internal/exports/route.ts` (new): `X-Dispatch-Secret` compared in constant time with `DISPATCH_SECRET` (missing / wrong / unset → `401 unauthenticated`); without R2 credentials (`r2Configured()` false) it builds nothing and answers zero counts; otherwise it reads the oldest `preparing` `data_exports` row (by `requested_at`, limit 1) with the service role and builds it. Response `200 {exports_ready, exports_failed}`; an unexpected error → `500 internal_error`.
+    - `app/api/internal/exports/build-archive.ts` (new): `collectUserData` (service role; `in` filters in chunks of 100, paged by 1000), `fileKeys`, `buildZip` (fflate `Zip`: `data.json` with `ZipDeflate` level 6, `files/<r2_key>` with `ZipPassThrough`), `formatArchiveSize` (Intl, "12,4 MB" / "12.4 MB", below 1 MB in kB) and `processExport`: R2 reads of every file → ZIP → `put` to `exports/<user_id>/<data_export_id>.zip` → row `ready` with `r2_key`, `size_bytes`, `ready_at = now`, `expires_at = ready_at + 7 days` (update guarded by `status = 'preparing'`) → `data_export_ready` email in the recipient's locale (`{size}`, `{date}` = `expires_at` as a Belgrade date, button → `${NEXT_PUBLIC_SITE_URL}/profil/podaci`). Any failure before the row is ready (database read, R2 read or upload, more than 90 MB of files or archive) → `status = failed`, nothing uploaded, no email. A failed email is logged and the archive stays ready.
+    - `data.json` contents: `exported_at`, `profile`, `subscriptions`, `pets` (owned, active and memorial), `weight_entries`, `vaccinations`, `treatments`, `dose_logs`, `vet_visits`, `attachments`, `memorial_records`, `feeding_entries`, `stool_entries`, `moments`, `moment_photos`, `moment_public_links`, `reminders`, `reminder_occurrences`, `reminder_preferences`, `user_channels`, `households` (owned and joined), `household_memberships` (own, and those of owned households), `household_pets` (owned households), `listings`, `listing_photos`, `conversations` (as starter or owner), `messages` (of those conversations), `reports` (as reporter), `user_blocks` (as blocker). Files: `pets.photo_r2_key`, `attachments.r2_key`, `moment_photos.r2_key`, `listing_photos.r2_key`.
+    - `lib/integrations/r2.ts`: `get(key)` (signed GET of the whole object, throws on non-2xx) and `put(key, body, contentType)` (signed PUT, throws on non-2xx).
+    - `lib/integrations/resend.ts`: the `data_export_ready` template (`DataExportReadyEmailVariables`); a Serbian date ending in "." drops the sentence's second full stop, as in Steps 28b and 30.
+    - `lib/i18n/sr.ts` / `en.ts`: `messages.data_export_ready` (subject, body, button) per Design §9.1.
+    - `README.md`: new "Backups" section (the workflow, its five GitHub Actions secret names, the Session-pooler note for `SUPABASE_DB_URL`, the restore note with RISK-13, and the `data-exports` job).
+    - `package.json` / `package-lock.json`: `fflate` ^0.8.3 (ADR-17; it was already in the lock file as a transitive dependency).
+    - `npm run db:types` run; `lib/supabase/database.types.ts` unchanged (no schema change).
+    - Tests: Vitest `tests/jobs/data-export-builder.test.ts` (8), `tests/jobs/exports-route.test.ts` (8), `tests/tooling/backup-workflow.test.ts` (19); pgTAP `supabase/tests/export_schedule.test.sql` (8).
+  - **Owner decisions applied (2026-10-24):**
+    - The real `workflow_dispatch` run against production is an owner follow-up (Step 32 checks it). Verified instead with `bash -n scripts/backup.sh`, one `pg_dump --format=custom` run against the local database and the static workflow test (below).
+    - Workflow: `ubuntu-24.04`, cron `17 1 * * *`, `postgresql-client-17` through the PGDG script, R2 endpoint `https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com` with region `auto`, key `db/moj-ljubimac-<UTC yyyymmddThhmmssZ>.dump`, 14-day cleanup with `aws s3api list-objects-v2` and `LastModified`; the README says `SUPABASE_DB_URL` must be the Session-pooler string (GitHub runners have no IPv6).
+    - Archive: `data.json` with the user's rows as listed above, files under `files/<r2_key>`, `ZipPassThrough` for binaries, `ZipDeflate` level 6 for JSON; one export per run; over 90 MB → failed. Email button → `/profil/podaci`; `{size}` with Intl ("12,4 MB").
+  - **Owner-approved exception:**
+    - **Exception 1:** `supabase/tests/occurrence_schedule.test.sql` (Step 08) asserted that the nightly generation is the only cron job besides `reminder-dispatch`, `listings-daily`, `billing-nightly` and `retention-nightly`. Its two `jobname not in (…)` filters now also exclude `data-exports`, which this step adds, and the test description says so. Nothing else in the file changed.
+  - **Verification** (in order, after `npx supabase db reset`):
+    - `npm run typecheck` ✅ exit 0
+    - `npm run lint` ✅ exit 0 (0 errors; the 2 known warnings in the generated `cloudflare-env.d.ts`)
+    - `npm test` ✅ `Test Files 145 passed (145)`, `Tests 1676 passed (1676)`
+    - `npx supabase test db` ✅ `All tests successful. Files=91, Tests=3106`, `Result: PASS`
+    - `npm run build` ✅ exit 0; the routes include `ƒ /api/internal/exports`.
+    - `bash -n scripts/backup.sh` ✅ exit 0.
+    - `pg_dump` run ✅: no `pg_dump` is installed on this Windows machine, so the local stack's own client ran it inside the `supabase_db_moj-ljubimac` container: `pg_dump --format=custom --dbname=postgresql://postgres:postgres@127.0.0.1:5432/postgres` (the container port the host maps to `127.0.0.1:54322`, i.e. the same database). **pg_dump (PostgreSQL) 17.11** against server 17.11; dump 1,329,659 bytes; `pg_restore --list` showed 107 TABLE DATA entries; the dump was deleted afterwards. The workflow uses PGDG `postgresql-client-17` (major 17 = `supabase/config.toml` `major_version`, not lower than production).
+    - Manual `workflow_dispatch` run of `nightly-backup.yml`: **not run**. This is an owner follow-up, because an unattended run cannot push or set GitHub Actions secrets.
+  - **Deviations / decisions:**
+    - **Without R2 credentials** the route builds nothing and the rows stay `preparing` (the same way Step 30 skips R2), instead of failing every request locally.
+    - **Response counts** `{exports_ready, exports_failed}`: EP-50 defines no route response; the names follow the EP-49 / EP-52 count style.
+    - **Payment references left out:** `subscriptions.monri_token_ref` and `monri_cit_id` are provider credentials, not data the user can use; every other subscription column is in the archive. `push_subscriptions` (browser endpoints and keys) is not exported for the same reason.
+    - **Missing R2 object:** if R2 cannot return a file a row points to (404 included), the whole export fails, per "on any failure set status = failed"; the user can request a new one.
+    - **Concurrency:** there is no claim column (no table change allowed). The final update is guarded by `status = 'preparing'` and each run builds one row, so overlapping runs (5-minute cadence, 55 s pg_net timeout) at worst build the same archive twice under the same key.
+  - **Follow-ups:**
+    - **RISK-13: practise one restore before launch** (`pg_restore` of a downloaded dump into an empty Supabase project) and write the steps down.
+    - Owner: set the GitHub Actions secrets `SUPABASE_DB_URL` (Session pooler), `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_BACKUP_BUCKET`, run `nightly-backup.yml` once by `workflow_dispatch`, confirm the `db/moj-ljubimac-*.dump` object in the backup bucket and record the run (Step 32 checks it).
+    - Cloudflare Worker CPU and memory limits for large exports: the whole archive (up to 90 MB) is built in memory. Move to streaming or multipart upload if real archives get close to the limit.
+    - Add the `/api/internal/exports` route response (`{exports_ready, exports_failed}`) to EP-50 in `docs/product/05-api-integration-contract.md`.
 
 ---
 

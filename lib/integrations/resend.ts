@@ -46,6 +46,15 @@ export type AccountDeletionScheduledEmailVariables = {
   url: string;
 };
 
+export type DataExportReadyEmailVariables = {
+  /** data_exports.size_bytes with Intl in the recipient's locale, e.g. "12,4 MB" (owner decision, Step 30a). */
+  size: string;
+  /** data_exports.expires_at as a Europe/Belgrade date in the recipient's date format. */
+  date: string;
+  /** NEXT_PUBLIC_SITE_URL/profil/podaci — S19, where the archive is downloaded (owner decision, Step 30a). */
+  url: string;
+};
+
 export type PremiumExpiryEmailVariables = {
   /** subscriptions.current_period_end as a Europe/Belgrade date in the recipient's date format. */
   date: string;
@@ -157,6 +166,7 @@ export type EmailTemplate =
   | { id: "reminder_email"; variables: ReminderEmailVariables }
   | { id: "household_invitation"; variables: HouseholdInvitationEmailVariables }
   | { id: "account_deletion_scheduled"; variables: AccountDeletionScheduledEmailVariables }
+  | { id: "data_export_ready"; variables: DataExportReadyEmailVariables }
   | { id: "premium_expiry_30"; variables: PremiumExpiryEmailVariables }
   | { id: "premium_expiry_7"; variables: PremiumExpiryEmailVariables }
   | { id: "premium_expiry_1"; variables: PremiumExpiryEmailVariables }
@@ -394,6 +404,12 @@ const RENDERERS: { [K in EmailTemplate["id"]]: (t: Dictionary, v: Extract<EmailT
       buttons: [{ label: copy.button, url: v.url, primary: true }],
       note: null,
     };
+  },
+  data_export_ready(t, v) {
+    const copy = t.messages.data_export_ready;
+    // A Serbian date already ends with a full stop ("19. 10. 2026."), and the sentence ends right after {date}.
+    const body = v.date.endsWith(".") ? copy.body.replace("{date}.", "{date}") : copy.body;
+    return simple({ subject: copy.subject, body, button: copy.button }, { size: v.size, date: v.date }, v.url);
   },
   premium_expiry_30(t, v) {
     return premiumExpiry(t.messages.premium_expiry_30, v);

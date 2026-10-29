@@ -2249,6 +2249,11 @@ export const en: Dictionary = {
       renewOff: "After that you move to Free: nothing is deleted, but extra pets and the household become read-only.",
       button: "View subscription",
     },
+    data_export_ready: {
+      subject: "Your data is ready",
+      body: "The archive with all your data and records is ready ({size}). The link is valid until {date}.",
+      button: "Download data",
+    },
     account_deletion_scheduled: {
       subject: "Your account will be deleted on {date}",
       body: "We got your request to delete your account. It's switched off now, and on {date} we delete it permanently with all its data. Changed your mind? Sign in before then and cancel the deletion.",

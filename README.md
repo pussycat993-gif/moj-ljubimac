@@ -67,3 +67,18 @@ Lokalno:
 Šapa pomoći — istek oglasa (EP-87, Step 28b): job `listings-daily` (`0 7,8 * * *`, UTC) poziva `private.call_internal_route('/api/internal/listings-daily')` sa istim Vault tajnama `dispatch_url` / `dispatch_secret`. Ruta radi samo kad je u Beogradu 9 sati (09:00 Europe/Belgrade leti i zimi); drugi poziv tog dana vraća nule. Šalje `listing_expiring` 3 dana pre isteka (jednom po periodu) i prebacuje istekle oglase u `expired` uz mejl `listing_expired`.
 
 - Ručno pokretanje lokalno (radi samo u 09:xx po beogradskom vremenu; u ostalo vreme odgovor su nule): `curl -X POST http://localhost:3000/api/internal/listings-daily -H "X-Dispatch-Secret: <DISPATCH_SECRET>"`. Job se gasi sa `select cron.unschedule('listings-daily');`.
+
+## Backups
+
+**Noćni backup baze** (TC ADR-13, §8; RISK-13): workflow `.github/workflows/nightly-backup.yml` radi svake noći u 01:17 UTC i ručno (Actions → Nightly backup → Run workflow, `workflow_dispatch`). Na `ubuntu-24.04` instalira `postgresql-client-17` iz PGDG repozitorijuma (major verzija iz `supabase/config.toml`, nikad starija od baze) i pokreće `scripts/backup.sh`: `pg_dump --format=custom` nad `SUPABASE_DB_URL`, upload AWS CLI-jem na R2 (`https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`, region `auto`) u bucket `R2_BACKUP_BUCKET` kao `db/moj-ljubimac-<UTC yyyymmddThhmmssZ>.dump`, pa brisanje objekata starijih od 14 dana. Workflow ne koristi tajne aplikacije i ništa ne deploy-uje.
+
+**GitHub Actions secrets** za backup (samo imena, vrednosti postavlja vlasnik):
+
+| Ime | Namena |
+|---|---|
+| `SUPABASE_DB_URL` | `pg_dump`; mora biti connection string **Session pooler-a** iz Supabase dashboard-a (GitHub runneri nemaju IPv6, a direktna konekcija je samo IPv6) |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BACKUP_BUCKET` | upload i brisanje posle 14 dana; `R2_BACKUP_BUCKET` je zaseban bucket, ne `R2_BUCKET` |
+
+**Restore:** backup se vraća ručno, `pg_restore` (iste ili novije major verzije) iz preuzetog `.dump` fajla u prazan Supabase projekat. Pre lansiranja vlasnik mora bar jednom da uvežba ceo restore (RISK-13) i zapiše korake.
+
+**Arhive ličnih podataka** (EP-50, FR-41): job `data-exports` (`*/5 * * * *`) poziva `private.call_internal_route('/api/internal/exports')` sa istim Vault tajnama `dispatch_url` / `dispatch_secret`. Ruta po pozivu pravi jednu arhivu (`fflate`) za najstariji red `data_exports` u stanju `preparing`, upload-uje je u `R2_BUCKET` kao `exports/<user_id>/<data_export_id>.zip`, red prebacuje u `ready` (link važi 7 dana) i šalje mejl `data_export_ready`; greška ili arhiva veća od 90 MB → `failed`. Bez R2 kredencijala ne radi ništa i redovi ostaju `preparing`. Ručno lokalno: `curl -X POST http://localhost:3000/api/internal/exports -H "X-Dispatch-Secret: <DISPATCH_SECRET>"`.

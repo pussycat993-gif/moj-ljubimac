@@ -1,0 +1,41 @@
+# Nightly database backup (TC ADR-13 Mechanics, §8; RISK-13): pg_dump of the production database to the R2
+# backup bucket, objects older than 14 days deleted. Runs nightly at 01:17 UTC and on manual workflow_dispatch.
+# Uses only the TC §8.1 GitHub Actions secrets below; no application secret, and it deploys nothing.
+name: Nightly backup
+
+on:
+  schedule:
+    - cron: "17 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # pg_dump must not be older than the database (supabase/config.toml major_version = 17): PGDG client 17.
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
+
+      - name: Back up the database to R2
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BACKUP_BUCKET: ${{ secrets.R2_BACKUP_BUCKET }}
+          PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+        run: bash scripts/backup.sh

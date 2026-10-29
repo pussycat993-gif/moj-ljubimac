@@ -40,6 +40,10 @@ export type R2 = {
    * continuation token for the next page, null on the last one. Throws when R2 does not answer 2xx.
    */
   list(prefix: string, opts?: { maxKeys?: number; continuationToken?: string | null }): Promise<ObjectPage>;
+  /** Server-side read of a whole object (EP-50 archive builder). Throws when R2 does not answer 2xx. */
+  get(key: string): Promise<Uint8Array>;
+  /** Server-side upload of a whole object (EP-50 archive builder). Throws when R2 does not answer 2xx. */
+  put(key: string, body: Uint8Array, contentType: string): Promise<void>;
 };
 
 export type ListedObject = { key: string; last_modified: string };
@@ -172,6 +176,24 @@ export function createR2(config: R2Config): R2 {
       }
       const truncated = xmlTag(xml, "IsTruncated") === "true";
       return { objects, next_token: truncated ? xmlTag(xml, "NextContinuationToken") : null };
+    },
+
+    async get(key) {
+      const response = await doFetch(await client.sign(objectUrl(key).toString(), { method: "GET" }));
+      if (!response.ok) throw new Error(`R2 GET failed with ${response.status}`);
+      return new Uint8Array(await response.arrayBuffer());
+    },
+
+    async put(key, body, contentType) {
+      const response = await doFetch(
+        await client.sign(objectUrl(key).toString(), {
+          method: "PUT",
+          headers: { "Content-Type": contentType, "Content-Length": String(body.byteLength) },
+          // Our bytes are always backed by an ArrayBuffer (never a SharedArrayBuffer).
+          body: body as Uint8Array<ArrayBuffer>,
+        }),
+      );
+      if (!response.ok) throw new Error(`R2 PUT failed with ${response.status}`);
     },
   };
 }
