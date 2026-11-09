@@ -97,7 +97,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 30 | Nightly jobs | ✅ | 23, 25, 29 | — | 2026-10-29 |
 | 30a | Backups & data export archives | ✅ | 30, 23 | — | 2026-10-29 |
 | 31 | Payments & pricing | ✅ | 30a | — (OQ-11, OQ-03 resolved 2026-10-29) | 2026-10-29 |
-| 32 | Release verification | ⬜ | 30a, 28c, 31 | — (checklist item 4 open until OQ-15) | |
+| 32 | Release verification | ▶️ (verdict recorded 2026-11-09 — RC-1 fail, RC-2 and RC-4 open; see the Step 32 session log) | 30a, 28c, 31 | — (checklist item 4 open until OQ-15) | |
 
 **Off-plan steps** (owner requests run outside the 36 plan steps; they do not change the plan steps above)
 
@@ -6609,7 +6609,343 @@ If anything above is ambiguous, if a referenced section doesn't contain what thi
 ```
 
 #### Session log
-_(empty — append after the step runs)_
+
+**2026-11-09 — Step 32 run (unattended overnight run, local only).** Verdict: **not releasable yet.** RC-1 fails, RC-2 and RC-4 are open, NFR-10 is open, and RC-3, RC-5, RC-6, NFR-03 and NFR-04 (automated) pass. The §3 row is ▶️. Production (https://moj-ljubimac.cecelivana.workers.dev) was not touched (owner decision for this run). Every check ran against the local Supabase stack and `next dev`.
+
+- **Owner decisions used (given in the run prompt, 2026-11-09):**
+  - Do not touch production; every check runs locally.
+  - RC-2 is recorded as "open — Paddle sandbox purchase pending (owner)" after confirming that Step 31's tests pass.
+  - RC-4 is recorded as open: the legal drafts exist in `docs/legal` (Step L1) but are not reviewed or published.
+  - CR-26 is resolved (cities pasted into production on 2026-10-29).
+  - Every defect is recorded with a reproduction; the next item, FX, fixes them.
+- **Files changed:**
+  - `e2e/accessibility.spec.ts` (new)
+  - `e2e/sapa-pomoci.spec.ts` (new)
+  - `package.json` / `package-lock.json`: `@axe-core/playwright` added as a dev dependency only (TC ADR-17)
+  - this §3 row and this log
+
+  No application code, migration, configuration or content changed. Pre-approved exceptions: none used.
+- **Local environment for e2e and the manual walks:** there is no `.env.local`, as in earlier steps. The variables came from `npx supabase status -o env`:
+  - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+  - `NEXT_PUBLIC_SITE_URL=http://localhost:3000`, `ACTION_TOKEN_SECRET=e2e-local-secret`
+  - `R2_ACCOUNT_ID=127.0.0.1:9443/r2`, plus placeholder `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_BUCKET` (`e2e`)
+  - `NODE_TLS_REJECT_UNAUTHORIZED=0`
+  - for the manual walks only: `DISPATCH_SECRET=local-dispatch-secret`
+
+  Resend and Web Push stayed on their local fallbacks (empty keys). R2 is faked by an in-process S3-compatible HTTPS server in the spec; details under check 3.
+
+**Check 1 — verification commands (in order)**
+
+| Command | Result |
+|---|---|
+| `npm run typecheck` | ✅ exit 0. Re-run with `npx tsc --noEmit` after the two specs were added: exit 0. |
+| `npm run lint` | ✅ exit 0. Re-run after the specs were added: exit 0. |
+| `npm test` | ✅ `Test Files 151 passed (151)`, `Tests 1797 passed (1797)`, 81 s |
+| `npx supabase test db` | ❌ Two runs, below the table. |
+| `npm run build` | ✅ exit 0, `✓ Compiled successfully`, 62 app routes |
+| `npm run e2e` | ✅ `9 passed (42.4s)`, 2 workers |
+
+`npx supabase test db` runs:
+- **First run, on the long-lived local database:** `Files=93, Tests=3182`, `Result: FAIL`. Nine files failed:
+  - `get_me` #14, `subscription_read` #9 (days left / remaining)
+  - `household_rls` #16, `server_support` #12 (bad plan)
+  - `retention_job` #24, `sapa_listings_api` #30
+  - `get_pet_record` #35, `household_sharing` #29, `pet_summaries_api` #14–16, 27, 28, 30
+- **Second run, after `npx supabase db reset`:** `Files=93, Tests=3171`, `Result: FAIL`. 87 files pass. Six files fail, all on reminder occurrences, which is defect **D-01**:
+  - `get_pet_record` #35 "upcoming_reminders: up to 3"
+  - `household_member_permissions` #6 "the shared pet has a pending reminder instance": `mark_occurrence_done` raises `validation_failed occurrence_id:required`, and the file aborts after 6 of 26 tests
+  - `household_sharing` #29 "FR-29 #1: after opting in, the shared pet's reminders are listed"
+  - `pet_delete` #2 "setup: Luna has reminder occurrences"
+  - `pet_summaries_api` #14–16, 27, 28, 30 (next_reminder)
+  - `reminder_rls` #1 "the seed produced occurrences for Ivana and Luna"
+
+  The first run's other failures cleared after the reset: they came from stale local rows (see D-02).
+
+`npm run e2e` tests, all ✅:
+- `accessibility.spec.ts` › public core-flow screens have no critical axe issues
+- `accessibility.spec.ts` › signed-in core-flow screens have no critical axe issues
+- `add-pet.spec.ts`
+- `household-invitation.spec.ts`
+- `mark-done.spec.ts`
+- `registration.spec.ts`
+- `shelter-intake-to-adoption.spec.ts`
+- `vaccination-reminder.spec.ts`
+- `sapa-pomoci.spec.ts`
+
+**Check 2 — Release Criterion 1 (FR → step → tests → result): ❌ fail**
+
+FR-01 … FR-72 all have a step and test files on disk. The results come from the check 1 runs, after the reset.
+- "pass" means every listed suite passed.
+- "fail" names the defect.
+- "pass*" means the tests pass but a gap is noted (G-xx below).
+
+| FR | Step(s) | Main tests | Result |
+|---|---|---|---|
+| FR-01 | 13 | `e2e/add-pet`, `pet_summaries_api.sql`, `pet_limits.sql`, `pets/pets-home`, `pets/pet-form` | pass (FR-01 assertions pass; the `pet_summaries_api` failures are FR-20's next_reminder) |
+| FR-02 | 13 | `pets/pet-form`, `get_pet_record.sql` | pass (#35 failing in the same file is FR-20) |
+| FR-03 | 13, 14 | `pets/pet-form`, `pet-record/weight-tab`, `weight_unit.sql` | pass |
+| FR-04 | 14 | `pet-record/weight-tab` | pass |
+| FR-05 | 08, 14 | `reminder_triggers.sql`, `vaccination_reminder_sync.sql`, `pet-record/vaccination-form`, `e2e/vaccination-reminder` | pass |
+| FR-06 | 15 | `treatment_dose_reminders.sql`, `log_dose.sql`, `pet-record/treatment-form`, `therapies-tab` | pass |
+| FR-07 | 15 | `vet_visit_followup_reminder.sql`, `pet-record/vet-visit-form` | pass |
+| FR-08 | 15 | `attachments/attachment-upload`, `attachments_limits.sql`, `attachments.sql` | pass* (G-05: fake R2; bucket CORS is with the owner) |
+| FR-09 | 13 | `pet_birthday_reminder.sql`, `reminder_triggers.sql` | pass |
+| FR-10 | 16 | `pdf/pdf-export` | pass |
+| FR-11 | 16 | `memorial_rpcs.sql`, `memorial/memorial-dialog`, `pet_limits.sql` | pass |
+| FR-12 | 16 | `memorial_rpcs.sql`, `memorial/memorials-screen` | pass |
+| FR-13 | 13 | `pets/delete-pet`, `pet_delete.sql`, `pet-record/delete-dialog` | **fail — D-01** (`pet_delete` #2 setup) |
+| FR-59 | 13, 24 | `pets/pets-home`, `org_animals.sql`, `organisation/org-animals-screen` | pass |
+| FR-14 | 20 | `care_log_api.sql`, `care-log/care-log-screen`, `care_log.sql` | pass |
+| FR-15 | 20 | `set_meal_schedule.sql`, `care-log/meal-schedule-card` | pass |
+| FR-16 | 20 | `care_log_api.sql`, `care-log/care-log-screen` | pass |
+| FR-17 | 21 | `moments/moment-actions`, `moments/moments-screen`, `moments_api.sql`, `moments.sql` | pass |
+| FR-18 | 21 | `moments/share-image`, `moments/moments-screen` | pass* (G-05: R2 CORS needed to inline the photo) |
+| FR-19 | 21 | `moments/public-moment-route`, `public-link`, `moments_api.sql` | pass |
+| FR-20 | 08, 17, 19, 20 | `reminder_triggers.sql`, `list_reminder_occurrences.sql`, `claim_due_occurrences.sql`, `dispatch/dispatch-route`, `e2e/vaccination-reminder`; also `pet_summaries_api.sql` (next_reminder), `get_pet_record.sql` #35, `reminder_rls.sql` | **fail — D-01** |
+| FR-21 | 17 | `manual_reminders.sql`, `reminders/reminder-form` | pass |
+| FR-22 | 18 | `reminder_preferences.sql`, `reminder-settings/reminder-settings`, `reminder_occurrences.sql` | pass |
+| FR-23 | 18, 29 | `reminder-settings/*`, `reminder_preferences.sql`, `whatsapp_channel.sql`, `reminders/dispatch-whatsapp`, `dispatch/channel-resolution` | pass* (G-01 Viber, G-04 WhatsApp production setup) |
+| FR-24 | 17, 19, 29 | `mark_occurrence_done.sql`, `reminders/reminders-screen`, `e2e/mark-done`, `dispatch/action-done-route`, `whatsapp/webhook`, `dispatch_resend_missed.sql` | pass (the member path in `household_member_permissions` did not run: D-01 under FR-28) |
+| FR-25 | 19, 23, 30 | `billing_job.sql`, `jobs/billing-nightly`, `subscription/profile-subscription-card`, `dispatch/channel-resolution` | pass* (email notices only; push notices wait on CR-24) |
+| FR-26 | 22 | `household/create-invitation`, `decide-invitation`, `household_invitations.sql`, `e2e/household-invitation` | pass |
+| FR-27 | 22 | `household_sharing.sql`, `health_record_rls.sql` | pass (FR-27 assertions pass; the file fails on FR-29 #1) |
+| FR-28 | 14, 20, 22 | `household_member_permissions.sql`, `weight_entries_api.sql`, `pet-record/member-view`, `care_log_api.sql` | **fail — D-01** (`household_member_permissions` aborts at #6; 20 assertions not run) |
+| FR-29 | 22 | `household_sharing.sql`, `household/member-reminder-channels` | **fail — D-01** (#29 FR-29 #1) |
+| FR-30 | 22 | `household_sharing.sql`, `household/change-membership` | pass |
+| FR-31 | 22, 30 | `succession_job.sql`, `jobs/retention-nightly` | pass* (G-06: an heir who already owns a household, and the heir email, CR-24) |
+| FR-32 | 22, 30 | `household_read_only.sql`, `household/household-screen`, `billing_job.sql` | pass |
+| FR-33 | 12 | `registration/*`, `e2e/registration` | pass (Google sign-up at unit level only) |
+| FR-34 | 11 | `auth/*` | pass |
+| FR-35 | 12 | `i18n/locale-switch`, `i18n/dictionaries` | pass* (D-07: calendar screen-reader labels stay English) |
+| FR-36 | 13, 15, 16, 18, 21, 22 | `pet_summaries_api.sql`, `attachments_limits.sql`, `memorial_rpcs.sql`, `pdf/pdf-export`, `moments_api.sql`, `household/create-invitation` … | pass (the limit assertions pass) |
+| FR-37 | 31 | `premium/start-checkout`, `payments/payments-webhook`, `premium/premium-screen`, `payments.sql`, `integrations/paddle` | pass* (mocked Paddle; RC-2) |
+| FR-38 | 23, 31 | `subscription/set-auto-renew`, `subscription_read.sql` | pass* (RC-2; the confirmation email waits on CR-24) |
+| FR-39 | 23, 30 | `downgrade_limits.sql`, `subscription/profile-subscription-card`, `billing_job.sql` | pass |
+| FR-40 | 23, 30 | `data-control/account-deletion`, `account_deletion_request.sql`, `retention_job.sql`, `jobs/retention-nightly` + manual check 5 | pass* (G-07: hosted auth-user deletion not confirmed) |
+| FR-41 | 23, 30a | `data-control/*`, `jobs/data-export-builder`, `jobs/exports-route`, `export_schedule.sql` + manual check 5 | pass |
+| FR-42 | 24, 28, 31 | `organisation_access.sql`, `admin_access.sql`, `admin/decide-organisation`, `payments.sql` + manual check 8 | pass* (breeder plan mocked; RC-2) |
+| FR-43 | 24 | `org_team.sql`, `organisation/invite-team-member`, `org-requests/decide-request` | pass (#2 "care entries" tested with health entries — organisations have no care log) |
+| FR-44 | 24 | `org_animals.sql` | pass |
+| FR-45 | 09, 24 | `organisation_workflows.sql`, `org_animals.sql`, `organisation/create-intake` | pass |
+| FR-46 | 26 | `public/public-org-route`, `public_org_page.sql`, `e2e/shelter-intake-to-adoption` | pass |
+| FR-47 | 25 | `org-requests/*`, `org_requests.sql`, `e2e/shelter-intake-to-adoption` | pass* (the email to shelter admins waits on CR-24) |
+| FR-48 | 26 | `litters/create-litter`, `litters.sql` | **fail — D-09** (no UI path to mark a mother as breeding stock) |
+| FR-49 | 25, 26 | `public/public-org-route`, `org-requests/decide-request`, `org_requests.sql`, `transfers/send-transfer` | pass |
+| FR-50 | 25 | `record_transfers.sql`, `transfers/accept-transfer`, `send-transfer`, `e2e/shelter-intake-to-adoption` | pass* (G-05: the R2 token needs copy rights) |
+| FR-51 | 25 | `transfers/accept-transfer`, `transfer-variant` | pass |
+| FR-60 | 24 | `org_profile.sql`, `organisation/org-profile-screen`, `public/public-org-route` | pass |
+| FR-52 | 09, 27 | `partners_nearby.sql`, `partner_directory.sql`, `partners/get-partner` | pass |
+| FR-53 | 09, 27 | `partners_nearby.sql`, `partner_directory.sql`, `partners/partners-screen` | pass |
+| FR-54 | 27 | `partners/partner-profile-screen` | pass (the PRD gives fields only) |
+| FR-55 | 27 | `partners/partners-screen`, `partner-profile-screen`, `partner_directory.sql` | pass |
+| FR-56 | 27 | `partners/vet-suggestion`, `partners-screen` | pass |
+| FR-57 | 28 | `admin/decide-organisation`, `admin/save-partner`, `admin_access.sql`, `admin_partners.sql`, `integrations/nominatim` + check 8 | pass |
+| FR-58 | 09, 28 | `partner_clicks.sql`, `admin_partners.sql`, `admin/admin-screen` + check 8 | pass |
+| FR-61 | 28b, 32 | `sapa_listings_api.sql`, `sapa/public-routes`, `sapa/sapa-list-screen`, `e2e/sapa-pomoci` | pass |
+| FR-62 | 28b, 28c | `sapa/listing-detail-screen`, `listing-detail-messaging`, `sapa_listings_api.sql`, `e2e/sapa-pomoci` | pass |
+| FR-63 | 28a, 28b | `sapa_listings.sql`, `sapa/save-listing`, `listing-form-screen`, `listing-photos`, `e2e/sapa-pomoci` | pass |
+| FR-64 | 28a, 28b | `sapa_listings_api.sql`, `sapa/my-listings-screen`, `change-listing`, `e2e/sapa-pomoci` | pass* (G-08: delete with reports — index collision, F1 ⛔) |
+| FR-65 | 28b | `sapa_expiry_job.sql`, `sapa/listings-daily-route` | pass |
+| FR-66 | 28b, 28c | `sapa_profile_donation.sql`, `sapa/listing-detail-*` | pass |
+| FR-67 | 28b | `sapa_profile_donation.sql`, `sapa/user-profile-screen` | pass |
+| FR-68 | 28a, 28c | `sapa_messaging.sql`, `sapa_conversations_api.sql`, `sapa/send-message`, `messages-screen`, `e2e/sapa-pomoci` | pass |
+| FR-69 | 28c | `sapa/new-message-notification`, `message_preferences.sql` | pass |
+| FR-70 | 28a, 28c | `sapa_safety.sql`, `sapa/submit-report`, `components/safety-dialogs`, `sapa/user-profile-safety` | pass |
+| FR-71 | 28c | `sapa_moderation_api.sql`, `admin/moderation-tab`, `admin/moderate` + check 8 | pass (OQ-17 interim mappings) |
+| FR-72 | 28b | `sapa/update-donation-info`, `organisation/org-donation-card`, `sapa_profile_donation.sql` | pass |
+
+Deferred criteria and whether a later step closed them:
+- Closed by a later step:
+  - FR-31 (Step 22 → Step 30)
+  - FR-32 refresh (Steps 05/22 → Step 30)
+  - FR-41 archive (Step 23 → Step 30a)
+  - FR-62 buttons (Step 28b → Step 28c)
+  - FR-72 card (Step 24 → Step 28b)
+  - FR-12 offer button, FR-35 icon labels, FR-65 link target, FR-50 accept without files (F1)
+- Still open: listed as G-xx and D-xx below.
+- Plan housekeeping: Step 22's "Tests to ship" still names `supabase/tests/household_succession.test.sql`, which was never created; `succession_job.test.sql` (Step 30) covers it.
+
+**Check 3 — ADR-15 flows and UC-11: ✅ pass**
+- **The six ADR-15 specs exist and pass:**
+  - `registration.spec.ts`
+  - `add-pet.spec.ts`
+  - `vaccination-reminder.spec.ts` (add vaccination and see the reminder)
+  - `mark-done.spec.ts`
+  - `household-invitation.spec.ts`
+  - `shelter-intake-to-adoption.spec.ts`
+- **`e2e/sapa-pomoci.spec.ts` (new) passes.** The flow:
+  1. Marko (seeded Free owner) publishes a giving listing on S34 with one PNG photo: ticket → browser PUT → server HEAD on confirm → S33 shows the image from a signed GET, loaded (`naturalWidth > 0`).
+  2. Jelena finds it on S32 with the filters "Poklanjam", "Nameštaj za ljubimce", "Mačke" and "Bečej", opens S33 and sends a message ("Poruka je poslata.").
+  3. Marko loads and reloads `/poruke`. The S36 row "Tvoj oglas: …" shows the unread badge ("nepročitane"). He opens it and sees the question, replies, and after a reload the row is no longer unread.
+  4. On S35, Marko uses "Radnje: …" → "Označi kao rešeno". The dialog "Označiti kao rešeno — Poklonjeno?" opens; he confirms and gets the toast "Oglas je označen kao rešen — Poklonjeno."
+  5. On S32, Jelena's same filters no longer list the listing.
+- **R2 fake:** `R2_ACCOUNT_ID=127.0.0.1:<port>/r2`, so the adapter's `https://<account>.r2.cloudflarestorage.com/<bucket>/<key>` resolves to the fake server. The spec makes its self-signed certificate with `openssl` at run time. The dev server needs `NODE_TLS_REJECT_UNAUTHORIZED=0`; the browser contexts use `ignoreHTTPSErrors`.
+- **Cleanup:** the spec removes its listings, their conversations and the message rate-limit counters before and after the run, using the service role.
+
+**Check 4 — Release Criterion 2: ⏸ open — Paddle sandbox purchase pending (owner)**
+- Step 31 is ✅ and its tests pass:
+  - Vitest: `start-checkout`, `payments-webhook`, `premium-screen`, `integrations/paddle`, `set-auto-renew`, `billing-portal`, `account-deletion`, `retention-nightly`, `billing-nightly` (all within the 151 passing files)
+  - pgTAP: `payments`, `billing_job`, `downgrade_limits`, `public_plans`, `subscription_read` (all ok after the reset)
+- Coverage by criterion:
+  - trial: FR-37 #1, BR-07 / E-15
+  - renewal: FR-37 #2, EP-49 step 1
+  - cancellation: BR-08 / EP-48
+  - expiry: `billing_job.sql`, FR-25
+  - downgrade: FR-39, `downgrade_limits.sql`
+  - breeder plan: FR-42, `payments.sql`, `start-checkout`
+- **Owner action:** Paddle is mocked in every test. One real sandbox purchase with a trial, plus a renewal and a cancellation (Step 31 "Before launch"), is still needed. No Paddle sandbox credentials exist yet.
+
+**Check 5 — Release Criterion 3: ✅ pass (local)**
+- Step 23, Step 30 and Step 30a tests pass: `account_deletion_request.sql`, `export_schedule.sql`, `retention_job.sql`, `succession_job.sql`, `data-control/*`, `jobs/*`.
+- **Manual walk on S19 as Jelena (local):**
+  1. "Pripremi arhivu" → the card shows "Pripremamo arhivu…" and the row is `data_exports.status = preparing`.
+  2. A manual EP-50 run (`POST /api/internal/exports` with `X-Dispatch-Secret`) returns `200 {"exports_ready":1,"exports_failed":0}`. The row becomes `ready`, 1538 bytes, `r2_key exports/<user>/<id>.zip`, expiring in 7 days, and the zip lands in the fake R2.
+  3. After a reload, S19 shows "Preuzmi ZIP".
+  4. "Obriši nalog" → the dialog says the account will be deleted on "9. 12. 2026." → after the checkbox and "Da, obriši", the card reads "Nalog će biti obrisan 9. 12. 2026. … Još 30 dana da se predomisliš 30 / 30". The profile has `deletion_requested_at` set and `deletion_due_at` 30 days later.
+  5. "Otkaži brisanje" brings the delete card back; both fields are null, and `/ljubimci` opens.
+- **Defect found:** D-08.
+
+**Check 6 — Release Criterion 4: ⏸ open — OQ-15**
+- Signed out, sr: on `/sapa-pomoci` (PublicShell wide), the footer links lead to the right pages:
+  - "Politika privatnosti" → `/privatnost`, h1 "Politika privatnosti"
+  - "Uslovi korišćenja" → `/uslovi`, h1 "Uslovi korišćenja"
+- Signed out, en (cookie `ml_locale=en`):
+  - "Privacy policy" → `/privatnost`, h1 "Privacy policy"
+  - "Terms of use" → `/uslovi`, h1 "Terms of use"
+- Both pages still carry the "OQ-15" placeholders: 7 on S30 and 8 on S31 ("Poslednja izmena: — (OQ-15)").
+- **Owner action:** the Step L1 drafts in `docs/legal/` are not reviewed or published. Owner, with a lawyer.
+
+**Check 7 — Release Criterion 5: ✅ pass**
+- Read-only query (TC §6 north-star; runs inside `begin read only; … commit;`):
+  `select count(distinct o_r.pet_id) as active_reminded_pets from public.reminder_deliveries d join public.reminder_occurrences o on o.id = d.occurrence_id join public.reminders o_r on o_r.id = o.reminder_id where d.status = 'delivered' and d.delivered_at >= now() - interval '30 days' and o_r.pet_id is not null;`
+- On seed data it returns **0**, which is expected: the seed has no `reminder_deliveries` rows.
+- One due vaccination occurrence was dispatched locally: its `notify_at` was set to now − 1 min, then `POST /api/internal/dispatch` returned `{"claimed":1,"delivered":1,…}` and one `email | delivered | local-…` row. The query then returns **1**, and the per-pet breakdown shows "Luna | 1".
+- The local database was reset to the seed afterwards.
+
+**Check 8 — Release Criterion 6: ✅ pass (local)**
+- Step 28 and Step 28c tests pass: `admin_access.sql`, `admin_partners.sql`, `partner_clicks.sql`, `sapa_moderation_api.sql`, `sapa_safety.sql`, `admin/*`.
+- **S26 walk as Ana (local Operator):**
+  - **Azili na čekanju:** "Azil Šapica" → "Odobri". Notice: "Azil Šapica je odobren. Poslali smo mejl na milica.stojanovic@mojljubimac.test."; `approval_status = approved`.
+  - **Partneri:** "Izmeni Pet shop „Šapica“" → "Plaćeno do" set to 2026-11-08 (yesterday) → "Partner sačuvan". The row now reads "Istekao — skriven". Ivana's `/partneri` (Novi Sad) listed the partner before the change and no longer lists it.
+  - **Statistika:** empty state "Još nema klikova" on the seed. After one "Pozovi" tap on `/partneri` (EP-66, `tel:+38121455100`), it shows "Veterinarska ambulanta „Dr Vet“ 1 0 0 0 1".
+- **Moderacija ("Moderacija (3)"):** two extra open reports were inserted with the service role (Ivana → user Nikola, scam; Ivana → listing "Tražim kavez za zeca", spam), alongside the seeded scam report on "Prodajem krevet za psa".
+  1. "Sakrij oglas" → "Da, sakrij". Notice: "Oglas „Prodajem krevet za psa“ je sakriven. Jelena Nikolić je dobio/la mejl.". The listing is `hidden`, and its public S33 shows "Oglas nije dostupan".
+  2. "Isključi korisnika" (Nikola) → "Da, isključi". `marketplace_suspended_at` is set.
+  3. "Vrati oglas" → "…je ponovo vidljiv.". The listing is `active` and S33 shows it again.
+  4. "Vrati pristup" → "Nikola Đorđević ponovo može da koristi Šapu pomoći."; `marketplace_suspended_at` is null.
+  5. "Odbaci prijavu" → "Prijava je odbačena. Oglas i korisnik ostaju kakvi jesu.".
+  6. End state: the reports are actioned / actioned / dismissed, all with `handled_by` = Ana; the tab shows "Obrađeno ovog meseca: 3" and "Nema otvorenih prijava".
+
+**Check 9 — NFR-03: ✅ pass**
+- Each page was measured at 360 px and at 1440 px wide. Every one of the 68 measurements had `scrollWidth ≤ clientWidth`, with no element extending past the viewport.
+- 34 routes were measured:
+  - **Visitor (6):** `/prijava`, `/registracija`, `/privatnost`, `/uslovi`, `/sapa-pomoci`, `/o/azil-druga-sansa`
+  - **Owner, Ivana (21):** `/ljubimci`, `/ljubimci/novi`, S03 Luna, the new vaccination, treatment and vet visit forms, `dnevnik`, `trenuci`, `/podsetnici`, `/podsetnici/novi`, `/podesavanja/podsetnici`, `/domacinstvo`, `/premium`, `/profil`, `/profil/podaci`, `/partneri`, `/uspomene`, `/sapa-pomoci`, `/sapa-pomoci/nova`, `/sapa-pomoci/moje`, `/poruke`
+  - **Shelter, Dragana (3):** `/organizacija`, `/organizacija/zahtevi`, `/organizacija/profil`
+  - **Operator, Ana (4):** `/admin` with its four tabs
+
+**Check 10 — NFR-04: ✅ automated pass; ⚠️ manual findings; screen-reader pass open (owner)**
+- **`e2e/accessibility.spec.ts` (new):** axe with the WCAG 2.0/2.1 A and AA tags on 14 screens: S27, S28, S30, S31, S32 (signed out); S01, S02, S03, S05, S10, S11, S13, the S13 invite dialog and S17 (signed in as Ivana). **Zero critical issues.**
+- **Serious issues:** `color-contrast` on S03 (4 nodes), S10 (3 nodes) and the S13 invite dialog (1 node). This is D-03. The other screens have no violations.
+- **Keyboard-only pass** (Playwright keys only — Tab, Enter, Space, the arrow keys, Escape — with a visible-ring check on every focus stop):
+  - **Add pet:** S02, "Ime", "Vrsta" (Enter, ArrowDown, Enter → "Mačka"), "Pol" (Space), "Sačuvaj ljubimca". Saved and redirected to S03.
+  - **Add vaccination:** S05, name field. On "Datum davanja", Enter opens the calendar; focus starts on "Go to the Previous Month", Tab reaches the day grid, ArrowLeft and Enter pick a day, and Escape closes the calendar and returns focus to the field ("8. 11. 2026."). Then "Sačuvaj vakcina" → saved. See D-07.
+  - **Mark reminder done:** the S10 tabs work with the arrow keys; Tab to "Urađeno", Enter → done. Focus is then lost to `<body>` (D-04).
+  - **Invite member:** S13, "Pozovi člana" with Enter opens the dialog, then "Mejl adresa", then "Pošalji poziv" with Enter → "Poziv je poslat na …". Escape closes the dialog, but focus returns to `<body>` (D-05).
+  - Every focus stop had a visible ring, except the Radix tab panels (D-06).
+- **Screen-reader pass: open (owner).** No screen reader runs in this unattended environment. Partial evidence:
+  - axe found no name, label or ARIA violations.
+  - The accessibility-tree snapshots of S19 and S26 are sound.
+  - The calendar announces English labels in the Serbian UI (D-07).
+  - **Owner action:** a real NVDA, TalkBack or VoiceOver pass on add pet, add vaccination, mark reminder done and invite member.
+
+**Check 11 — NFR-10: ⏸ open (owner)**
+- The Cloudflare, Supabase, Resend and Meta dashboards are production accounts. This run may not touch production and has no dashboard access, so no figures were recorded.
+- **Owner action:** read the four current monthly costs and confirm the total is ≤ €20. Note TC: Viber's ~€100/month is not incurred while it is switched off.
+
+**Check 12 — open change requests and questions (§12)**
+
+| ID | Status | Owner |
+|---|---|---|
+| CR-24 | **open.** These messages are still not sent: the Operator notice for a pending shelter, the auto-renew confirmation, the cancel-deletion confirmation, the heir email, the organisation-admin emails on transfer accept/decline and on new requests/inquiries, the push expiry notices, and the RISK-14 Operator alert. | Plan owner / Design §9.1 |
+| CR-25 | **partly done.** TC v1.9 ADR-17 now lists the toolchain packages "as built"; the owner's confirmation of the list is still open. | Keti |
+| CR-26 | ✅ **resolved.** The cities were pasted into production on 2026-10-29 (owner decision, confirmed for this run). | — |
+| CR-27 | **open.** TC ADR-16 does not name `app/(sapa)/`; the interim rule (`app/(sapa)/layout.tsx` picks the shell from the session) is built. | Plan owner / TC |
+| CR-28 | **open.** TC §5.10 still says `medicine_care` violations "map to `listing_type_not_allowed`" (TC line 752), while the API and the build return `category_not_allowed`. | Plan owner / TC |
+| OQ-15 | **open.** It keeps RC-4 open. | Keti, with a lawyer |
+| OQ-16 | **open.** The default applies: a breeder plan does not lift the 3-listing limit. | Keti |
+| OQ-17 | **open.** The interim mappings apply (Steps 28a–28c). | Keti |
+
+Other owner follow-ups recorded by earlier steps and checked here (not done in this run because they need production or external accounts):
+- **Step 03:** the push checks are pending with the owner.
+- **Step 30a:** the GitHub secrets and the first `nightly-backup.yml` `workflow_dispatch` run against production, plus the RISK-13 restore drill. **Not verified** — production is out of scope tonight.
+- **Steps 15, 21, 25:** the R2 bucket CORS rule and the token's copy rights (G-05).
+- **Step 29:** the Meta WhatsApp templates and secrets (G-04).
+- **Step 30:** confirm that deleting an auth user works on the hosted project (G-07).
+
+**Defects (for item FX; each names its owning step and a proposed suffixed step)**
+
+- **D-01 — the seed's fixed dates have passed, so pgTAP fails after a fresh reset (RC-1).** Owning steps: the `supabase/seed.sql` health and reminder data (Steps 06/08, extended by Step 14), and the tests from Steps 08, 13, 14, 17 and 22 that assume a Luna occurrence within 60 days. Proposed fix: **08a** — make the seed dates relative to `current_date`, or have the tests create their own occurrences.
+  - **Reproduce:** on or after 2026-10-31, run `npx supabase db reset`, then `npx supabase test db`.
+  - **Expected:** `Result: PASS`.
+  - **Actual:** `Result: FAIL`, with the six files and 13 assertions listed in check 1.
+  - **Cause:** Luna's seeded dates are all in the past now:
+    - "Besnilo" `next_due_on` is 2026-10-26.
+    - The Tobrex treatment ran 2026-10-15 … 2026-10-25.
+    - The vet follow-up is 2026-10-30.
+  - The only future date, Purevax 2027-03-12, is beyond the 60-day generation horizon (`20261020010005_reminder_occurrences.sql` line 264, `p_now + interval '60 days'`).
+  - So the reset creates Luna's 5 reminders with **no** occurrences. `select … from reminders r left join reminder_occurrences o …` returns them all with a null `due_at`.
+- **D-02 — pgTAP depends on leftover local rows (low).** Owning steps: 05, 11, 23, 28b tests. Proposed fix: **11a**. On a database that has run e2e or that is weeks old:
+  - `household_rls` #16 and `server_support` #12 (bad plan, 16 of 25 run) fail on extra invitations and idempotency keys;
+  - `get_me` #14, `subscription_read` #9, `retention_job` #24 and `sapa_listings_api` #30 fail on date drift.
+
+  All pass after `npx supabase db reset`; Step 27's log saw the same. The tests should isolate their own rows.
+- **D-03 — inactive tab labels miss the 4.5:1 contrast of Design §10 (axe: serious).** Owning step: 10 (`components/ui/tabs.tsx`: inactive trigger text on the TabsList background). Proposed fix: **10a**.
+  - **Reproduce:** `npm run e2e -- e2e/accessibility.spec.ts`, then read the `[axe]` lines.
+  - S03 tabs (Vakcine, Terapije, Pregledi, Težina): 4.18:1, `#7c726a` on `#f6f1eb`.
+  - S10 tabs (Uskoro, Propušteno, Urađeno): 4.05:1, `#796e65` on `#efe7df`.
+  - S13 invite dialog tab "Linkom": 4.05:1.
+- **D-04 — after "Urađeno" on S10, keyboard focus is lost (WCAG 2.4.3).** Owning step: 17. Proposed fix: **17a** — move focus to the next row or to the tab panel.
+  - **Reproduce:** signed in as Ivana, open `/podsetnici`, Tab to the tabs, ArrowRight to "Uskoro", Tab to "Urađeno", press Enter.
+  - **Result:** the row moves to Urađeno and `document.activeElement` is `<body>`.
+- **D-05 — the invite dialog does not return focus to its trigger.** Owning step: 22. Proposed fix: **22a**.
+  - **Reproduce:** on `/domacinstvo`, Tab to "Pozovi člana", press Enter, send an invitation by email, then press Escape.
+  - **Result:** the dialog closes and focus is on `<body>` instead of "Pozovi člana".
+- **D-06 — tab panels take focus with no visible ring (Design §10 focus ring).** Owning step: 10 (`TabsContent`, tabindex 0). Proposed fix: **10a**.
+  - **Reproduce:** on `/podsetnici`, after the tab list, Tab once. The `div[role=tabpanel]` is focused with `outline-style: none` and no box-shadow. The S13 invite dialog behaves the same.
+- **D-07 — date-picker usability and locale.** Owning steps: 10 (`components/ui/calendar.tsx`) and 14 (`DateField` in `vaccination-form-client.tsx`; other date fields follow the same pattern). Proposed fix: **14a**. On S05 `/ljubimci/<id>/vakcine/nova`:
+  - (a) The popover stays open after a day is picked; only Escape or a click outside closes it.
+  - (b) Enter or a click on the already-selected day (today, the default) clears the required "Datum davanja", and the field shows "Izaberi datum".
+  - (c) The react-day-picker accessible names are English in the Serbian UI: "Today, Monday, November 9th, 2026, selected", "Go to the Previous Month" / "Go to the Next Month" (`e2e/mark-done.spec.ts` relies on the latter). This affects FR-35 and the screen-reader experience.
+- **D-08 — S19 tells Free users their Premium will not renew (low).** Owning step: 23 (`app/(app)/profil/podaci/account-data-screen.tsx` line 330 renders `dialogPremium` unconditionally). Proposed fix: **23a**.
+  - **Reproduce:** sign in as `jelena.nikolic@mojljubimac.test` (Free, no `subscriptions` row), open `/profil/podaci`, click "Obriši nalog".
+  - **Result:** the dialog lists "Premium pretplata se neće obnoviti.". The pending card's "a Premium se neće obnoviti" is static too.
+- **D-09 — a breeder cannot record a litter through the UI (FR-48, RC-1).** Owning step: 26 (Step 26 l.4535; F1 ⛔ "Odgajivač nema put na S02 do `breeding_status = active`"). Proposed fix: **26a**, which needs a product/design decision on the UI path.
+  - The litter form lists only mothers with `breeding_status = active`, and no screen sets that status. The tests seed it directly.
+
+**Gaps that are not test failures (owner or plan decisions)**
+- **G-01 — Viber has no sender.** By plan, Steps 18, 19 and 29 keep Viber built but off (BR-14b), and dispatch falls back to email and push. If the Operator switches Viber on in S26 *Kanali*, FR-23 #2/#5 ("delivered on each selected channel") would not hold. Before enabling it, either build the sender or keep the switch locked.
+- **G-04 — WhatsApp in production needs the Meta templates approved and the secrets set** (Step 29).
+- **G-05 — R2 bucket CORS for browser PUT/GET, and the token's copy rights** (Steps 15, 21, 25; owner).
+- **G-06 — FR-31:** the rule for an heir who already owns a household (Step 30, F1 ⛔), and the heir email (CR-24).
+- **G-07 — FR-40:** hosted auth-user deletion not confirmed (Step 30, owner).
+- **G-08 — FR-64 #6:** deleting a listing that has reports can hit the report index collision (Step 28a l.5109, F1 ⛔); untested.
+
+**Release Criteria verdict**
+
+| Criterion | Result | Owner / next |
+|---|---|---|
+| RC-1 | ❌ fail | D-01 (FR-13, FR-20, FR-28, FR-29 tests) and D-09 (FR-48) → FX. CR-24 messages are still unsent. |
+| RC-2 | ⏸ open — Paddle sandbox purchase pending (owner) | Step 31 tests pass. |
+| RC-3 | ✅ pass (local) | D-08 is cosmetic. G-07 is with the owner. |
+| RC-4 | ⏸ open — OQ-15 | The pages are reachable signed out in sr and en from the footer; legal text from the owner and a lawyer. |
+| RC-5 | ✅ pass | — |
+| RC-6 | ✅ pass (local) | — |
+| NFR-03 | ✅ pass | — |
+| NFR-04 | ✅ automated (0 critical) | D-03 … D-07 → FX. The screen-reader pass is open (owner). |
+| NFR-10 | ⏸ open (owner) | Dashboard figures needed. |
+
+Local state after the run: `npx supabase db reset` restored the seed, the dev server was stopped and `test-results/` was removed. Nothing was pushed.
 
 ---
 
