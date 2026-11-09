@@ -6,11 +6,11 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 05 — API & Integration Contract |
-| Version | 1.4 |
-| Date | 2026-10-29 |
+| Version | 1.5 |
+| Date | 2026-11-09 |
 | Author | Keti Vrtunić (interview facilitated by "Vuk", API/Integration Engineer persona) |
-| Traces to | Brief v1.8 · PRD v1.8 · TC v1.8 · Design v1.7 (37 screens) |
-| Status | Draft — payments contracted for Paddle Billing (v1.4) |
+| Traces to | Brief v1.8 · PRD v1.8 · TC v1.9 · Design v1.8 (37 screens) |
+| Status | Draft — payments contracted for Paddle Billing (v1.4); synced with the built app after Steps 11 … 31 and F1 (v1.5) |
 
 **Change log**
 
@@ -21,12 +21,13 @@
 | 1.2 | 2026-10-19 | Owner-approved change requests from the Build Plan review: CR-07 `<code>:<detail>` database error mapping (§7.1); CR-10 one R2 key layout (§10, referenced from §5.1); CR-17 public pages EP-24 / EP-62 not cached — all cache headers and purges removed (EP-05, EP-22, EP-23, EP-24, EP-55, EP-58, EP-61, EP-62, EP-68, EP-72, §3.1, §11, §12); CR-18 organisation team invitations through EP-39 / EP-40 (`InvitationView.kind`); CR-19 WhatsApp templates in §9.4; CR-20 data export archives built in-app (EP-50); CR-22 EP-44 / EP-45 before payments, EP-25 count badge, EP-64 S03 vet suggestion block. |
 | 1.3 | 2026-10-19 | CAP-08 "Šapa pomoći" (Brief v1.7, PRD v1.7 FR-61 … FR-72, TC v1.7 §5.10, Design v1.6 S32 … S37): new §5.9 with EP-73 … EP-88 (public listing list/detail/profile route handlers, not cached per ADR-18; listings, my listings, extend/resolve/delete, donation info, conversations and messages with new-message email + push, report, block, Operator moderation, daily listing expiry job, shelter donation info); 15 new schemas in §6 (ListingSummary, Listing, ListingPhoto, ListingAuthor, MyListing, MarketplaceStatus, DonationInfo, PublicProfile, ConversationSummary, Conversation, Message, UserBlock, Report, ModerationItem, Restriction); `Me.display_name` + `Me.marketplace`, `Organisation.donation`; EP-13 purpose `listing_photo`, EP-15 kind `listing_photo`, EP-28 preference type `message`, EP-43 writes `display_name`, EP-52 cascade note; error codes `listing_not_active`, `cannot_message_self`, `user_blocked`, `marketplace_suspended`, `listing_type_not_allowed`, `category_not_allowed` and `premium_required:listings` (§7); §7.3 states signed_out / blocked / suspended / unavailable; §4.4 rows; §9.4 notification templates; §10 listing photo keys; §11 30 messages / hour; §12, §13 (FR-61 … FR-72), §14, §15 (RISK-33 … RISK-36), §17 (OQ-16, OQ-17), §18. |
 | 1.4 | 2026-10-29 | Owner decisions OQ-11 (Paddle Billing, merchant of record) and OQ-03 (EUR prices, VAT added by Paddle). Every `[DEFERRED: OQ-11]` marker settled: EP-44 returns real EUR prices; EP-45 returns the Paddle.js overlay inputs (`CheckoutSession` = `{price_id, customer_email, custom_data, environment, client_token}` plus plan, trial and amount), with the server choosing the trial or the plain Paddle price, and `503 payment_provider_unavailable` only while `PADDLE_API_KEY` is empty; EP-46 verifies `Paddle-Signature` (`ts`, `h1` = HMAC-SHA256 over `<ts>:<raw body>`, 5-minute window), dedupes on `event_id` and maps nine Paddle event types to subscription state and payment rows; EP-48 calls Paddle to cancel or resume; EP-49 becomes reconciliation + expiry (no renewal charges); EP-51 / EP-52 cancel at Paddle; new EP-89 customer-portal link (S18 "Upravljaj plaćanjem") and `Subscription.manage_billing_available`; §3.5 EUR money, §5.6 Paddle intro, §7.2, §9.2, §9.4, §13, §14, §15 RISK-21, §17 (OQ-03, OQ-11 resolved), §18, §19. Operation count 89 (EP-01 … EP-89). |
+| 1.5 | 2026-11-09 | Step D2 (docs sync): owner decisions and deviations recorded in the Build Plan session logs (Steps 11 … 31, 28a … 28c, 30a) and in the F1 follow-up report, checked against `supabase/migrations`, `lib/actions`, `lib/server` and `app/`. New §20: every database function and view added during the build (signature, return shape, security mode and grants, errors, EP served), the route handlers as built (§20.2) and the server-action files with the EPs they serve (§20.3). §4.1 and EP-42: server-only auth actions, the S16 reset view `/prijava?view=reset`, S28 recovery routing, `next` on Šapa pomoći redirects, `/` redirect. *As built (v1.5)* notes in the affected EPs (rpc names, token and validation details, CR-24 emails not sent, `401` codes of the job routes, HEAD / prefetch on `/api/a/done`, EP-27 edit route keyed by `reminder_id`, `premium_required:transfer_slot` details, `validation_failed:last_admin`, `23503` → `not_found` in EP-84 / EP-85, EP-89 details). §6: `FileUrl.kind` gains `data_export`; `ReminderPreference.type` = `reminder_type` (incl. `message`); `Plan` from `v_public_plans`; `UploadTicket` notes. §7.1: DETAIL `<field>:<code>` convention, `validation_failed:last_admin`, `organisation_pending_approval:rejected`, SQLSTATE mappings, field codes; §7.2 rows; §9.1, §9.3 (token formats `dn_` / `hh_` / `og_` / `tr_` / `wv_`, plus `up_` / `md_`), §9.4, §10, §11 counters; §17 items still open after the build (no decision taken here). Operation count unchanged (89). |
 
 ---
 
 ## 1. Executive Summary
 
-This contract defines everything that crosses the wire in Moj Ljubimac. Reads and simple writes of a user's own data go through the Supabase data API protected by row-level security, with every Free limit and business rule enforced inside the database; multi-step or privileged work goes through Next.js server actions; external systems (WhatsApp, the payment provider, message action links) and the reminder dispatch job reach the app through a small set of route handlers. It defines 89 operations (EP-01 … EP-89), one error envelope with a catalog of stable codes, and the exact response that puts each screen into its loading, empty, error, Premium-locked, read-only, signed-out, blocked, or suspended state. The Šapa pomoći community board (EP-73 … EP-88) adds public, uncached listing and profile pages, 1:1 messaging with email and push notifications, report and block, and Operator moderation. Payments go through Paddle Billing as merchant of record (v1.4): a Paddle.js overlay checkout, signed webhooks, provider-owned renewals and a customer-portal link (EP-89). Traces to Brief v1.7, PRD v1.7, Technical Constraints v1.7, Design System v1.6 (37 screens).
+This contract defines everything that crosses the wire in Moj Ljubimac. Reads and simple writes of a user's own data go through the Supabase data API protected by row-level security, with every Free limit and business rule enforced inside the database; multi-step or privileged work goes through Next.js server actions; external systems (WhatsApp, the payment provider, message action links) and the reminder dispatch job reach the app through a small set of route handlers. It defines 89 operations (EP-01 … EP-89), one error envelope with a catalog of stable codes, and the exact response that puts each screen into its loading, empty, error, Premium-locked, read-only, signed-out, blocked, or suspended state. The Šapa pomoći community board (EP-73 … EP-88) adds public, uncached listing and profile pages, 1:1 messaging with email and push notifications, report and block, and Operator moderation. Payments go through Paddle Billing as merchant of record (v1.4): a Paddle.js overlay checkout, signed webhooks, provider-owned renewals and a customer-portal link (EP-89). Traces to Brief v1.7, PRD v1.7, Technical Constraints v1.7, Design System v1.6 (37 screens). v1.5 records the contract as built: §20 names every database function and internal route the build added and maps each EP to its server actions; *As built (v1.5)* notes in §5 record the owner-approved deviations from the Build Plan session logs.
 
 ---
 
@@ -110,6 +111,13 @@ Route handlers return the HTTP status from §7.2 with `ApiError` as the body on 
   3. `profiles.deletion_requested_at` set → `403 account_pending_deletion` (only EP-51 cancel and EP-42 sign-out allowed)
   4. organisation member whose organisation is `pending` → writes return `403 organisation_pending_approval`; reads allowed
 - Signed action links (`/api/a/*`) authenticate by a single-use HMAC token instead of a session (§9.3).
+
+**As built (v1.5, Steps 11, 12, R1, F1):**
+- **Server-only auth (owner decision, 2026-10-21).** The session cookies are httpOnly, so the browser Supabase client never sees a session and is not used for auth. Every Supabase Auth call that creates, reads or changes a session runs as a server action in `lib/actions/auth.ts` (EP-42) or `lib/actions/registration.ts` (EP-41) and returns `ActionResult`. Data reads and writes of signed-in screens likewise run as server actions or in server components (§20.1), never from the browser.
+- **Request interception:** `proxy.ts` → `lib/supabase/middleware.ts` refreshes the session on every request. Unauthenticated requests for the signed-in prefixes (`/ljubimci`, `/uspomene`, `/podsetnici`, `/podesavanja`, `/domacinstvo`, `/premium`, `/profil`, `/partneri`, `/organizacija`, `/admin`, `/sapa-pomoci/nova`, `/sapa-pomoci/moje`, `/sapa-pomoci/<id>/izmeni`, `/poruke` and their children) redirect to `/prijava`. For the Šapa pomoći surfaces (`/sapa-pomoci/…`, `/poruke…`) the redirect carries `?next=<path + query>` (F1), so an email link such as `listing_expiring` *Produži* returns to its page after sign-in; other surfaces redirect without `next`. `/prijava` follows `next` only for same-site paths (`safeNextPath`). `/sapa-pomoci`, `/sapa-pomoci/<id>` and `/korisnik/<id>` stay public.
+- **`/` (root):** no session → `/prijava`; with a session → the EP-42 redirect matrix (`postSignInPath`): no profile → `/registracija`, deletion pending → `/profil/podaci`, organisation member → `/organizacija`, otherwise `/ljubimci`.
+- **Password reset (S16 / S28, owner decision 2026-10-21):** there is no separate "forgot password" page. *Zaboravljena lozinka?* switches S16 `/prijava` to its **reset view**, also reachable directly as **`/prijava?view=reset`**: email (prefilled from the sign-in form), *Pošalji link* → EP-42 `requestPasswordReset`; after any valid submit the sent state is shown (no account enumeration). S28 `/prijava/nova-lozinka` sets the new password; its *Pošalji novi link* leads back to `/prijava?view=reset`. Details in EP-42.
+- Gate 3 / gate 4: `checkGates` in `lib/server/gates.ts` runs the four gates in order; `exempt` = `cancel_deletion` (EP-51 cancel) or `sign_out`; gate 4 runs on writes only (`access: "write"`). A session without a `profiles` row passes gates 3 and 4 (`complete_registration` decides, EP-41).
 
 ### 4.2 Roles
 | Role | Who |
@@ -273,6 +281,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `not_found` (404); `forbidden_role` (403); `validation_failed` (422, `fields.confirm = "required"`).
 - **States:** S03 → redirect to S01 with toast; error toast on 5xx.
 - **Side effects:** in one transaction: collects every R2 key of the pet (`pets.photo_r2_key`, `attachments.r2_key`, `moment_photos.r2_key`), then deletes the `pets` row (cascade removes all record, care-log, moment, memorial, reminder, occurrence and public-link rows, so EP-24 returns `404` for its moments on the next request). After commit: queues the R2 keys for the nightly R2 cleanup job (TC §5.9).
+- **As built (v1.5, Step 13):** `deletePet` in `lib/actions/pets.ts` is a single RLS-scoped `pets` delete: 0 rows → `not_found`, the role trigger → `forbidden_role`. The keys are queued by the existing after-delete triggers on `pets`, `attachments` and `moment_photos` **inside** the delete's transaction, not after commit. Also used by S20 *Obriši životinju* (Step 24).
 - **Budget:** `action`
 
 #### EP-06 — Move to memorial
@@ -301,6 +310,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `premium_required` (403, `details.limit = "pets"`) — Free owner's active slot is taken (E-03); `validation_failed` (422, `fields.pet_id = "invalid_state"`) — not a memorial; `not_found` (404).
 - **States:** S06 default (card leaves the list, toast); premium_locked on `premium_required`.
 - **Side effects:** deletes the pet's `memorial_records` row; sets `pets.lifecycle = active`; when `reenable_reminders`, sets `reminders.active = true` for the pet's reminders whose next due time is still in the future (vaccination `next_due_on`, treatment `ends_on`, vet `follow_up_on`, birthday, meal) and generates their occurrences.
+- **As built (v1.5, Step 16) — EP-06 / EP-07:** `movePetToMemorial` / `restorePetFromMemorial` (`lib/actions/memorial.ts`) call `rpc:move_pet_to_memorial(p_pet_id uuid, p_date date, p_reason memorial_reason default null, p_note text default null) → MemorialRecord` and `rpc:restore_pet_from_memorial(p_pet_id uuid, p_reenable_reminders boolean default true) → Pet`, both security invoker (RLS, `pets_check_write`, `pets_enforce_free_limits`). Field codes travel in the error DETAIL (`'<field>:<code>'`, §7.1). Re-enabling runs the definer helper `private.reenable_pet_reminders` (owner only, pet active again; one-off reminders need `starts_at` ahead, repeating / meal reminders no end or an end ahead). The action checks the date (not in the future, Europe/Belgrade) and the reason enum. S06 always sends `reenable_reminders = true`.
 - **Budget:** `action`
 
 #### EP-08 — Weight entries create / update / delete
@@ -358,6 +368,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `not_found` (404); `household_read_only` (403); `forbidden_role` (403); `validation_failed` (422, `fields.p_occurrence_id = "invalid"`).
 - **States:** S03 default (dose appears in "recent doses", next dose advances); S10 occurrence moves to Urađeno.
 - **Side effects:** inserts `dose_logs`; when `p_occurrence_id` is given, sets that occurrence (and the other lead-time rows with the same `reminder_id` + `due_at`) to `status = done`, `done_at = now()`, `done_by = auth.uid()`.
+- **As built (v1.5, Step 15):** `rpc:log_dose` is security invoker; two narrow definer helpers handle the occurrence (`private.dose_occurrence_due_at` — `p_occurrence_id:invalid` when the occurrence is not the treatment's `treatment_dose` reminder; `private.complete_dose_occurrence`). Idempotent on `p_occurrence_id` also under a concurrent `unique_violation`. Validation codes travel in DETAIL (`'<field>:<code>'`), which `logDose` (`lib/actions/treatments.ts`) maps to `fields`. Called through the server action `logDose`; EP-10 / EP-12 run as `createTreatment` / `updateTreatment` / `deleteTreatment` and `createVetVisit` / `updateVetVisit` / `deleteVetVisit` (EP-10 reads the written row back through EP-02 for its computed fields).
 - **Budget:** `write`
 
 #### EP-12 — Vet visits create / update / delete
@@ -388,6 +399,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `file_too_large` (422); `file_type_not_allowed` (422); `premium_required` (403, `details.limit = "attachments"`) — Free owner already has 10 attachments on the pet (BR-01, E-04), checked at ticket time and again by the insert trigger at confirm; `too_many_photos` (422) — the listing already has 5 photos (BR-55, E-30; checked at ticket time; the `listing_photos_max` trigger backs it at confirm with `validation_failed`); `listing_not_active` (409); `marketplace_suspended` (403); `validation_failed` (422) — `fields.upload_token = "invalid"` (bad/expired token) or `"not_uploaded"` (object missing in R2 at confirm); `forbidden_role` (403); `not_found` (404).
 - **States:** S05 attachment zone: chip per file (uploading → done); inline file error on `file_too_large` / `file_type_not_allowed`; premium_locked on `premium_required`; S02 photo preview; S34 photo tiles "N / 5" (the *Dodaj* tile disappears at 5; inline error on `too_many_photos`).
 - **Side effects:** `request_upload` builds the `r2_key` from the §10 key layout (step 6) and signs a stateless `upload_token` (HMAC over purpose, target, r2_key, mime, size, expiry) — no row is written. `confirm_upload` does an R2 `HEAD` to verify the object exists with the declared size and content type (mismatch → `file_too_large` / `file_type_not_allowed` and the object is deleted), then inserts `attachments` (`pet_id` from the visit), sets `pets.photo_r2_key` (old key queued for deletion), or inserts `listing_photos { listing_id, r2_key, position = lowest free 1–5 }`. Objects never confirmed are removed by the nightly R2 cleanup (no DB row older than 24 h).
+- **As built (v1.5, Steps 13, 15, 24, 28b):** `requestUpload` / `confirmUpload` in `lib/actions/uploads.ts`. The `upload_token` is `up_…`, HMAC-SHA256 with `ACTION_TOKEN_SECRET` over `upload:` + purpose, target, key, mime, size, expiry (and file name for attachments) — §9.3. Purpose `organisation_logo`: `target_id` = `organisations.id`; Admin ✅, Volunteer → `forbidden_role`, anyone else → `not_found`; `image/jpeg|png|webp` ≤ 10 MB; key `o/<org_id>/logo-<uuid>.<ext>`; confirm sets `organisations.logo_r2_key` (a trigger queues the old key) and returns `Organisation`. Purpose `listing_photo`: gate 4 not applied; author only; listing `active` or `expired`; the suspension check and `too_many_photos` run in the action at ticket time; confirm returns `ListingPhoto` with a signed `url`. The transferred-copy rule is enforced by the database guard triggers at confirm (`forbidden_role`), not yet at ticket time. A pet photo's old key is queued with the service role. Partner logos use EP-69 `createPartnerLogoUpload` (no confirm step).
 - **Budget:** `action`
 
 #### EP-14 — Delete attachment
@@ -412,6 +424,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `validation_failed` (422, `fields.items = "out_of_range"`).
 - **States:** images render when URLs arrive (skeleton until then); `url = null` → placeholder avatar / "Fajl nije dostupan".
 - **Side effects:** none.
+- **As built (v1.5, Steps 13 … 28b, F1):** `getFileUrls` (`lib/actions/files.ts`) signs `pet_photo`, `attachment` (with the stored file name and `mime_type`), `moment_photo` and `listing_photo`. `organisation_logo` and `partner_logo` are accepted but always answer `url = null`: logos are signed by the operation that returns them (EP-53 `logo_url`, EP-62, EP-65, EP-69 save) and EP-15 has no consumer for them (F1: left open, access rules for a public logo not specified). The data export archive is signed by EP-50 itself (`FileUrl.kind = data_export`), not by EP-15.
 - **Budget:** `action`
 
 #### EP-16 — Get PDF export bundle
@@ -464,6 +477,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `validation_failed` (422); `forbidden_role` (403); `not_found` (404).
 - **States:** S07 card shows times and weekday chips, or the "add" prompt when `[]`; edit controls hidden for members.
 - **Side effects:** the rpc keeps at most one `meal` reminder per pet: upserts `reminders` (`type = meal`, `user_id = pets.owner_id`, `pet_id`, `meal_times`, `meal_weekdays`, `active = true`) and regenerates its future occurrences at the exact times (BR-13); empty times delete the reminder and its occurrences.
+- **As built (v1.5, Step 20) — EP-17 … EP-19:** the care-log reads and writes run as inline `"use server"` functions in `app/(app)/ljubimci/[id]/dnevnik/page.tsx` (`listEntries`, `createFeeding`, `updateFeeding`, `createStool`, `updateStool`, `deleteEntry`, `setMealSchedule`), passed to the client as `actions`; an RLS-rejected insert → `not_found`. `rpc:set_meal_schedule(p_pet_id uuid, p_meal_times time[], p_meal_weekdays smallint[] default null) → MealSchedule` is **security definer**, `authenticated` only; organisation animals count as "no relation" (`not_found`); times: at most 6 (`out_of_range`), distinct whole minutes (`invalid`); after removal it returns `active = false`. `meal_schedules_api` reads the meal reminder through the definer helper `private.pet_meal_schedule`, so a member who has not opted into reminders still sees the schedule (EP-19 get is Member 👁).
 - **Budget:** `write`
 
 #### EP-20 — List moments
@@ -493,6 +507,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `too_many_photos` (422) — more than 5 (E-08); `file_too_large` (422); `file_type_not_allowed` (422); `premium_required` (403, `details.limit = "moments"`) — 5 moments already on the pet and the creator has no Premium (BR-01, BR-24; checked in step 1 and by the insert trigger in step 3); `validation_failed` (422) — field rules, `fields.draft_token = "invalid"` or `"not_uploaded"`; `household_read_only` (403); `not_found` (404).
 - **States:** S08 Dialog: per-photo progress; inline errors; premium_locked on `premium_required`; toast + moment appears on success.
 - **Side effects:** step 1 writes nothing. Step 3 verifies every object with R2 `HEAD`, then inserts `moments` and `moment_photos` (`r2_key`, `position`) in one transaction. Unconfirmed objects are removed by the nightly R2 cleanup.
+- **As built (v1.5, Step 21, owner decision option A):** `prepareMoment` / `confirmMoment` in `lib/actions/moments.ts`. Step 1 chooses the moment id and builds the keys `u/<owner_id>/pets/<pet_id>/moments/<moment_id>/<position>-<uuid>-<safe_file_name>`. The `draft_token` is `md_…`: HMAC-SHA256 with `ACTION_TOKEN_SECRET` over `moment:` + moment id, pet, date, the text itself (not a hash — confirm takes only the token), each key with position / mime / size, and the expiry (10 min). Every `UploadTicket` from step 1 carries the draft token as its `upload_token`. Step 3 calls **`rpc:confirm_moment(p_moment_id uuid, p_pet_id uuid, p_moment_date date, p_text text, p_photos jsonb) → Moment`** (security invoker, `authenticated` only; table grant `insert (id)` on `moments`), which inserts the moment with the chosen id and its photos in one transaction so RLS, `care_check_write` and the Free-limit trigger (`premium_required:moments`) still apply, and repeats the rules: no relation → `not_found`; memorial → `p_pet_id:invalid_state`; date after today (Belgrade) → `p_moment_date:out_of_range`; > 5 photos → `too_many_photos`; neither text nor photos → `p_text:required`; a key outside `u/<owner_id>/pets/<pet_id>/moments/<moment_id>/` → `p_photos:invalid`. Action mapping: missing object → `draft_token:not_uploaded`; a second confirm (`23505`) → `draft_token:invalid`; `42501` → `not_found`; a member with `can_log = false` → `household_read_only`. EP-20 runs as `listMoments`, EP-22 as `deleteMoment` (the `moment_photos_queue_r2_key` trigger queues the keys).
 - **Budget:** `action`
 
 #### EP-22 — Delete moment
@@ -517,6 +532,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `not_found` (404); `forbidden_role` (403); `household_read_only` (403).
 - **States:** S08 Switch reflects `active`; copy button enabled when `active = true`.
 - **Side effects:** first enable inserts `moment_public_links` with a random unguessable slug (128-bit, base62, 22 chars); later toggles update `active` and keep the slug. EP-24 is not cached, so after disabling it returns `404` on the next request.
+- **As built (v1.5, Step 21):** `setMomentPublicLink`. `url` = `NEXT_PUBLIC_SITE_URL + "/t/" + slug` (the `moments_api.public_link.url` column still carries the constant host; the app replaces it). `active = false` on a moment that never had a link inserts an inactive link, so the response always has a slug. Every call writes, so a member's no-op toggle on someone else's moment still answers `forbidden_role`. The slug is left-padded to 22 characters and retried on a collision. EP-24 is served by `app/api/public/moments/[slug]/route.ts` and the S09 page through the shared loader `lib/server/public-moments.ts` (slug checked against `^[0-9A-Za-z]{22}$`; a 5xx on the S09 page renders *link_disabled*, the route answers `500 internal_error`).
 - **Budget:** `action`
 
 #### EP-24 — Get public moment
@@ -571,11 +587,13 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `not_found` (404) — unknown or not visible; `household_read_only` (403) — caller is a member and the household is read-only (BR-28).
 - **States:** S01 / S03 / S10 row switches to done badge with time and first name; `403 household_read_only` → *read_only* (control hidden on next render).
 - **Side effects:** every row of the instance → `status = done`, `done_at = now()`, `done_by = auth.uid()`; pending/sent rows of the instance are excluded from further sends, re-send and missed marking (EP-33). Instances already `missed` may still be marked done (late acknowledgement). For `reminders.type = treatment_dose`: inserts `dose_logs { treatment_id = reminders.source_id, given_at = now(), occurrence_id, created_by = auth.uid() }` unless a dose log for that occurrence already exists (same rule as EP-11).
+- **As built (v1.5, Step 17) — EP-25 / EP-26:** called through the server actions `listReminderOccurrences` / `markOccurrenceDone` (`lib/actions/reminders.ts`). `rpc:list_reminder_occurrences(p_filter text, p_pet_id uuid default null, p_limit integer default 20, p_offset integer default 0)` is security invoker; `rpc:mark_occurrence_done(p_occurrence_id uuid)` is **security definer** scoped to `auth.uid()` (granted to `authenticated` and `service_role`) and applies the EP-25 visibility rule itself. The shell badge `counts.podsetnici` is EP-25 `total` for `filter = today` (0 → no badge). EP-32 reuses `mark_occurrence_done` through `mark_occurrence_done_for` (§20).
 - **Budget:** `write`
 
 #### EP-27 — Manual reminders: create / update / delete
 - **Address:** Data API: `reminders` — **create** `insert { type: "manual", title, pet_id, starts_at, recurrence }` `.select()`; **get** `select` `.eq("id", id).eq("type","manual")`; **update** `update { title?, pet_id?, starts_at?, recurrence? }` `.eq("id", id).eq("type","manual")` `.select()`; **delete** `delete` `.eq("id", id).eq("type","manual")`
-- **Callers:** S11 `/podsetnici/novi` (create). Update / get / delete have no screen in Design v1.3 (available for a later S10 row menu).
+- **Callers:** S11 `/podsetnici/novi` (create); S11 edit variant `/podsetnici/[id]` (get to prefill, update, delete with the *Obriši podsetnik* AlertDialog — v1.5, Step 17). The `[id]` segment is `reminders.id`, i.e. the `ReminderOccurrence.reminder_id` of a manual row on S10 (owner decision, Step 17); manual rows on S10 link there, generated rows have no link. An unknown, foreign or non-manual id → `404` → the S11 error state.
+- **As built (v1.5, Step 17):** server actions `getManualReminder`, `createManualReminder`, `updateManualReminder`, `deleteManualReminder` (`lib/actions/reminders.ts`) over the Data API calls above. Field-code copy: `in_past` → *"Izaberi datum i vreme u budućnosti."*, `pet_memorial` → *"Ovaj ljubimac je u Uspomenama."*
 - **FRs:** FR-21
 - **Authorization:** Owner (`profiles.account_type = owner`) on own reminders only (`user_id` defaults to `auth.uid()` and cannot be set). A member may not link a manual reminder to a pet they do not own → `403 forbidden_role`. Shelter/breeder accounts → `403 forbidden_role`. Rows of other types (`type ≠ manual`) are not addressable here → `404 not_found`.
 - **Request:**
@@ -605,6 +623,10 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `validation_failed` (422); `premium_required` (403, `details.limit = "whatsapp"`); `whatsapp_not_connected` (409); `channel_disabled` (409).
 - **States:** S12 *default*; Free user (`Me.entitlements.premium = false`) → WhatsApp checkbox *premium_locked* (G); `403 premium_required` on save → *premium_locked*; Viber checkbox absent while `viber_enabled = false`; `whatsapp.status = "connected"` → "WhatsApp connected" variant. *Poruke* card: two Switches from the `message` row's `channels`; both off → *"Nove poruke ćeš videti samo u aplikaciji…"*.
 - **Side effects:** future pending occurrences of the caller's own reminders of that type are regenerated with the new lead times / delivery time (done/missed history untouched). Channel changes apply from the next dispatch. Stored `whatsapp`/`viber` choices survive Premium expiry; EP-33 falls back at send time (BR-16). `message`: no occurrences; EP-82 reads the row at send time.
+- **As built (v1.5, Steps 18, 28a, 28c, 29):**
+  - `rpc:get_reminder_settings()` is **security definer** scoped to `auth.uid()` (it reads `app_settings.viber_enabled`), not executable by `anon`. Since Step 28c it returns **seven** rows in enum order, the `message` row with `lead_minutes = [0]`, `delivery_time = null`, `fixed_time = false`; a missing row is returned as the default with `is_default = true`.
+  - The update for the six reminder types is an inline `"use server"` function in `app/(app)/podesavanja/podsetnici/page.tsx` (`savePreference`); the `message` row is saved by `saveMessagePreference` in `lib/actions/messages.ts` (same upsert; empty channels allowed; `whatsapp` / `viber` → `fields.channels = "invalid"`, also from the `23514` of `reminder_preferences_message_channels_check`). The six-type action maps check-constraint violations (`23514`) to `validation_failed` with `fields.lead_minutes = "invalid"`, `fields.delivery_time = "required"` or `fields.channels = "required"`, and refuses duplicate `lead_minutes` values (the database check does not). Saving a changed card drops a stored `whatsapp` choice while WhatsApp is not usable for the caller, so the save does not fail; unchanged cards keep their stored choice.
+  - `reminder_preferences.type` uses the enum `reminder_type`, which gained the value `message` (owner decision, Step 28a); there is no separate `preference_type` enum. Guards: `reminders.type <> 'message'`; message rows may have empty channels, only `email` / `push`, and `delivery_time` null.
 - **Budget:** get `read-small`, update `write`
 
 #### EP-29 — Register / unregister web push subscription
@@ -621,6 +643,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `validation_failed` (422).
 - **States:** S12 push row: registered → "uključeno"; `[]` → "isključeno"; permission denied → "blokirano"; iPhone without home-screen install → hint card (client-side detection, ADR-05).
 - **Side effects:** none. EP-33 deletes endpoints that the push service answers with `404`/`410`.
+- **As built (v1.5, Step 18):** register / check / unregister are inline `"use server"` functions in `app/(app)/podesavanja/podsetnici/page.tsx`. `rpc:register_push_subscription(p_endpoint text, p_p256dh text, p_auth text, p_user_agent text default null) → PushSubscription` checks `endpoint:invalid`, `p256dh` / `auth` `required` | `invalid` (base64url), cuts `user_agent` to 300 characters and never returns the keys. With no push support or an empty `NEXT_PUBLIC_VAPID_PUBLIC_KEY` the push row is hidden.
 - **Budget:** `write` (check `read-small`)
 
 #### EP-30 — WhatsApp connect: send code / verify code / disconnect
@@ -643,6 +666,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `premium_required` (403, `details.limit = "whatsapp"`) — Free user on send/verify; `validation_failed` (422) — phone; `verification_code_invalid` (422) — wrong code, expired code or token, or token issued to another user; `rate_limited` (429, `details.retry_after_s`) — more than 5 `send_code` per hour per user, or more than 10 `verify_code` per hour per user.
 - **States:** S12 Kanali card: *default* → code entry after `send_code` → "Povezano" after `verify_code`; Free → *premium_locked* (G); `422` → inline field error; `429` → inline "try again later".
 - **Side effects:** `send_code`: sends the WhatsApp **authentication template** with the code (Meta Cloud API). `verify_code`: upserts `user_channels { channel: whatsapp, address: phone, opted_in_at: now() }` (the verified exchange is the user's opt-in). `disconnect`: deletes the `user_channels` whatsapp row and removes `whatsapp` from every `reminder_preferences.channels` of the caller; a type left with no channel is set to `{email, push}`.
+- **As built (v1.5, Step 29):** `whatsappConnection` (`lib/actions/whatsapp.ts`); the `verification_token` is a `wv_` token whose code digest is HMAC-SHA256 with `ACTION_TOKEN_SECRET` over `user_id|phone|code` (not a plain `sha256(code)`, §9.3); 10 minutes, not single use. `send_code` is idempotent for 24 h and limited to 5 per hour; the number is normalised to E.164 (`+381 …`, `064 …`, `00381 …`). With `WHATSAPP_ACCESS_TOKEN` empty the adapter logs `[whatsapp:fake]` (code included) and returns `fake-<uuid>`; in production WhatsApp counts as live only when the token is set. S12 copy for `verification_code_invalid`, `rate_limited` and `undeliverable`: Design §12.
 - **Budget:** `action`
 
 #### EP-31 — Get channel usage this month
@@ -655,6 +679,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** —
 - **States:** S12 *default* (counter shown only when Premium; Free → part of *premium_locked* WhatsApp card).
 - **Side effects:** none.
+- **As built (v1.5, Steps 18, 29):** `rpc:get_channel_usage()` (security invoker, §20); read by S12 for Premium users only.
 - **Budget:** `read-small`
 
 #### EP-32 — Mark done via action link
@@ -668,6 +693,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `invalid_action_token` (400) — bad signature, expired (> 24 h), or used while the instance is not done; `not_found` (404) — recipient lost access (left household, opted out, pet unshared or deleted); `household_read_only` (403) — recipient is a member of a read-only household. Error responses are localized HTML pages (JSON `ApiError` with `Accept: application/json`).
 - **States:** no app screen; S10 shows the instance as done on next load.
 - **Side effects:** same as EP-26 with `done_by = recipient_id`; marks the token used. Requests with `Purpose: prefetch` / `Sec-Purpose: prefetch` headers and `HEAD` requests return `200` without marking anything (mail-scanner prefetch guard).
+- **As built (v1.5, Step 19):** route handler `app/api/a/done/route.ts`; the token is verified, then `rpc:mark_occurrence_done_for(p_occurrence_id, p_recipient_id)` (security definer, `service_role` only — the EP-26 effects plus the access check; §20) runs. The page is one server-rendered HTML document (escaped variables, inline token styles, logo `<img>`) — Design §9.1 `action_done_page`, `action_expired_page`, `action_not_found_page`, `action_read_only_page`. **`HEAD` requests and prefetches (`Purpose` / `Sec-Purpose: prefetch`) get `200` with an empty body and change nothing**, so link scanners cannot mark a reminder done. Links go to `<NEXT_PUBLIC_SITE_URL>/podsetnici`.
 - **Budget:** `public`
 
 #### EP-33 — Dispatch due reminders
@@ -691,6 +717,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
   7. **Missed (BR-15, E-05)** — final notices with `status = 'resent'`, `resent_at <= now() − 30 min`, instance not done → `status = 'missed'`.
   8. **Watchdog (RISK-14)** — if pending rows with `notify_at < now() − 15 min` exist and no delivery was recorded in the last 15 minutes, email the Operator (at most once per hour).
   - Premium expiry notices (FR-25, BR-09) are not sent here; they belong to the nightly subscription job EP-49.
+- **As built (v1.5, Steps 19, 29):** `POST /api/internal/dispatch` wires `lib/server/dispatch.ts` (`resolveChannels`, `runDispatch`); `X-Dispatch-Secret` mismatch → `401`. Database steps through `claim_due_occurrences`, `claim_resend_occurrences`, `mark_missed_occurrences`, `dispatch_watchdog_due` (all security definer, `service_role` only, §20). Email: 3 tries inside the run (0 s, 1 s, 3 s), then `failed`; push: 1 immediate retry. The 31st WhatsApp message of the month falls back to email + push and records a `failed` `whatsapp` row with `error = whatsapp_cap_reached`. The RISK-14 watchdog is **logged** at most once an hour per instance; the Operator email is not sent until CR-24 copy exists. Local mode: empty `RESEND_API_KEY` outside production → console + id `local-<uuid>`; empty VAPID keys → push skipped.
 - **Budget:** `job` (NFR-01: median ≤ 2 min, ≥ 95 % within 5 min of `notify_at`)
 
 ### 5.4 Household (EPIC-04)
@@ -706,6 +733,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `not_found` (404) — `household_id` not related to the caller.
 - **States:** S13: `household = null` and `Me.entitlements.premium = false` → *premium_locked* (G); `household = null` and Premium → *empty* (E, "invite your first member" — the household is created by the first EP-35); household with no members besides the owner (`members` length 1) → *empty* (E); `read_only = true` → *read_only* (R: banner with `owner_premium_until`, controls hidden); `my_role = member` → member view (M, *read_only*); otherwise *default* (D).
 - **Side effects:** none.
+- **As built (v1.5, Step 22):** EP-34 … EP-40 run as `getHousehold`, `createHouseholdInvitation`, `changeHouseholdMembership`, `setSharedPet`, `setMyReminderOptIn` (`lib/actions/household.ts`) and `getHouseholdInvitation`, `decideHouseholdInvitation` (`lib/actions/invitations.ts`) over the definer functions `get_household`, `create_household_invitation`, `get_household_invitation`, `decide_household_invitation` (§20). Only the default household is shown; a household switcher is open.
 - **Budget:** `read-small`
 
 #### EP-35 — Create household invitation
@@ -721,6 +749,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `premium_required` (403, `details.limit = "household"`) — owner without Premium (E-10); `household_full` (409) — owner + members already = 6 (BR-20, E-11; pending invitations do not reserve a slot); `already_member` (409) — `email` equals the owner's or a current member's `profiles.email`; `validation_failed` (422); `rate_limited` (429, `details.retry_after_s`) — more than 20 invitations per day per user; `forbidden_role` (403).
 - **States:** S13 Dialog success → link shown with copy button / "email sent" confirmation; `403 premium_required` → *premium_locked*; `409` → inline message in the Dialog.
 - **Side effects:** if the caller owns no household, inserts `households { owner_id: auth.uid(), name: household_name, read_only: false }` first. Inserts `household_invitations { household_id, email, token_hash, expires_at: now() + 7 days, status: pending }`. A pending invitation to the same email is set to `status = expired`. Email invitations send a localized Resend email (inviter name, household name, link); link invitations send nothing. A link invitation is single-use (`accepted_by` holds one user).
+- **As built (v1.5, Step 22):** the action creates the id (`randomUUID`) and an `hh_` token (`randomToken`), stores only `hashToken` (SHA-256 hex) through `create_household_invitation`, and returns `invite_url = NEXT_PUBLIC_SITE_URL + "/poziv/" + token`. With no household yet the request also carries `household_name` (≤ 60; `required` / `too_long`). The *Linkom* tab sends `email = null`. An email without shared pets uses `household_invitation.bodyNoPets` (Design §9.1).
 - **Budget:** `action`
 
 #### EP-36 — Revoke invitation / remove member / leave household
@@ -814,6 +843,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `validation_failed` (422) — field codes above; Supabase "user already registered" / empty `identities` → `fields.email = taken`; Supabase weak-password error → `fields.password = too_weak`; `rate_limited` (429) — Supabase email rate limit on sign-up/resend; `email_not_verified` (403) — `complete_registration` before verification.
 - **States:** S15 *default* (form) → *email_sent* ("Proveri mejl"; extra shelter note) on sign-up success; `422` → inline field errors / "email taken" error state.
 - **Side effects:** `complete_registration` inserts `profiles { id: auth.uid(), account_type, locale, email, terms_accepted_at: now(), terms_version }`. Shelter/breeder additionally insert `organisations { type, name: org_name, slug: generated unique, city_id, tax_id, registration_note, approval_status: shelter → pending / breeder → approved (BR-32), created_by }` and `organisation_memberships { role: admin }`; a pending shelter triggers an Operator notification email. Breeder features still need a breeder plan (BR-11, EP-45). Verification and auth emails go through Resend SMTP (ADR-08).
+- **As built (v1.5, Step 12):** `signUp` / `completeRegistration` (`lib/actions/registration.ts`), server-only (§4.1). The Visitor's language is the `ml_locale` cookie (TC §8.2), written by `setVisitorLocale`. The Operator notification for a pending shelter is not sent until CR-24 copy exists.
 - **Budget:** `action`
 
 #### EP-42 — Auth session operations
@@ -828,6 +858,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `unauthenticated` (401, `details.reason = "invalid_credentials"`) — wrong email/password; `email_not_verified` (403) — Supabase "email not confirmed"; `rate_limited` (429) — Supabase auth rate limits; `validation_failed` (422) — new password too weak.
 - **States:** S16 *default*; `401` → error (X, wrong credentials); `403 email_not_verified` → error with resend option (EP-41 resend).
 - **Side effects:** none beyond the session; signing in during pending deletion leads to S19 *pending_deletion*.
+- **As built (v1.5, Steps 11, R1; owner decision 2026-10-21):** server actions `signInWithPassword`, `signInWithGoogle`, `requestPasswordReset`, `resendVerification`, `setNewPassword`, `signOut` in `lib/actions/auth.ts` (§4.1 server-only auth) — the browser never calls Supabase Auth. The callback is `app/(auth)/auth/callback/route.ts`. **S16 reset view:** *Zaboravljena lozinka?* switches `/prijava` in place to the reset form; the same view opens directly at **`/prijava?view=reset`** (S28 *Pošalji novi link* leads there). `requestPasswordReset` always answers `ok` after a valid email (no enumeration; Supabase rate limits → `rate_limited`). The recovery link returns through `/auth/callback?next=/prijava/nova-lozinka`; `setNewPassword` works only in a session whose `amr` contains `recovery` (otherwise `invalid_action_token` → S28 expired state), refuses passwords under 8 characters and ends with a local sign-out. `/prijava` follows `next` only for same-site paths. The post-sign-in redirect matrix (`postSignInPath`) is also used by `/` (Step R1).
 - **Budget:** `action`
 
 #### EP-43 — Get / update me
@@ -844,6 +875,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** `validation_failed` (422); `account_pending_deletion` (403) — update during the deletion window.
 - **States:** shells *loading* → *default*; S18 *default*, `entitlements.subscription_status = expired` → *expired* variant with over-limit summary from `usage`; S19 `deletion_due_at` not null → *pending_deletion*; `422` → inline field errors; `5xx` → *error*.
 - **Side effects:** `locale` change switches UI language immediately and is used for all later emails/messages to the user.
+- **As built (v1.5, Steps 11, 12, 28b):** `rpc:get_me()` (security definer, §20) and `updateMe`; a language change also rewrites the `ml_locale` cookie. `display_name` is written through the column grant (TC §5).
 - **Budget:** get `read-small`, update `write`
 
 #### EP-44 — List plans
@@ -856,6 +888,7 @@ Jobs EP-49, EP-52, EP-87 and webhook EP-46 run as System. In EP-73 … EP-88 "Me
 - **Errors:** —
 - **States:** S17 *default* with prices; price fields `null`, or payments not configured (the S17 server page reads `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` and `PADDLE_API_KEY`; either empty → payments off, local mode) → *payments_coming_soon* ("Plaćanje uskoro dostupno", prices hidden); `5xx` → *error*.
 - **Side effects:** none.
+- **As built (v1.5, Step 23):** reads the view `v_public_plans` (every plan enum value left-joined to the active priced `plans` rows, granted to `anon` and `authenticated`); `Plan.price` and `monthly_equivalent` are **nullable** — null while no priced row exists (S17 *Plaćanje uskoro dostupno*).
 - **Budget:** `public`
 
 ### 5.6 Subscriptions & data control (EPIC-05, part 2)
@@ -937,6 +970,7 @@ With `PADDLE_API_KEY` empty (local mode) no call is made; the operations below s
     - When `amount_minor > 0`, insert `subscription_payments { kind, result: succeeded, amount_minor, currency, provider_transaction_id }`, with on conflict (`provider_transaction_id`, `result`) do nothing. A zero-amount transaction (the card check at the start of a trial) writes no payment row.
   - **`payment_failed`:** same lookup; when `amount_minor > 0`, insert `subscription_payments { result: failed }` with the same dedupe. The status change comes from `subscription.past_due`. We send no email: Paddle's dunning emails the customer and retries.
   - **Household flag:** after any status change the existing subscriptions trigger recomputes `households.read_only = NOT Premium active(owner)` (BR-28).
+- **As built (v1.5, Step 31):** `app/api/webhooks/payments/route.ts` accepts a request when any `h1` in `Paddle-Signature` matches and `ts` is within ±300 s; each mapped event is applied by `rpc:apply_payment_event(p_event jsonb, p_record_event boolean default true) → text` (security definer, `service_role` only, §20), which dedupes on `event_id`, orders by event time and resets `last_notice_days` on renewal. A duplicate subscription purchase is cancelled at Paddle at once and logged for a manual refund.
 - **Budget:** `action`
 
 #### EP-47 — Get my subscription
@@ -949,6 +983,7 @@ With `PADDLE_API_KEY` empty (local mode) no call is made; the operations below s
 - **Errors:** `forbidden_role` (403).
 - **States:** S17 *trial_used* when `trial_available = false`; S18 *default* (`status` trialing/active, `auto_renew = true`), *cancelled* (`auto_renew = false`, period not ended), *expired* (`status = expired` or `payment_failed`, shows `over_limits`); *loading*; *error* on 5xx.
 - **Side effects:** none.
+- **As built (v1.5, Steps 23, 31):** `rpc:get_my_subscription()` (security invoker) through `getMySubscription`; `manage_billing_available` is true when the latest row of the caller's family has a `provider_customer_id`.
 - **Budget:** `read-small`
 
 #### EP-48 — Cancel auto-renew (and turn it back on)
@@ -967,6 +1002,7 @@ With `PADDLE_API_KEY` empty (local mode) no call is made; the operations below s
   - The `subscription.updated` webhook that follows (EP-46) confirms the same state.
   - Rows without a provider id (local seed data) change in the database only.
   - Confirmation email (Resend).
+- **As built (v1.5, Steps 23, 31):** `setAutoRenew` calls Paddle first (cancel / resume) and then `rpc:set_auto_renew(p_auto_renew boolean) → subscriptions` (security definer, `auth.uid()` only; `subscription_not_active`); a row without `provider_subscription_id` (seed data) changes only in the database. The confirmation email is not sent (CR-24).
 - **Budget:** `write`
 
 #### EP-89 — Billing portal link (v1.4)
@@ -979,6 +1015,7 @@ With `PADDLE_API_KEY` empty (local mode) no call is made; the operations below s
 - **Errors:** `subscription_not_active` (409) — the caller's latest row of their family has no `provider_customer_id` (`Subscription.manage_billing_available = false`); `payment_provider_unavailable` (503) — `PADDLE_API_KEY` is empty or the Paddle call failed; `forbidden_role` (403).
 - **States:** S18 *default* / *cancelled* / *expired* (button shown only when `manage_billing_available`); errors → the generic error toast.
 - **Side effects:** none in our database.
+- **As built (v1.5, Step 31):** `getBillingPortalUrl` in `lib/actions/subscription.ts`, exactly as above: `subscription_not_active` when `manage_billing_available` is false or the latest row has no `provider_customer_id`; `payment_provider_unavailable` (message `PADDLE_API_KEY is empty`) while Paddle is not configured or when the portal-session call fails (logged). The Paddle base URL follows `NEXT_PUBLIC_PADDLE_ENV` (anything but `production` → sandbox). Shown on S18 and the S17 breeder variant only when `manage_billing_available`.
 - **Budget:** `action`
 
 #### EP-49 — Subscription reconciliation & expiry job
@@ -1002,6 +1039,7 @@ With `PADDLE_API_KEY` empty (local mode) no call is made; the operations below s
      - a notice that would fall on the period's first day (30 days on a monthly plan) is skipped;
      - `subscriptions.last_notice_days` records the notice sent, so a re-run sends nothing twice (TC §5.1); EP-46 resets it on renewal.
   4. **Household flag** — for every household whose owner's Premium-active value changed in steps 1–2: `households.read_only = NOT Premium active(owner)` (BR-28). WhatsApp/Viber fallback after expiry needs no write: the dispatch job checks Premium at send time (BR-16).
+- **As built (v1.5, Steps 30, 31):** `POST /api/internal/billing-nightly`, pg_cron `billing-nightly` (`0 1,2 * * *` UTC; works only when the Belgrade hour is 3, otherwise zero counts). Unauthenticated → `401 unauthenticated`. Functions `billing_expire_subscriptions`, `billing_expiry_notice_candidates`, `mark_expiry_notice_sent`, `billing_refresh_household_flags` (§20). Notices go when `days_left` ∈ {30, 7, 1} and (`last_notice_days` is null or `days_left < last_notice_days`); breeder-plan rows and web-push expiry notices get none (CR-24).
 - **Budget:** `job`
 
 #### EP-50 — Request data export / get my data overview
@@ -1026,6 +1064,7 @@ With `PADDLE_API_KEY` empty (local mode) no call is made; the operations below s
 - **Errors:** `export_in_progress` (409) — a row with `status = preparing` exists; `internal_error` (500) — the export row could not be created.
 - **States:** S19 *default* (no export or `expired`/`failed`), *preparing* (`status = preparing`), *ready* (`status = ready`, `download_url` set), *error* on 5xx or `status = failed`; *pending_deletion* from `deletion.due_at` not null.
 - **Side effects:** `requestDataExport` inserts `data_exports{user_id, status = preparing, requested_at = now}`; the internal route `/api/internal/exports`, called by pg_cron every 5 minutes (TC ADR-13, v1.6), picks up `preparing` rows, builds one ZIP with `fflate` (all personal data, records, attachments, photos), uploads it to R2 under `exports/` (§10), then sets `status = ready`, `r2_key`, `size_bytes`, `ready_at = now`, `expires_at = ready_at + 7 days` and emails the user (Resend) that the archive is ready; on failure `status = failed`. Expired archives are removed by EP-52.
+- **As built (v1.5, Steps 23, 30a):** `requestDataExport` / `getMyDataOverview` (`lib/actions/data-control.ts`) over `request_data_export()` and `get_my_data_overview_base()` (security definer, §20); the action adds `latest_export` and signs its download (`FileUrl.kind = "data_export"`, §6). Archives are built by `POST /api/internal/exports` (pg_cron `data-exports`, every 5 minutes; wrong secret → `401 invalid_signature`), one per run; over 90 MB → `failed`.
 - **Budget:** `action`
 
 #### EP-51 — Request account deletion / cancel deletion
@@ -1040,6 +1079,7 @@ With `PADDLE_API_KEY` empty (local mode) no call is made; the operations below s
 - **Errors:** `validation_failed` (422) — `confirm` not true (`fields.confirm = "required"`); `account_pending_deletion` (403) — `requestAccountDeletion` while already pending. `cancelAccountDeletion` when nothing is pending is a no-op returning `ok`.
 - **States:** S19 *pending_deletion* after request (and every other protected call now returns `403 account_pending_deletion`); S19 *default* after cancel (E-16).
 - **Side effects:** request → `profiles.deletion_requested_at = now()`, `deletion_due_at = now() + 30 days`; confirmation email (Resend) with the due date. Our subscription row is not changed directly, so cancelling the deletion restores the account unchanged (E-16). Instead (v1.4), when the running row has a `provider_subscription_id` and `auto_renew = true`, the request first cancels at Paddle at period end and sets `subscriptions.renewal_paused_for_deletion = true`, so Paddle charges no renewal while deletion is pending. If that Paddle call fails, the request fails with `503 payment_provider_unavailable` and nothing is stored. EP-49 lets the period expire. Cancel → both columns set to `null`; for a row with `renewal_paused_for_deletion = true` the scheduled Paddle cancellation is removed (resume renewal) and the flag reset; the following webhooks mirror Paddle's state back (EP-46); confirmation email.
+- **As built (v1.5, Steps 23, 31):** `requestAccountDeletion` / `cancelAccountDeletion` over `request_account_deletion()` / `cancel_account_deletion()` (security definer, `auth.uid()` only; `account_pending_deletion`); the Paddle cancellation is scheduled or resumed and `renewal_paused_for_deletion` set through `set_renewal_paused_for_deletion(p_paused)`. The cancel-deletion confirmation email is not sent (CR-24); the `account_deletion_scheduled` button goes to `/profil/podaci`.
 - **Budget:** `action`
 
 #### EP-52 — Nightly deletion & retention job
@@ -1064,6 +1104,7 @@ With `PADDLE_API_KEY` empty (local mode) no call is made; the operations below s
   3. **Delivery purge (NFR-08)** — delete `reminder_deliveries` with `delivered_at < now() − 12 months`.
   4. **Expiry** — `household_invitations`, `organisation_invitations`, `record_transfers` with `status = pending` and `expires_at < now()` → `status = expired`.
   5. **Exports** — `data_exports` with `status = ready` and `expires_at < now()` → delete R2 object, `status = expired`.
+- **As built (v1.5, Steps 30, 31):** `POST /api/internal/retention-nightly`, pg_cron `retention-nightly` (`30 1,2 * * *` UTC; Belgrade hour 3 only). Unauthenticated → `401 unauthenticated`. `retention_delete_due_accounts(p_limit, p_skip)` (skips accounts whose Paddle cancellation failed that night), `r2_deletion_batch`, `r2_dequeue`, `r2_keys_in_use`, `retention_purge_deliveries`, `retention_expire_invitations`, `retention_expire_exports`, `retention_purge_server_support` (§20). BR-27 heir = earliest-joined member who owns no household and has an owner account; BR-46 = the last member's own 30-day grace, organisation deleted in the same run. Orphan scan of `u/`, `o/`, `p/`, `exports/`, at most 1000 objects; without `R2_*` R2 is skipped. The heir email is not sent (CR-24).
 - **Budget:** `job`
 
 ### 5.7 Organisations (EPIC-06)
@@ -1087,6 +1128,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Errors:** `not_found` (404).
 - **States:** S20 *pending_approval* when `organisation.approval_status = "pending"` (everything read-only); *read_only* when `access.can_edit = false`; *default*; *loading*; *error* on 5xx/404.
 - **Side effects:** none.
+- **As built (v1.5, Steps 24, 28b):** `rpc:get_my_organisation()` (security definer, explicit membership check; member names from `profiles`; `Organisation.donation` added in 28b); `app/(org)/layout.tsx` admits anyone this returns.
 - **Budget:** `read-small`
 
 #### EP-54 — List organisation animals
@@ -1125,6 +1167,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Errors:** `validation_failed` (422) — field errors; `forbidden_role` (403); `not_found` (404) — pet of another organisation; `organisation_pending_approval` (403).
 - **States:** S20 inline field errors in the Dialog; *default* after save (row appears, chip counts change).
 - **Side effects:** `createIntake` (one transaction): `pets{organisation_id, name, species, species_other, sex, breed, approx_age_text, shelter_status = intake}` + `intakes{pet_id, intake_on, arrival_type, place_found, note, created_by}` + `pet_status_history{status = intake, changed_at = now, changed_by}`. Status change: trigger inserts `pet_status_history{status, changed_at = now, changed_by = auth.uid()}`. EP-62 is not cached, so a change to or from `available` shows on the public page on the next request.
+- **As built (v1.5, Step 24):** `createIntake` → `rpc:create_intake(…)` (security invoker, one transaction; §20); `changeAnimalStatus` updates `shelter_status` / `breeding_status` through the column grant. Search is diacritic-insensitive (`private.search_text`).
 - **Budget:** `write`
 
 #### EP-56 — Team: invite member / remove member / change role
@@ -1140,6 +1183,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Errors:** `team_full` (409) — members + pending invitations already 20 (BR-34; trigger on memberships); `already_member` (409) — the email belongs to a current member; `validation_failed` (422) — bad email/role, or the change would leave the organisation with no admin (`fields.user_id = "last_admin"`); `forbidden_role` (403); `not_found` (404) — member/invitation not in this organisation; `organisation_pending_approval` (403).
 - **States:** S20 Tim tab *default* with the new pending invitation; inline errors in the invite Dialog.
 - **Side effects:** invite → any earlier pending invitation for the same email is set `expired`; inserts `organisation_invitations{organisation_id, email, role, token_hash, expires_at, status = pending}` with the same validity as household invitations (EP-35); emails the raw link `/poziv/<token>` (Resend). The invitee views/accepts/declines it through the invitation flow EP-39/EP-40 (Part B, `InvitationView`), which inserts `organisation_memberships{role}` and sets `status = accepted`, `accepted_by`. Remove: the user loses access; their entries remain (as BR-26). Repeat invite with the same key within 24 h returns the original invitation and sends nothing.
+- **As built (v1.5, Step 24):** `inviteTeamMember`, `revokeInvitation`, `removeMember`, `changeMemberRole` (`lib/actions/team.ts`). The invitation id is `randomUUID`, the `og_` token is signed with `signActionToken('og', …, now + 7 days)` and only `hashToken` is stored (`create_organisation_invitation`). `team_full` counts members **plus live pending invitations** (trigger). A role change or removal that leaves no Admin raises **`validation_failed:last_admin`**, mapped to `fields.user_id = "last_admin"`. Writes on a pending or rejected organisation → `organisation_pending_approval`.
 - **Budget:** `action` (invite), `write` (remove, revoke, change role)
 
 #### EP-57 — List adoption requests / breeder inquiries
@@ -1170,6 +1214,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Errors:** `already_decided` (409) — status is not `pending`; `forbidden_role` (403); `not_found` (404); `breeder_plan_required` (403) — breeder without active plan; `organisation_pending_approval` (403).
 - **States:** S21 *default* with the row moved to the accepted/rejected filter; accepted rows show "Pošalji karton".
 - **Side effects:** `status`, `decided_by = auth.uid()`, `decided_at = now()`. Accept → pet `shelter_status = reserved` (shelter) or `offspring_status = reserved` (breeder) + `pet_status_history` (shown on EP-62 on the next request). Accept and reject → email to the applicant's `email` (Resend) in the applicant's `profiles.locale`, with the organisation's contact details on accept (BR-36). Other pending requests for the same pet are left unchanged.
+- **As built (v1.5, Step 25):** `decideRequest` → `rpc:decide_org_request(p_kind, p_id, p_decision) → jsonb` (security definer; returns the applicant's locale and the organisation contacts for the email; `already_decided`, `breeder_plan_required`). The organisation-admin email on a new request is not sent (CR-24).
 - **Budget:** `action`
 
 #### EP-59 — Send record transfer / re-send
@@ -1184,6 +1229,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Errors:** `invitation_used` (409) — the pet already has an `accepted` transfer; `validation_failed` (422) — bad email; `forbidden_role` (403); `not_found` (404); `breeder_plan_required` (403); `organisation_pending_approval` (403).
 - **States:** S21 *default* with "Poslato … · važi do …"; inline errors in the Dialog.
 - **Side effects:** any `pending` transfer for the pet → `status = expired`; insert `record_transfers{pet_id, from_organisation_id, recipient_email, token_hash, expires_at = now + 30 days, status = pending}` (re-send copies `pet_id` and `recipient_email` from `transfer_id` with a new token, BR-38); pet → `shelter_status = adopted` / `offspring_status = sold` if not already, + `pet_status_history`; email with the raw link `/poziv/<token>` (Resend). Repeat with the same key within 24 h returns the original and sends nothing.
+- **As built (v1.5, Step 25):** `sendRecordTransfer` / `resendRecordTransfer` → `create_record_transfer(p_id, p_pet_id, p_recipient_email, p_token_hash)` / `resend_record_transfer(p_new_id, p_transfer_id, p_token_hash)` (security definer; `tr_` token stored hashed).
 - **Budget:** `action`
 
 #### EP-60 — Get transfer by token / accept / decline
@@ -1198,6 +1244,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Side effects:**
   - accept (one transaction): copy the pet into a new `pets` row with `owner_id = auth.uid()`, `organisation_id = null`, organisation-only fields cleared (`shelter_status`, `offspring_status`, `breeding_status`, `litter_id`, `price_minor`, `public_description`); copy `weight_entries`, `vaccinations`, `treatments` (+ `dose_logs`), `vet_visits` (+ `attachments`, with each R2 object copied server-side to a new key) and `pets.photo_r2_key`; `created_by` keeps the original authors; the reminder triggers create reminders for the copied vaccinations/treatments/visits/birthday (BR-12). Set `record_transfers.status = accepted`, `accepted_by`, `accepted_at = now()`, `new_pet_id`. The organisation's original stays as a read-only copy (`Access.can_edit = false` for an animal with an accepted transfer). Email to the organisation's admins.
   - decline: `status = declined`; email to the organisation's admins ("karton nije prihvaćen").
+- **As built (v1.5, Steps 25, F1):** `getTransfer` / `acceptTransfer` / `declineTransfer` (`lib/actions/transfers.ts`). Accept order: `get_transfer_copy_plan(p_token_hash)` → pre-generate the new pet id, visit ids and `u/` keys → copy the R2 objects (`CopyObject`; the R2 client is created only when there is at least one key) → `accept_record_transfer(p_token_hash, p_new_pet_id, p_visit_id_map, p_key_map)`; if the database step fails the copies are deleted. Inside the copy `app.transfer_copy = on` lets the attachment-limit and `created_by` triggers keep the supplied values; copied `occurrence_id` is null. The Free slot error is **`premium_required:transfer_slot`**, and the action adds `details.slot_pet_id` / `slot_pet_name` from `Me.usage.free_slot_pet`. The organisation keeps a read-only copy (`pet_is_transferred`; guard triggers → `forbidden_role`; `can_edit` / `can_delete` false in EP-01 / EP-02). The admin email on accept / decline is not sent (CR-24).
 - **Budget:** `read-small` (get), `action` (accept, decline)
 
 #### EP-61 — Litters: list / create / update offspring status and price
@@ -1213,6 +1260,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Errors:** `validation_failed` (422) — mother not female/not ours, both father fields set, `born_on` in future, count out of range, negative price; `breeder_plan_required` (403); `forbidden_role` (403); `not_found` (404); `organisation_pending_approval` (403).
 - **States:** S22 *empty* on `items: []`; *default*; *read_only* when `access.can_edit = false`; inline errors in the Dialog.
 - **Side effects:** create (one transaction): `litters{organisation_id, mother_id, father_id, father_name, born_on, offspring_count}` + `offspring_count` `pets{organisation_id, litter_id, name = "Mladunče N", species = mother's, breed = mother's, sex = unknown, birth_date = born_on, offspring_status = available}` + one `pet_status_history` row each (`available`). Names and sex are edited later through EP-04 (Part A). Status/price change → `pet_status_history` (status only); EP-62 reflects it on the next request.
+- **As built (v1.5, Step 26):** `listLitters`, `createLitter` → `create_litter(p_mother_id, p_father_id, p_father_name, p_born_on, p_offspring_count) → uuid` (security definer, membership + breeder plan; count 1–20), `updateOffspring`.
 - **Budget:** `read-small` (list), `action` (create), `write` (update)
 
 #### EP-62 — Public organisation page
@@ -1225,6 +1273,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Errors:** `not_found` (404); `validation_failed` (422) — bad paging.
 - **States:** S23 *default*; *empty* on `animals: []`; *error* on 404/5xx. Guest vs signed-in variants come from the session (Me, Part B), not from this response.
 - **Side effects:** none. Status/price changes (EP-55, EP-58, EP-59, EP-61) and approval decisions (EP-68) show on the next request.
+- **As built (v1.5, Step 26):** shared loader `lib/server/public-org-page.ts` for the route handler under `app/api/public/orgs/` and S23; `rpc:get_public_org_page(p_slug, p_limit, p_offset)` (security definer, public fields only, `anon` + `authenticated`). Not cached (ADR-18).
 - **Budget:** `public`
 
 #### EP-63 — Submit adoption request / breeder inquiry
@@ -1243,6 +1292,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Errors:** `rate_limited` (429, `details.retry_after_s`) — more than 5 per hour per user; `validation_failed` (422); `not_found` (404) — pet not publicly available.
 - **States:** S23 sent confirmation on `ok`; inline field errors; sign-in prompt on `401`.
 - **Side effects:** insert into `adoption_requests` (shelter pet) or `breeder_inquiries` (breeder offspring) with `requester_id = auth.uid()`, `status = pending`; notification email to the organisation's admins (Resend). Repeat with the same key within 24 h returns the original row.
+- **As built (v1.5, Step 25):** `submitOrgRequest` → `submit_org_request(p_pet_id, p_name, p_phone, p_email, p_message) → jsonb` (security definer).
 - **Budget:** `action`
 
 ### 5.8 Partners & admin (EPIC-07)
@@ -1261,6 +1311,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Errors:** `validation_failed` (422) — neither coordinates nor city (`fields.p_city_id = "required"`), one coordinate only.
 - **States:** S24 *empty* on `[]`; *default*; *loading*; *error*. S03 shows no suggestion block on `[]`.
 - **Side effects:** none.
+- **As built (v1.5, Step 27):** `listPartnersNearby` / `suggestNearbyVets` over `partners_nearby`. With no location and no profile city the S24 empty state is shown and the S03 block is absent; the S03 block renders nothing on any failure.
 - **Budget:** `read-small`
 
 #### EP-65 — Get partner
@@ -1285,6 +1336,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Errors:** `not_found` (404) — unknown or hidden partner; `validation_failed` (422) — action without data.
 - **States:** none (a failure never blocks the link; the client ignores errors).
 - **Side effects:** insert `partner_clicks{partner_id, action, user_id = auth.uid(), clicked_at = now()}`.
+- **As built (v1.5, Step 27):** `recordPartnerClick` (`lib/actions/partners.ts`) over `record_partner_click`; partner websites get `https://` only when stored without a scheme.
 - **Budget:** `write`
 
 #### EP-67 — List cities
@@ -1311,6 +1363,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Errors:** `forbidden_role` (403); `not_found` (404); `already_decided` (409) — not `pending`; `validation_failed` (422) — reason with approve, reason too long.
 - **States:** S26 tab *empty* on `[]`; *default*; *loading*; *error*.
 - **Side effects:** approve → `organisations.approval_status = approved`; members' writes unblock immediately; email to the creator (`profiles.email` of `organisations.created_by`, Resend). Reject → `approval_status = rejected`, `rejection_reason`; email with the reason when given. EP-62 reflects the decision on the next request.
+- **As built (v1.5, Step 28):** list from the view `admin_pending_organisations` (`security_invoker = false`, rows only for an Operator); `decideOrganisation` → `decide_organisation(p_organisation_id, p_decision, p_rejection_reason)` (security definer). `shelter_rejected` appends *Razlog: {reason}.* when a reason is given; `shelter_approved` links to `/organizacija`. `app/admin/layout.tsx`: no session → `/prijava?next=/admin`; not an Operator → `/ljubimci`.
 - **Budget:** `read-list` (list), `action` (decide)
 
 #### EP-69 — Admin: list / create / update partner
@@ -1340,6 +1393,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Errors:** `featured_limit_reached` (409) — a 4th featured partner of this type in this city (trigger, BR-41); `geocoding_failed` (502) — Nominatim found nothing or failed (the Operator enters coordinates manually and saves again); `validation_failed` (422); `file_too_large` / `file_type_not_allowed` (422) — logo; `forbidden_role` (403); `not_found` (404).
 - **States:** S26 Partneri *default*, *empty* on `[]`, *loading*, *error*; inline field errors and a toast for `featured_limit_reached` / `geocoding_failed`.
 - **Side effects:** save upserts `partners` and replaces `partner_hours` in one transaction; geocoding calls OpenStreetMap Nominatim (≤ 1 request/s, server-side, with app User-Agent). Changes show in EP-64/65 on the next read; a passed `paid_until` hides the partner automatically (E-23). A replaced logo's old R2 key is queued for EP-52.
+- **As built (v1.5, Step 28):** `savePartner` → `save_partner(p_id, p_fields, p_hours)` (security definer, Operator) and `admin_list_partners` (first line raises `forbidden_role` for a non-Operator). Logo: `createPartnerLogoUpload(partner_id)` (existing partner required) → PUT → `savePartner({ id, logo_r2_key })`; the action checks with an R2 `HEAD` that the key exists under `p/<id>/` (skipped without R2 credentials locally). Geocoding through Nominatim only when both coordinates are empty (`geocoding_failed`); `featured_limit_reached` at 3 featured partners per type and city. Mockup type values `shop` / `hotel` map to `pet_shop` / `pet_hotel`.
 - **Budget:** `read-list` (list), `action` (geocode, logo, save)
 
 #### EP-70 — Admin: partner click statistics by period
@@ -1352,6 +1406,7 @@ Organisation callers act on the one organisation they belong to (a shelter or br
 - **Errors:** `forbidden_role` (403); `validation_failed` (422) — bad period format.
 - **States:** S26 Statistika *empty* on `items: []`; *default*; *loading*; *error*.
 - **Side effects:** none.
+- **As built (v1.5, Step 28):** `admin_partner_click_stats(p_period, p_limit, p_offset)` (security definer; `forbidden_role` for a non-Operator; `period:invalid`).
 - **Budget:** `read-list`
 
 #### EP-71 — Admin: get / set app settings
@@ -1412,6 +1467,7 @@ Community listings (needs, giving, selling, seeking), 1:1 messaging about a list
 - **Errors:** `validation_failed` (422) — unknown enum value, `limit` out of range, unknown `city_id`.
 - **States:** S32 *loading* → *default*; `total = 0` → *empty* (with filters: *"Nema oglasa za ove filtere"* + *Poništi filtere*; without: *"Još nema oglasa"*); 5xx → *error*. *signed_out* (O) and *suspended* (S) come from the session and `Me.marketplace.suspended_at` (EP-43), not from this response.
 - **Side effects:** none.
+- **As built (v1.5, Step 28b):** `list_listings(…)` (security invoker, `anon` + `authenticated`); the author card comes from `sapa_author_card(p_author, p_org)` and the donation flag from `org_has_donation_info(p_org)` (both security definer). Display-name fallback *Korisnik* / "User".
 - **Budget:** `public`
 
 #### EP-74 — Get listing
@@ -1446,6 +1502,7 @@ Community listings (needs, giving, selling, seeking), 1:1 messaging about a list
 - **Errors:** `premium_required` (403, `details.limit = "listings"`) — create of a non-need listing by a Free user without a Shelter account who already has 3 active listings (BR-55, E-28; trigger `listings_active_limit`); `listing_type_not_allowed` (403) — `need` without approved-shelter membership (BR-54, E-29); `category_not_allowed` (422) — `medicine_care` on a non-need listing (BR-54, E-29); `listing_not_active` (409) — update of a `resolved` or `hidden` listing (active and expired listings can be edited); `marketplace_suspended` (403) (E-35); `organisation_pending_approval` (403) — need listing of a pending shelter; `validation_failed` (422); `forbidden_role` (403); `not_found` (404).
 - **States:** S34 *default* / *shelter* (need) / *edit* → toast + redirect to S33; *invalid* — inline field errors on `422` and `category_not_allowed` (under *Kategorija*); *premium_locked* (G, `PremiumLock` over the form) on `premium_required`; *suspended* (S) from `Me.marketplace.suspended_at`; *error* (X) on 5xx.
 - **Side effects:** create: inserts `listings { author_id = auth.uid(), organisation_id, type, title, description, category, species, city_id, price_minor, price_negotiable, status = active, published_at = now(), expires_at = now() + 30 days }` (triggers: `listings_active_limit`, `listings_need_shelter_only`, `marketplace_not_suspended`, price check). Update: writes the changed columns; `published_at` and `expires_at` never change (BR-56); `photo_ids` deletes the omitted `listing_photos` rows (their `r2_key`s go to `r2_deletion_queue`) and rewrites `position` 1…n in the given order. The listing shows in EP-73 on the next request (not cached).
+- **As built (v1.5, Step 28b):** `saveListing` → `save_listing(…) → uuid` (security invoker; the listings triggers decide). The `listings_status_guard` trigger refuses author changes to hidden or resolved listings (`listing_not_active`).
 - **Budget:** `action`
 
 #### EP-76 — List my listings
@@ -1461,6 +1518,7 @@ Community listings (needs, giving, selling, seeking), 1:1 messaging about a list
 - **Errors:** `validation_failed` (422) — unknown `p_group`, `p_limit` out of range.
 - **States:** S35 *loading* → *default*; tab with `items: []` → *empty* (*"Još nemaš aktivnih oglasa"* + *Novi oglas*); *premium_locked* (G) when `usage.active_listing_limit` is not null and `usage.active_listings ≥ usage.active_listing_limit` (`PremiumLock` card above the list, *Objavi ponovo* disabled); *suspended* (S) when `usage.suspended_at` is set (edit / extend hidden, delete allowed); *error* on 5xx.
 - **Side effects:** none.
+- **As built (v1.5, Step 28b):** `listMyListings` → `list_my_listings(p_group, p_limit, p_offset)`; a hidden listing carries the Operator's date and reason from `my_listing_moderation(p_listing)` (security definer, author only).
 - **Budget:** `read-list`
 
 #### EP-77 — Extend / resolve / delete listing
@@ -1489,6 +1547,7 @@ Community listings (needs, giving, selling, seeking), 1:1 messaging about a list
 - **Errors:** `unauthenticated` (401); `not_found` (404) — listing not visible; `validation_failed` (422, `fields.p_listing_id = "invalid_state"`) — listing is not a need.
 - **States:** S33 Doniraj Dialog *default*; `has_any = false` → *"Azil još nije dodao podatke za donacije"* + *Pošalji poruku azilu* (FR-66); sign-in prompt on `401`; error toast on 5xx.
 - **Side effects:** none. No money is collected or processed (BR-58).
+- **As built (v1.5, Step 28b):** `getDonationInfo` → `get_donation_info(p_listing_id)` (security definer, signed-in only; `p_listing_id:invalid_state` when the listing is not a visible need). The donation columns of `organisations` are not readable through the Data API (TC §5 column grants).
 - **Budget:** `read-small`
 
 #### EP-79 — Get public user profile
@@ -1501,6 +1560,7 @@ Community listings (needs, giving, selling, seeking), 1:1 messaging about a list
 - **Errors:** `not_found` (404); `validation_failed` (422) — bad paging.
 - **States:** S37 *default*; *signed_out* when `viewer.signed_in = false` (menu hidden); *empty* when `listings_total = 0`; *blocked* (B) when `viewer.i_blocked = true` (`ReadOnlyBanner` + *Odblokiraj*, listings hidden — returned as `[]`); *unavailable* on `404`; *loading*; *error* on 5xx.
 - **Side effects:** none.
+- **As built (v1.5, Step 28b):** `get_public_profile(p_user_id, p_limit, p_offset)` (security definer, `anon` + `authenticated`; default page 18).
 - **Budget:** `public`
 
 #### EP-80 — List my conversations
@@ -1541,6 +1601,7 @@ Community listings (needs, giving, selling, seeking), 1:1 messaging about a list
 - **Errors:** `listing_not_active` (409) — starting a conversation on a listing that is not active (E-33; trigger `conversations_listing_active`); `cannot_message_self` (409) — the caller is the listing's author (E-33); `user_blocked` (403) — the other party has blocked the caller (BR-59, E-34; trigger `messages_not_blocked`; nothing is sent); `marketplace_suspended` (403) (E-35); `rate_limited` (429, `details.retry_after_s`) — more than 30 messages per hour per user (§11); `validation_failed` (422); `not_found` (404) — listing not visible or conversation not the caller's; `unauthenticated` (401).
 - **States:** S33 Dialog → *"Poruka je poslata…"* + *Otvori razgovor* (`/poruke/<conversation.id>`); S36 the message appears at the bottom; `422` → inline error under the composer (*"Napiši poruku pre slanja."*); `rate_limited` and `user_blocked` → inline error under the composer (Design S36); `listing_not_active` / `cannot_message_self` → the message action is not available (E-33).
 - **Side effects:** in one transaction: when starting and no `conversations` row exists for (`listing_id`, `starter_id = auth.uid()`), inserts `conversations { listing_id, starter_id = auth.uid(), owner_id = listings.author_id, last_message_at = now() }` (unique pair, BR-61); inserts `messages { conversation_id, sender_id = auth.uid(), body = btrim(body) }` (triggers `messages_not_blocked`, `marketplace_not_suspended`, `messages_touch_conversation`); increments the `rate_limit_counters` row. **After commit — new-message notification (FR-69):** reads the recipient's `reminder_preferences` row of type `message` (default `{email, push}`; empty = off); skipped entirely when the recipient's `deletion_requested_at` is set. `email` → Resend template `new_message` in the recipient's `profiles.locale` (`{first_name}` from `profiles.full_name`, `{listing}` = `listings.title` or the "listing deleted" label, `{sender}` = sender display name, `{preview}` = first 120 characters, button to `/poruke/<conversation_id>`); `push` → Web Push to every `push_subscriptions` endpoint of the recipient (`{ title: sender, body: "<listing>: <preview>", url: "/poruke/<conversation_id>" }`; endpoints answering `404` / `410` are deleted). Never WhatsApp or Viber. Delivery failures are logged and never fail the send; nothing is written to `reminder_deliveries` (that table is per reminder occurrence).
+- **As built (v1.5, Step 28c):** `sendMessage` → `send_message(p_listing_id, p_conversation_id, p_body)` (security invoker); notification data from `new_message_notification(p_message_id)` (security definer, `service_role` only). Rate limit 30 messages per hour (`rate_limited`, `{minutes}` in the copy). Emails use `new_message.bodyNoName` without a first name and *oglas obrisan* for a deleted listing.
 - **Budget:** `action` (≤ 5 s including the notification calls)
 
 #### EP-83 — Mark conversation read
@@ -1569,6 +1630,7 @@ Community listings (needs, giving, selling, seeking), 1:1 messaging about a list
 - **Errors:** `validation_failed` (422); `not_found` (404) — listing not visible to the caller, or unknown user; `unauthenticated` (401).
 - **States:** S33 / S36 / S37 `ReportDialog` → confirmation (*"Prijava je poslata…"*); `already_submitted = true` → *"Već si prijavio/la ovaj oglas / korisnika."*; inline field errors on `422`.
 - **Side effects:** inserts `reports { reporter_id = auth.uid(), listing_id, reported_user_id (= listings.author_id for a listing report), reason, note, status = open }` (unique partial indexes give one open report per reporter and target). It appears in EP-86 and the S26 *Moderacija* count on the next read. No email.
+- **As built (v1.5, Step 28c):** `submitReport` (`lib/actions/reports.ts`); a second open report on the same target writes nothing and returns the existing report with `already_submitted = true` (also after a concurrent `23505`); **a foreign-key error (SQLSTATE `23503`) on an unknown user maps to `not_found`.**
 - **Budget:** `action`
 
 #### EP-85 — Block / unblock user
@@ -1581,6 +1643,7 @@ Community listings (needs, giving, selling, seeking), 1:1 messaging about a list
 - **Errors:** `validation_failed` (422); `not_found` (404) — unknown user.
 - **States:** S36 *blocked* (B) / S37 *blocked* (B) after block, *default* after unblock; S33 → *unavailable* after blocking from the menu (the listing is now hidden for the caller).
 - **Side effects:** block inserts `user_blocks { blocker_id = auth.uid(), blocked_id }`; unblock deletes it. Effects on the next request (BR-59): the blocked user's listings disappear from the blocker's EP-73 / EP-74 / EP-79 results; EP-82 from the blocked user to the blocker fails with `user_blocked` and sends no notification; the blocked user is never told beyond that refusal. Existing conversations stay readable for both.
+- **As built (v1.5, Step 28c):** `blockUser` / `unblockUser` → `block_user(p_user_id)` / `unblock_user(p_user_id)` (security invoker); **SQLSTATE `23503` on an unknown user → `not_found`**.
 - **Budget:** `write`
 
 #### EP-86 — Operator moderation
@@ -1607,6 +1670,7 @@ Community listings (needs, giving, selling, seeking), 1:1 messaging about a list
   - `restore_listing` → `status = active` when `expires_at > now()`, otherwise `expired` (TC §5.10); if the `listings_active_limit` trigger refuses `active` (`premium_required:listings` — the author published others meanwhile), the listing is restored as `expired` instead and the author can extend it later. No email.
   - `restore_user` → `marketplace_suspended_at = null`; the user's listings reappear by their own status. No email.
   - The Operator has no access to message bodies (TC §5.10); the reporter's `note` is the evidence. `reason_note` is not stored (OQ-17).
+- **As built (v1.5, Step 28c):** `listModeration` → `admin_list_moderation(p_view, p_limit, p_offset)` (security definer; an empty set for a non-Operator); `moderate` runs with the service role after an Operator check: `admin_decide_report(p_operator, p_report_id, p_op)`, `admin_restore_listing(p_id) → listing_status` (catches `premium_required` and sets `expired` instead), `admin_restore_user(p_user_id)`, `admin_get_restriction(p_kind, p_id)` — all `service_role` only.
 - **Budget:** `read-list` (list), `action` (moderate)
 
 #### EP-87 — Listing expiry job
@@ -1622,6 +1686,7 @@ Community listings (needs, giving, selling, seeking), 1:1 messaging about a list
   1. **3-day notice** — listings with `status = active`, `expiry_notice_sent_at is null`, `now() < expires_at <= now() + 3 days`: email `listing_expiring` to the author (Resend, author's locale; `{listing}`, `{date}` = `expires_at` as a Belgrade date; *Produži* → `/sapa-pomoci/moje?produzi=<listing_id>`, which signs in if needed and calls EP-77 `extend` — no signed action token, §9.3; *Označi kao rešeno* → S35); then `expiry_notice_sent_at = now()` (set only after Resend accepted, so a failed send is retried next day; EP-77 `extend` clears it, so a listing gets one notice per period).
   2. **Expire (E-31)** — listings with `status = active` and `expires_at <= now()` → `status = expired`; email `listing_expired` (*Objavi ponovo* → S35). The listing leaves EP-73 on the next request.
   - Authors who are suspended from Šapa pomoći or whose `deletion_requested_at` is set get no emails; their listings still expire.
+- **As built (v1.5, Step 28b):** `POST /api/internal/listings-daily`, pg_cron `listings-daily` (`0 7,8 * * *` UTC; works only when the Belgrade hour is 9, otherwise zero counts). Functions `listings_expiry_notice_candidates`, `mark_listing_notices_sent`, `expire_listings` (security definer, `service_role` only).
 - **Budget:** `job`
 
 #### EP-88 — Update shelter donation info
@@ -1638,6 +1703,7 @@ Community listings (needs, giving, selling, seeking), 1:1 messaging about a list
 - **Errors:** `validation_failed` (422); `forbidden_role` (403); `not_found` (404); `organisation_pending_approval` (403).
 - **States:** S29 *default* → toast; inline field errors on `422`; *read_only* for Volunteers (`access.can_edit = false` from EP-53).
 - **Side effects:** updates `organisations.donation_bank_account`, `donation_url`, `dropoff_address`, `dropoff_hours`. EP-74 `has_donation_info` and EP-78 show the new values on the next request (not cached).
+- **As built (v1.5, Step 28b):** `updateDonationInfo` (`lib/actions/organisation.ts`) through the column grant on the four donation columns; Admin only (RLS).
 - **Budget:** `write`
 
 ---
@@ -1823,7 +1889,7 @@ Notation: **Null** = whether the value may be `null` (every field is always pres
 #### UploadTicket
 | Field | Type | Null | Source |
 |---|---|---|---|
-| upload_token | string | no | computed: HMAC-signed token (purpose, target id, R2 key, mime, size, expiry); passed back to confirm |
+| upload_token | string | no | computed: HMAC-signed token (purpose, target id, R2 key, mime, size, expiry); passed back to confirm. v1.5: prefix `up_` for EP-13 (plus the file name for attachments); for EP-21 every ticket carries the moment draft token `md_…` (§9.3) |
 | put_url | string | no | computed: presigned R2 `PUT` URL for the generated key |
 | method | `"PUT"` | no | computed: constant |
 | headers | object `{ "Content-Type": string, "Content-Length": string }` | no | computed: must be sent exactly; R2 rejects other values |
@@ -1834,7 +1900,7 @@ Notation: **Null** = whether the value may be `null` (every field is always pres
 #### FileUrl
 | Field | Type | Null | Source |
 |---|---|---|---|
-| kind | enum `attachment`/`pet_photo`/`moment_photo`/`organisation_logo`/`partner_logo`/`listing_photo` | no | computed: echo of the request |
+| kind | enum `attachment`/`pet_photo`/`moment_photo`/`organisation_logo`/`partner_logo`/`listing_photo`/`data_export` (v1.5) | no | computed: echo of the request; `data_export` is signed by EP-50 itself, not by EP-15, and `organisation_logo` / `partner_logo` always get `url = null` from EP-15 (logos are signed by the operation that returns them) |
 | id | uuid | no | computed: echo of the request |
 | url | string | yes | computed: presigned R2 `GET` for `attachments.r2_key` / `pets.photo_r2_key` / `moment_photos.r2_key` / `organisations.logo_r2_key` / `partners.logo_r2_key` / `listing_photos.r2_key`, `Content-Disposition: inline; filename=<file_name>`; null when not visible or no file |
 | expires_at | timestamp | yes | computed: issue time + 10 min; null when `url` is null |
@@ -1980,7 +2046,7 @@ One reminder **instance** (see §5.3 note) as seen by the caller.
 #### ReminderPreference
 | Field | Type | Null | Source |
 |---|---|---|---|
-| type | enum (as ReminderOccurrence.type) plus `message` (v1.3) | no | `reminder_preferences.type` (`preference_type`) |
+| type | enum (as ReminderOccurrence.type) plus `message` (v1.3) | no | `reminder_preferences.type` — enum `reminder_type`, which gained `message` (v1.5: there is no `preference_type` enum) |
 | lead_minutes | integer[] | no | `reminder_preferences.lead_minutes`; default when no row: `vaccination` {10080, 0}, `vet_follow_up` {1440, 0}, `birthday` {0}, `manual` {0}, `treatment_dose` {0}, `meal` {0}, `message` {0} (ignored) |
 | delivery_time | string `HH:MM` | yes | `reminder_preferences.delivery_time`; default `09:00`; null for `treatment_dose` / `meal` / `message` |
 | channels | enum[] `email` / `push` / `whatsapp` / `viber` | no | `reminder_preferences.channels`; default {email, push}; for `message` a subset of {email, push}, possibly empty (= off, FR-69) |
@@ -2155,7 +2221,7 @@ Fields marked **(session)** are `null` for a Visitor.
 | code | enum `premium_monthly` / `premium_yearly` / `breeder_monthly` / `breeder_yearly` | no | `plans.code` |
 | family | enum `premium` / `breeder` | no | computed from `code` |
 | period | enum `month` / `year` | no | computed from `code` |
-| price | `{ amount_minor: integer, currency: string }` | yes | `plans.price_minor`, `plans.currency` — EUR before VAT (v1.4); null only when the code has no active `plans` row (CR-22) |
+| price | `{ amount_minor: integer, currency: string }` | yes | `plans.price_minor`, `plans.currency` — EUR before VAT (v1.4); null only when the code has no active `plans` row (CR-22); v1.5: read from the view `v_public_plans`, so `price` is nullable in the app type too |
 | monthly_equivalent | `{ amount_minor: integer, currency: string }` | yes | computed: yearly → round(`price_minor` / 12); null for monthly or when `price` is null |
 | trial_days | integer | no | computed: 7 for premium family (BR-07), 0 for breeder |
 
@@ -2766,6 +2832,12 @@ The text before the first `:` is always a §7.2 catalog code; the detail after i
 
 **Field error codes** (values inside `fields`, not catalog codes): `required`, `invalid`, `too_long`, `out_of_range`, `before_start` (date before its paired start date), `invalid_state` (not valid for the record's current state), `not_uploaded` (confirm called but the file is missing), `plan_not_allowed`, `last_admin`.
 
+**As built (v1.5)** — conventions the build added on top of the table above (`fromDatabaseError` in `lib/server/result.ts`):
+- **Field errors from the database:** `validation_failed` raised by an RPC carries `DETAIL = '<field>:<code>'` (e.g. `'email:invalid'`, `'pet_id:invalid_state'`, `'limit:out_of_range'`). The server action splits DETAIL into `fields: { <field>: <code> }` (the field name is passed through as raised). Screens show the field error where a field exists and otherwise the screen's form-level error (owner decision, Steps 13–17: date pickers disable invalid dates; an unmapped field code shows the existing form-level message).
+- **Extra `'<code>:<detail>'` messages:** `validation_failed:last_admin` (team trigger, Step 24) → `{ code: "validation_failed", fields: { user_id: "last_admin" } }`; `organisation_pending_approval:rejected` (organisation write guard) → `organisation_pending_approval` (the detail is logged; S20 tells the states apart from EP-53 `approval_status`); `premium_required:transfer_slot` (EP-60 accept) → `premium_required` with `details: { limit: "transfer_slot", slot_pet_id, slot_pet_name }` added by the action from `Me.usage.free_slot_pet`; `not_found:subscription` (EP-46 internal) → logged, webhook answers `200`.
+- **SQLSTATE mappings in actions:** `23503` (foreign key: unknown id) → `not_found` (household writes EP-35 … EP-38 and report EP-84; `block_user` for EP-85 raises `not_found` itself); `23503` on `city_id` in EP-75 → `validation_failed` with `fields.city_id = "unknown"`; `23505` on a moment draft that was already confirmed (EP-21) → `validation_failed` with `fields.draft_token = "invalid"`; `42501` and PostgREST `PGRST116` (no row under RLS) on household writes → `not_found`. Any other SQLSTATE stays `internal_error` (logged).
+- **HTTP status** of a route handler's error body comes from `httpStatus(code)`, which follows §7.2 (codes not listed there as 4xx/5xx answer `409`).
+
 ### 7.2 Error-code catalog
 
 | Code | HTTP / surface | Meaning | PRD edge case |
@@ -2858,6 +2930,7 @@ _Not applicable — Technical Constraints §9 rules out real-time updates; membe
   - anything else → ignored, `200`.
 - **Idempotency:** Meta may deliver twice; status updates are last-write-wins by timestamp, and marking done is naturally idempotent.
 - **Response:** always `200` within 5 s once the signature is valid, even if processing fails internally (failures are logged), so Meta does not retry storms.
+- **As built (v1.5, Step 29):** the route handler is `app/api/webhooks/whatsapp/route.ts`. Status events update the `whatsapp` delivery row by `provider_message_id` (last write wins by event time). A `button` or `interactive.button_reply` payload is the occurrence's `dn_` token (§9.3), verified like EP-32 and applied through `mark_occurrence_done_for` (§20); the reply message is "Označeno kao urađeno. {pet}: {title} — označeno u {time}." / "Marked as done. {pet}: {title} — marked at {time}." (owner decision, Step 29); an invalid or expired token answers with the `action_expired_page` body. With `WHATSAPP_ACCESS_TOKEN` empty the adapter does not call Meta: it logs `[whatsapp:fake]` with the template, number and variables and returns `provider_message_id = "fake-<uuid>"`.
 
 ### 9.2 Inbound — Paddle Billing (`POST /api/webhooks/payments`) — v1.4
 - **Sender:** a Paddle notification destination (type URL, the production or sandbox account per environment) subscribed to `subscription.created`, `subscription.activated`, `subscription.trialing`, `subscription.updated`, `subscription.past_due`, `subscription.paused`, `subscription.canceled`, `transaction.completed`, `transaction.payment_failed`. Its secret key is `PADDLE_WEBHOOK_SECRET` (TC §8.1).
@@ -2872,6 +2945,12 @@ _Not applicable — Technical Constraints §9 rules out real-time updates; membe
 - Done tokens are single-use and valid 24 h; invitation and transfer tokens follow their table's `expires_at` (BR-38) and are additionally stored hashed (`token_hash`).
 - Invalid, expired, or used → `400 invalid_action_token` and a page explaining what happened (Design S14 states).
 - `HEAD` and link-preview requests (no cookies, known scanner user agents) do nothing (see RISK-19).
+- **As built (v1.5, Steps 19, 22, 24, 25, 29; `lib/server/action-tokens.ts`):**
+  - `dn_` = `"dn_" + base64url("dn|<occurrence_id>|<recipient_id>|<exp_unix>|<nonce>") + "." + base64url(HMAC-SHA256(ACTION_TOKEN_SECRET))`, valid 24 h; nothing is stored — single use comes from the occurrence's done state, and a second click shows the same success page. Only `GET /api/a/done` exists (EP-32); invitation and transfer tokens are opened by the S14 page `/poziv/<token>`, not by `/api/a/*`.
+  - `hh_`, `og_`, `tr_` are random tokens from `randomToken(prefix)`; the row stores only `hashToken(token)` (SHA-256 hex) and the token is looked up by that hash (`get_household_invitation`, `get_organisation_invitation`, `get_transfer_by_token`). Expiry 7 days (BR-47) from the row's `expires_at`.
+  - `wv_` (WhatsApp verification, EP-30): signed `user_id|phone|<HMAC of user_id|phone|code>|exp|nonce`, 10 minutes, stateless and not single use; the code itself is never stored or sent back.
+  - Upload tickets `up_` (EP-13) and moment drafts `md_` (EP-21) use the same HMAC with `ACTION_TOKEN_SECRET`, 10 minutes (§6 *UploadTicket*).
+  - `HEAD` requests and requests with `Purpose: prefetch` or `Sec-Purpose: prefetch` get `200` with an empty body and change nothing. The answer is a small HTML page in the recipient's `profiles.locale` (template string with the Design §4.1 token values, not a React page — owner decision, Step 19), or JSON with `Accept: application/json`. Page button *Otvori aplikaciju* / *Open the app* → `<NEXT_PUBLIC_SITE_URL>/podsetnici`. `not_found` and `household_read_only` get their own page copy (Design §12).
 
 ### 9.4 Outbound
 | Target | Purpose | Payload | Retry | On permanent failure |
@@ -2902,6 +2981,13 @@ The template language follows the recipient's `profiles.locale` (`sr-Latn` → `
 | `listing_hidden` | email | EP-86 `hide_listing` | author | listing changed from `active` to `hidden` | `/sapa-pomoci/moje` (S35) |
 | `marketplace_suspended` | email | EP-86 `suspend_user` | suspended user | new suspension only | — (reply to the email) |
 
+**As built (v1.5)**
+- **Resend** is called with `fetch` (no SDK) from `lib/integrations/resend.ts`; inside the dispatch run an email gets 3 tries (0 s, 1 s, 3 s) and is then recorded `failed`; other emails are sent once and failures are logged. With `RESEND_API_KEY` empty outside production the rendered email is printed to the console and gets the id `local-<uuid>`.
+- **Web Push** uses `@pushforge/builder`; one immediate retry; payloads over 4 KB are refused; `404` / `410` delete the `push_subscriptions` row. With empty VAPID keys push is skipped with a log line. The service worker's action label follows `navigator.language` ("Done" for English, otherwise "Urađeno").
+- **WhatsApp** sends inside the dispatch run; a failed send records the delivery `failed` and that occurrence falls back to {email, push}; the 31st message of the month falls back the same way with a `whatsapp_cap_reached` row (BR-14a).
+- **Messages not sent until CR-24 copy exists** (each step logs them): the Operator notification for a pending shelter (EP-41), the auto-renew confirmation (EP-48), the cancel-deletion confirmation (EP-51), the heir notification (EP-52), organisation-admin emails on transfer accept/decline (EP-60) and on a new request (EP-63), push expiry notices (EP-49), the RISK-14 Operator alert (EP-33 watchdog — logged at most once an hour instead). Breeder-plan subscriptions get no `premium_expiry` email (CR-24).
+- **Links in emails** are absolute: `<NEXT_PUBLIC_SITE_URL><path>`; `account_deletion_scheduled` → `/profil/podaci`, `shelter_approved` → `/organizacija`, `data_export_ready` → `/profil/podaci`; `shelter_rejected` appends "Razlog: {reason}." / "Reason: {reason}." when a reason is given.
+
 ---
 
 ## 10. File & Media Transfer
@@ -2922,6 +3008,7 @@ Implements ADR-07 (Cloudflare R2).
    - `<kind>` ∈ `photo` (pet photo), `visits/<vet_visit_id>` (attachment), `moments/<moment_id>` (moment photo; `<uuid>` is prefixed with `<position>-`).
    - `safe_file_name` is the original name, lowercased, with characters other than `[a-z0-9._-]` replaced by `-`, at most 100 chars. A record transfer (EP-60) copies objects to new keys under the new owner's `u/` prefix.
 7. **Deletion:** deleting a row queues its key; the nightly job (EP-52) deletes queued keys and orphaned objects older than 24 h with no row. Listing photos are queued when removed in EP-75, when the listing is deleted (EP-77) and on account deletion (EP-52).
+8. **As built (v1.5):** presigned `PUT` and `GET` links are signed with `aws4fetch` and valid 10 minutes; `Content-Type` and `Content-Length` are signed, so R2 rejects any other value. Confirm actions check the object with an R2 `HEAD` before inserting the row (`not_uploaded` when it is missing). Raw keys never reach the browser; a failed presign gives `url = null`. Moment photos accept JPEG/PNG/WebP/HEIC (≤ 10 MB). An organisation logo (EP-72) uses `target_id` = organisation id and image/jpeg, png or webp; a trigger queues the old key when the logo changes. Partner logos (EP-69): `createPartnerLogoUpload(partner_id)` for an existing partner, then `savePartner({id, logo_r2_key})`, which checks with `HEAD` that the key exists under `p/<id>/` (skipped when `R2_*` is empty locally). A transfer (EP-60) copies objects with S3 CopyObject to new `u/` keys and deletes the copies again if the database step fails. The nightly orphan scan covers `u/`, `o/`, `p/`, `exports/`, at most 1000 objects per run, and keeps keys reported by `r2_keys_in_use` (§20). The bucket CORS rule for browser `PUT` / `GET` is set by the owner (open).
 
 ---
 
@@ -2939,6 +3026,19 @@ Implements ADR-07 (Cloudflare R2).
 No limit is set on listing creation (EP-75): neither PRD v1.7 nor TC v1.7 states one; the Free limit of 3 active listings (BR-55), the 30-day expiry and Operator moderation bound it.
 
 Counters live in the database (`rate_limit_counters`, one row per user + operation + window — TC §5.7), so they hold across server instances.
+
+**As built (v1.5)** — `checkRateLimit` in `lib/server/rate-limit.ts` (fixed windows); operation names in `rate_limit_counters`:
+
+| Operation name | Limit | EP |
+|---|---|---|
+| `household_invitations.create` | 20 per day | EP-35 |
+| `organisation_invitations.create` | 20 per day | EP-56 |
+| `org_requests.create` | 5 per hour (a re-send of the same request updates the original row and is not counted again) | EP-63 |
+| `whatsapp.send_code` | 5 per hour | EP-30 send code |
+| `whatsapp.verify_code` | 10 per hour (added in Step 29; S12 copy "Previše pokušaja. Pokušaj ponovo za {minutes} min.") | EP-30 verify code |
+| `messages.send` | 30 per hour across all conversations | EP-82 |
+
+`idempotency_keys` (`lib/server/idempotency.ts`) store the result of writes that carry an `idempotency_key` (e.g. EP-82, EP-30 send code) for 24 hours.
 
 ---
 
@@ -3097,6 +3197,13 @@ _No assumptions were recorded at the owner's request. Defaults proposed while wr
 | OQ-16 | PRD v1.7 | `[NEEDS CLARIFICATION]` Does an active breeder plan lift the Free limit of 3 active listings (BR-55)? Contract follows the PRD default (no) in `MarketplaceStatus.active_listing_limit` and the TC trigger. | No |
 | OQ-17 | API (v1.3) | `[NEEDS CLARIFICATION]` Fields the Šapa pomoći screens render that TC v1.7 cannot supply exactly: (a) resolved date (S33, S35 "Poklonjeno 28. 09. 2026.") — no `listings.resolved_at`, contract derives it from `updated_at`; (b) hidden time and the Operator's "Razlog za korisnika" (S35 hidden card, S26 restrictions) — no columns, contract derives time/reason from the actioned report and puts the note only into the email; (c) donation *Primalac* legal name (e.g. "Udruženje „Druga šansa“, Novi Sad") and *Svrha* (S33 Doniraj) — contract uses `organisations.name` and "Donacija — <listing title>"; (d) Design limits differ from PRD/TC: description ≤ 1000 (S34) vs 2000, title ≥ 5 (S34) vs 1; (e) bank-account format has no TC check (EP-88 validates in the action); (f) no screen edits `display_name` (S18 lacks a *Nadimak* field; EP-43 accepts it); (g) S33's *resolved* state shows a resolved listing's content to a non-author, while FR-62 and TC RLS show "no longer available" — the contract follows FR-62 (`404` → *unavailable*; the content variant only for the author). Proposed: add `listings.resolved_at`, `listings.hidden_at`, `listings.moderation_note`, `profiles.marketplace_suspension_note`, `organisations.donation_recipient`; align S34 to 2000. | No — interim mappings are defined |
 
+**Items still open after the build (v1.5 — recorded, not decided here; source: Build Plan Session logs and `docs/reports/F1-follow-ups.md`)**
+- The functions in §20 that this contract did not name are to be confirmed by the owner as part of the contract (they were added under the Build Plan's pre-approved exception 6 or an owner decision in the step's Session log).
+- CR-24 copy for the messages listed in §9.4 *As built*.
+- `moments_api.public_link.url` carries the constant host `https://mojljubimac.rs/t/` (§6); the app replaces it with `NEXT_PUBLIC_SITE_URL`. Dropping the host from the view needs §6 to say "site URL" first.
+- Owner / external setup: Paddle sandbox and production (price ids, webhook destination, test purchase); Meta WhatsApp templates `reminder_due` and `verification_code` and the webhook; R2 bucket CORS and a read/write token; Vault secrets `dispatch_url` / `dispatch_secret` per environment.
+- OQ-16 and OQ-17 stay open with the interim mappings above.
+
 ---
 
 ## 18. Glossary Additions
@@ -3134,3 +3241,145 @@ _No assumptions were recorded at the owner's request. Defaults proposed while wr
 - Paddle Billing event types — https://developer.paddle.com/webhooks/overview
 - Paddle.js `Checkout.open` — https://developer.paddle.com/paddlejs/methods/paddle-checkout-open
 - Paddle Billing API (subscriptions, customer portal sessions) — https://developer.paddle.com/api-reference/overview
+
+---
+
+## 20. As built — database functions, internal routes and server actions (v1.5)
+
+This section records what the build added below the operations of §5, so the contract matches the code. It is the API view of TC §5.11 (which also lists triggers and helpers). Functions marked **exc. 6** are the ones the Session logs record under the Build Plan's pre-approved exception 6 (one transaction, or rows the caller cannot reach under RLS); the others were named in the step's prompt or by an owner decision in its Session log, or were added by the step as noted. Every function is `revoke all … from public`. Errors use the §7.1 format; the codes listed are the ones the function raises itself — guard triggers on the tables it writes can raise more (e.g. `premium_required:<limit>`, `household_read_only`, `organisation_pending_approval`, `breeder_plan_required`). `validation_failed` carries `DETAIL '<field>:<code>'` (§7.1).
+
+**Mode:** I = `security invoker` (RLS applies); D = `security definer`, `set search_path = public`, with explicit `auth.uid()`, membership or Operator checks. **Grants:** a = `anon`, u = `authenticated`, s = `service_role`.
+
+### 20.1 Database functions (RPC)
+
+| Function (parameters) | Returns | Mode | Grants | Errors raised | Serves |
+|---|---|---|---|---|---|
+| `get_me()` | jsonb `Me` (incl. `entitlements`, `usage`, `viber_enabled`) | D | u, s | — | EP-43 |
+| `is_premium(user_id)` | boolean | D | u, s | — | entitlement checks |
+| `get_pet_record(p_pet_id)` | jsonb `PetRecord` (incl. `upcoming_reminders`, access flags) | I | u, s | `not_found` | EP-02 |
+| views `pet_summaries_api`, `weight_entries_api` | `PetSummary` / `WeightEntry` rows | I | u, s | — | EP-01, EP-08 |
+| `log_dose(p_treatment_id, p_given_at = null, p_occurrence_id = null)` | jsonb `DoseLog` | I | u | `validation_failed`, `not_found`, `forbidden_role` | EP-11 |
+| `move_pet_to_memorial(p_pet_id, p_date, p_reason = null, p_note = null)` | jsonb `Pet` | I (one transaction) | u | `validation_failed`, `not_found`, `forbidden_role` | EP-06 |
+| `restore_pet_from_memorial(p_pet_id, p_reenable_reminders = true)` | jsonb `Pet` | I | u | `validation_failed`, `not_found`, `forbidden_role` | EP-07 (S03 sends `true`, owner decision Step 16) |
+| `list_reminder_occurrences(p_filter, p_pet_id = null, p_limit = 20, p_offset = 0)` | jsonb page of `ReminderOccurrence` | I | u, s | `validation_failed`, `not_found` | EP-25 |
+| `mark_occurrence_done(p_occurrence_id)` | jsonb `ReminderOccurrence` | D | u, s | `validation_failed`, `not_found`, `household_read_only` | EP-26 |
+| `mark_occurrence_done_for(p_occurrence_id, p_recipient_id)` | jsonb `ReminderOccurrence` | D (owner decision Step 19; repeats the EP-26 effects and access check for the token's recipient) | s | `not_found`, `household_read_only` | EP-32, WhatsApp reply (§9.1) |
+| `get_reminder_settings()` | jsonb (`ReminderPreference[]`, push subscriptions, `WhatsAppConnection`, `ChannelUsage`) | D | u, s | `unauthenticated` | EP-28 read, S12 |
+| `register_push_subscription(p_endpoint, p_p256dh, p_auth, p_user_agent = null)` | jsonb `PushSubscription` | D (re-assigns an endpoint that moves between users) | u, s | `unauthenticated`, `validation_failed` | EP-29 |
+| `get_channel_usage()` | jsonb `ChannelUsage` | I | u, s | `unauthenticated` | EP-31 |
+| `claim_due_occurrences(p_limit = 200)`, `claim_resend_occurrences(p_limit = 200)` | jsonb array of claimed notices (occurrence, reminder, pet, recipients, channels) | D | s | `validation_failed` | EP-33 |
+| `mark_missed_occurrences()` | integer (rows) | D | s | — | EP-33 |
+| `dispatch_watchdog_due()` | boolean | D | s | — | EP-33 watchdog (RISK-14) |
+| `set_meal_schedule(p_pet_id, p_meal_times time[], p_meal_weekdays smallint[] = null)` | jsonb `MealSchedule` | D (schedule + meal reminder in one transaction) | u | `validation_failed`, `not_found`, `forbidden_role` | EP-19 (empty arrays remove the schedule) |
+| views `feeding_entries_api`, `stool_entries_api`, `meal_schedules_api`, `moments_api` | entry rows | I | u | — | EP-17, EP-19, EP-20 |
+| `confirm_moment(p_moment_id, p_pet_id, p_moment_date, p_text, p_photos jsonb)` | jsonb `Moment` | I (owner decision Step 21, option A: one transaction; the `moments.id` insert grant lets it use the id chosen in step 1) | u | `validation_failed`, `not_found`, `too_many_photos`, `premium_required:moments` (trigger) | EP-21 step 2 |
+| `get_household(p_household_id = null)` | jsonb `Household` (members, pending invitations, shared pets) | D | u, s | `unauthenticated`, `not_found` | EP-34 |
+| `create_household_invitation(p_invitation_id, p_token_hash, p_email = null, p_household_name = null)` | jsonb `HouseholdInvitation` | D (exc. 6: creates the household on the first invitation) | u | `unauthenticated`, `forbidden_role`, `premium_required:household`, `validation_failed`, `household_full`, `already_member` | EP-35 |
+| `get_household_invitation(p_token_hash)` | jsonb `InvitationView` | D (exc. 6) | a, u | `not_found`, `invitation_expired` | EP-39 (`hh_`) |
+| `decide_household_invitation(p_token_hash, p_decision)` | jsonb (`status`, household id) | D (exc. 6) | u | `unauthenticated`, `validation_failed`, `not_found`, `invitation_used`, `invitation_expired`, `already_member`, `household_read_only` | EP-40 (`hh_`) |
+| view `v_public_plans` | `Plan` rows (every plan code; `price` null without a priced row) | I | a, u | — | EP-44 |
+| `get_my_subscription()` | jsonb `Subscription` or null | I (exc. 6, Step 31) | u, s | `unauthenticated` | EP-47 |
+| `set_auto_renew(p_auto_renew)` | `subscriptions` row | D (`auth.uid()` only) | u | `unauthenticated`, `validation_failed`, `subscription_not_active` | EP-48 (database state; the action calls Paddle first) |
+| `apply_payment_event(p_event jsonb, p_record_event = true)` | text (outcome) | D (exc. 6: dedupe + state in one transaction) | s | `validation_failed`, `not_found:subscription` | EP-46 |
+| `request_data_export()` | `data_exports` row | D | u | `unauthenticated`, `not_found`, `export_in_progress` | EP-50 request |
+| `get_my_data_overview_base()` | jsonb (summary counts, deletion block, heir name) | D | u | `unauthenticated`, `not_found` | EP-50 overview (S19) |
+| `request_account_deletion()`, `cancel_account_deletion()` | void | D | u | `unauthenticated`, `not_found`, `account_pending_deletion` | EP-51 |
+| `set_renewal_paused_for_deletion(p_paused)` | void | D (exc. 6) | u | `unauthenticated`, `validation_failed` | EP-51 (Paddle part) |
+| `get_my_organisation()` | jsonb `Organisation` (members, invitations, access) | D (membership) | u | `unauthenticated`, `not_found` | EP-53 |
+| `list_org_animals(p_q = null, p_status = null, p_limit = 20, p_offset = 0)` | jsonb page of `OrgAnimalRow` + status counts | D (membership; diacritic-insensitive search) | u | `unauthenticated`, `not_found`, `validation_failed` | EP-54 |
+| `create_intake(p_name, p_species, p_species_other, p_sex, p_breed, p_approx_age_text, p_intake_on, p_arrival_type, p_place_found, p_note)` | jsonb `Intake` | I (owner decision Step 24, one transaction) | u | `unauthenticated`, `not_found`, `forbidden_role`, `validation_failed` | EP-55 |
+| `create_organisation_invitation(p_invitation_id, p_token_hash, p_email, p_role)` | jsonb `OrganisationInvitation` | D (exc. 6) | u | `unauthenticated`, `not_found`, `forbidden_role`, `validation_failed`, `already_member`, `team_full` (trigger) | EP-56 invite |
+| `get_organisation_invitation(p_token_hash)` | jsonb `InvitationView` (kind `team`) | D | a, u | `not_found`, `invitation_expired` | EP-39 (`og_`) |
+| `decide_organisation_invitation(p_token_hash, p_decision)` | jsonb | D | u | `unauthenticated`, `validation_failed`, `not_found`, `invitation_used`, `invitation_expired`, `already_member`, `team_full` (trigger) | EP-40 (`og_`) |
+| `list_org_requests(p_status = null, p_limit = 20, p_offset = 0)` | jsonb page of `AdoptionRequest` / `BreederInquiry` | D (membership) | u | `unauthenticated`, `not_found`, `validation_failed` | EP-57 |
+| `decide_org_request(p_kind, p_id, p_decision)` | jsonb (request + applicant locale + organisation contacts for the email) | D | u | `unauthenticated`, `validation_failed`, `not_found`, `forbidden_role`, `breeder_plan_required`, `already_decided` | EP-58 |
+| `submit_org_request(p_pet_id, p_name, p_phone, p_email, p_message)` | jsonb (request, organisation contacts) | D (the applicant cannot read the organisation's rows) | u | `unauthenticated`, `not_found`, `validation_failed` | EP-63 |
+| `create_record_transfer(p_id, p_pet_id, p_recipient_email, p_token_hash)` | jsonb `RecordTransfer` | D | u | `unauthenticated`, `not_found`, `forbidden_role`, `breeder_plan_required`, `validation_failed`, `invitation_used` | EP-59 send |
+| `resend_record_transfer(p_new_id, p_transfer_id, p_token_hash)` | jsonb `RecordTransfer` | D | u | `unauthenticated`, `not_found` | EP-59 re-send |
+| `get_transfer_by_token(p_token_hash)` | jsonb `TransferView` | D | a, u | `not_found`, `invitation_expired` | EP-60 read (`tr_`) |
+| `get_transfer_copy_plan(p_token_hash)` | jsonb (rows and R2 keys to copy) | D | u | `unauthenticated` | EP-60 accept, step 1 |
+| `accept_record_transfer(p_token_hash, p_new_pet_id, p_visit_id_map jsonb, p_key_map jsonb)` | jsonb (new pet id) | D (one transaction; sets `app.transfer_copy = on`) | u | `unauthenticated`, `validation_failed`, `premium_required:transfer_slot` and the transfer state checks | EP-60 accept |
+| `decline_record_transfer(p_token_hash)` | jsonb | D | u | `unauthenticated` and the transfer state checks | EP-60 decline |
+| `list_litters()` | jsonb `Litter[]` | D (membership) | u | `unauthenticated`, `not_found`, `forbidden_role` | EP-61 list |
+| `create_litter(p_mother_id, p_father_id, p_father_name, p_born_on, p_offspring_count)` | uuid | D (membership + breeder plan; litter and offspring in one transaction) | u | `unauthenticated`, `not_found`, `forbidden_role`, `breeder_plan_required`, `validation_failed` | EP-61 create |
+| `get_public_org_page(p_slug, p_limit = 20, p_offset = 0)` | jsonb `PublicOrgPage` (public fields only) | D | a, u, s | `validation_failed`, `not_found` | EP-62 |
+| `partners_nearby(p_lat, p_lng, p_city_id, p_type, p_limit)` | jsonb `Partner[]` with distance | I | u, s | `validation_failed` | EP-64, S03 vet block |
+| `get_partner(p_partner_id, p_lat = null, p_lng = null, p_city_id = null)` | jsonb `Partner` | I | u, s | `validation_failed`, `not_found` | EP-65 |
+| `record_partner_click(p_partner_id, p_action)` | void | D | u, s | `unauthenticated`, `not_found`, `validation_failed` | EP-66 |
+| view `admin_pending_organisations` | `PendingOrganisation` rows (only for an Operator) | owner rights (`security_invoker = false`) | u (select) | — | EP-68 list |
+| `decide_organisation(p_organisation_id, p_decision, p_rejection_reason = null)` | jsonb (organisation + admin contacts for the email) | D (Operator; exc. 6) | u, s | `validation_failed`, `not_found`, `already_decided` | EP-68 approve / reject |
+| `save_partner(p_id, p_fields jsonb, p_hours jsonb = null)` | jsonb `Partner` | D (Operator; exc. 6: partner + hours in one transaction) | u, s | `not_found`, `featured_limit_reached` (trigger) | EP-69 |
+| `admin_list_partners(p_city_id = null, p_type = null, p_limit = 20, p_offset = 0)` | jsonb page of `Partner` | D (first line: `forbidden_role` for a non-Operator) | u | `forbidden_role`, `validation_failed` | EP-69 list |
+| `admin_partner_click_stats(p_period = null, p_limit = 20, p_offset = 0)` | jsonb page of `PartnerClickStats` | D (Operator) | u | `forbidden_role`, `validation_failed` | EP-70 |
+| `marketplace_author_ok(p_author)` | boolean (author not suspended) | D, stable | a, u, s | — | RLS of `listings`, `listing_photos` |
+| `sapa_author_card(p_author, p_org)` | jsonb `ListingAuthor` | D | a, u, s | — | EP-73, EP-74, EP-79 |
+| `org_has_donation_info(p_org)` | boolean | D | a, u, s | — | EP-74 `has_donation_info` |
+| `list_listings(p_type, p_category, p_species, p_city_id, p_limit = 20, p_offset = 0)` | jsonb page of `ListingSummary` | I | a, u | `validation_failed` | EP-73 |
+| `get_listing(p_listing_id)` | jsonb `Listing` | I | a, u | `not_found` | EP-74 |
+| `save_listing(p_id, p_type, p_title, p_description, p_category, p_species, p_city_id, p_price_minor, p_price_negotiable, p_organisation_id = null, p_photo_ids uuid[] = null)` | uuid | I (Step 28b: listing + photo order in one transaction) | u | `unauthenticated`, `not_found` (+ Šapa pomoći triggers) | EP-75 |
+| `list_my_listings(p_group, p_limit = 20, p_offset = 0)` | jsonb page of `MyListing` + `MarketplaceStatus` | I | u | `unauthenticated`, `validation_failed` | EP-76 |
+| `my_listing_moderation(p_listing)` | table (`hidden_at`, `reason`) | D (author only) | u | — | EP-76 S35 hidden card |
+| `get_donation_info(p_listing_id)` | jsonb `DonationInfo` | D | u | `unauthenticated`, `not_found`, `validation_failed` | EP-78 |
+| `get_public_profile(p_user_id, p_limit = 18, p_offset = 0)` | jsonb `PublicProfile` | D | a, u | `validation_failed`, `not_found` | EP-79 |
+| `list_my_conversations(p_limit = 20, p_offset = 0)` | jsonb page of `ConversationSummary` | D | u | `unauthenticated`, `validation_failed` | EP-80 |
+| `get_conversation(p_conversation_id, p_limit = 50, p_offset = 0)` | jsonb `Conversation` with `Message[]` | D | u | `unauthenticated`, `validation_failed`, `not_found` | EP-81 |
+| `send_message(p_listing_id, p_conversation_id, p_body)` | jsonb (`Message`, conversation id) | I (exc. 6: conversation + message in one transaction) | u | `unauthenticated`, `validation_failed`, `not_found`, `listing_not_active`, `cannot_message_self`; `user_blocked` / `marketplace_suspended` (triggers) | EP-82 |
+| `new_message_notification(p_message_id)` | jsonb (recipient, channels, locale, preview) | D (exc. 6) | s | — | EP-82 side effect |
+| `mark_conversation_read(p_conversation_id)` | jsonb | D | u | `unauthenticated`, `not_found` | EP-83 |
+| `block_user(p_user_id)` | jsonb `UserBlock` | I | u | `unauthenticated`, `validation_failed`, `not_found` | EP-85 block |
+| `unblock_user(p_user_id)` | void | I | u | `unauthenticated`, `validation_failed` | EP-85 unblock |
+| `admin_list_moderation(p_view, p_limit = 20, p_offset = 0)` | jsonb page of `ModerationItem` / `Restriction` (empty for a non-Operator) | D | u | `validation_failed` | EP-86 list |
+| `admin_decide_report(p_operator, p_report_id, p_op)` | jsonb | D (exc. 6) | s | `validation_failed`, `forbidden_role`, `not_found`, `already_decided` | EP-86 decide (the action checks the Operator first) |
+| `admin_restore_listing(p_id)` | `listing_status` (`active`, or `expired` when the author is over the Free limit) | D | s | `not_found`, `validation_failed` | EP-86 restore listing |
+| `admin_restore_user(p_user_id)`, `admin_get_restriction(p_kind, p_id)` | jsonb | D (exc. 6) | s | `not_found`, `validation_failed` | EP-86 restore user / restrictions |
+| `listings_expiry_notice_candidates(p_limit = 200)`, `mark_listing_notices_sent(p_listing_ids)`, `expire_listings(p_limit = 200)` | table / integer / table | D | s | — | EP-87 |
+| `billing_expire_subscriptions()`, `billing_expiry_notice_candidates(p_now = now())`, `mark_expiry_notice_sent(p_subscription_id, p_days)`, `billing_refresh_household_flags()` | jsonb / table / boolean / uuid[] | D | s | `validation_failed` (`mark_expiry_notice_sent`) | EP-49 (notices at 30, 7 and 1 days left, once each) |
+| `retention_delete_due_accounts(p_limit = 100, p_skip uuid[] = '{}')`, `retention_expire_invitations()`, `retention_expire_exports()`, `retention_purge_deliveries()`, `retention_purge_server_support()` | jsonb / integer | D | s | — | EP-52 |
+| `r2_deletion_batch(p_limit = 500)`, `r2_dequeue(p_keys)`, `r2_keys_in_use(p_keys)` | setof text / integer / text[] | D | s | — | EP-52 R2 cleanup |
+
+### 20.2 Route handlers as built
+
+| Route | Method | Auth | Serves |
+|---|---|---|---|
+| `/auth/callback` | GET | Supabase code exchange | EP-41 / EP-42 email links and Google OAuth; recovery sessions go to `/prijava/nova-lozinka` |
+| `/api/a/done` | GET, HEAD | `dn_` token (§9.3) | EP-32 |
+| `/api/internal/dispatch` | POST | `X-Dispatch-Secret` = `DISPATCH_SECRET` (constant time), else `401` | EP-33 |
+| `/api/internal/exports` | POST | same; mismatch → `401 invalid_signature` | EP-50 archives |
+| `/api/internal/billing-nightly` | POST | same; mismatch → `401 unauthenticated`; works only when the Europe/Belgrade hour is 3 | EP-49 |
+| `/api/internal/retention-nightly` | POST | same; Belgrade hour 3 | EP-52 |
+| `/api/internal/listings-daily` | POST | same; Belgrade hour 9 | EP-87 |
+| `/api/webhooks/payments` | POST | `Paddle-Signature` (§9.2) | EP-46 |
+| `/api/webhooks/whatsapp` | GET, POST | `hub.verify_token` / `X-Hub-Signature-256` (§9.1) | WhatsApp |
+| `/api/public/moments/[slug]`, `/api/public/orgs/[slug]`, `/api/public/listings`, `/api/public/listings/[id]`, `/api/public/users/[id]` | GET | none (`Cache-Control: no-store`) | EP-24, EP-62, EP-73, EP-74, EP-79 (the pages share the loaders in `lib/server/public-moments.ts` and `lib/server/public-org-page.ts`) |
+
+pg_cron calls the internal routes through `private.call_internal_route(path)`, which does nothing while either Vault secret `dispatch_url` / `dispatch_secret` is null (TC §8).
+
+### 20.3 Server actions as built (`lib/actions/`)
+
+| File | Exported actions | EPs |
+|---|---|---|
+| `auth.ts` | `signInWithPassword`, `signInWithGoogle`, `requestPasswordReset`, `resendVerification`, `setNewPassword`, `signOut` | EP-42 |
+| `registration.ts` | `signUp`, `completeRegistration`, `updateMe`, `getVisitorLocale`, `setVisitorLocale` (cookie `ml_locale`) | EP-41, EP-43 |
+| `pets.ts` | `createPet`, `updatePet`, `deletePet` | EP-03 … EP-05 |
+| `memorial.ts` | `movePetToMemorial`, `restorePetFromMemorial` | EP-06, EP-07 |
+| `weights.ts`, `vaccinations.ts`, `treatments.ts`, `vet-visits.ts` | create / update / delete per entry type; `logDose` | EP-08 … EP-12 |
+| `uploads.ts`, `attachments.ts`, `files.ts` | `requestUpload`, `confirmUpload`; `deleteAttachment`; `getFileUrls` | EP-13 … EP-15 |
+| `pdf-export.ts` | `getPdfExportBundle` | EP-16 |
+| inline `"use server"` functions in the care-log and S12 `page.tsx` files | care-log entries, meal schedule, reminder preferences, push subscriptions | EP-17 … EP-19, EP-28, EP-29 |
+| `moments.ts` | `listMoments`, `prepareMoment`, `confirmMoment`, `deleteMoment`, `setMomentPublicLink` | EP-20 … EP-23 |
+| `reminders.ts` | `listReminderOccurrences`, `markOccurrenceDone`, `getManualReminder`, `createManualReminder`, `updateManualReminder`, `deleteManualReminder` | EP-25 … EP-27 |
+| `whatsapp.ts` | `whatsappConnection` (send code / verify / disconnect) | EP-30 |
+| `household.ts`, `invitations.ts` | `getHousehold`, `createHouseholdInvitation`, `changeHouseholdMembership`, `setSharedPet`, `setMyReminderOptIn`; `getHouseholdInvitation`, `decideHouseholdInvitation` | EP-34 … EP-40 |
+| `checkout.ts`, `subscription.ts` | `startCheckout`; `getMySubscription`, `setAutoRenew`, `getBillingPortalUrl` | EP-45, EP-47, EP-48, EP-89 |
+| `data-control.ts` | `requestDataExport`, `getMyDataOverview`, `requestAccountDeletion`, `cancelAccountDeletion` | EP-50, EP-51 |
+| `organisation.ts`, `team.ts` | `getMyOrganisation`, `listOrgAnimals`, `createIntake`, `changeAnimalStatus`, `updateOrganisationProfile`, `updateDonationInfo`; `inviteTeamMember`, `revokeInvitation`, `removeMember`, `changeMemberRole` | EP-53 … EP-56, EP-72, EP-88 |
+| `org-requests.ts` | `listOrgRequests`, `decideRequest`, `submitOrgRequest` | EP-57, EP-58, EP-63 |
+| `transfers.ts` | `sendRecordTransfer`, `resendRecordTransfer`, `getTransfer`, `acceptTransfer`, `declineTransfer` | EP-59, EP-60 |
+| `litters.ts` | `listLitters`, `createLitter`, `updateOffspring` | EP-61 |
+| `partners.ts` | `listPartnersNearby`, `suggestNearbyVets`, `getPartner`, `recordPartnerClick` | EP-64 … EP-66 |
+| `admin.ts` | `decideOrganisation`, `geocodeAddress`, `createPartnerLogoUpload`, `savePartner`, `setAppSettings`, `listModeration`, `moderate` | EP-68 … EP-71, EP-86 |
+| `listings.ts` | `saveListing`, `changeListing`, `listMyListings`, `getDonationInfo` | EP-75 … EP-78 |
+| `messages.ts` | `sendMessage`, `listConversations`, `getConversation`, `markConversationRead`, `saveMessagePreference` | EP-80 … EP-83, FR-69 |
+| `reports.ts` | `submitReport`, `blockUser`, `unblockUser` | EP-84, EP-85 |
+
+Every action starts with `checkGates` (`lib/server/gates.ts`, §4.1) and returns `ActionResult<T>` (`lib/server/result.ts`) instead of throwing.

@@ -6,11 +6,11 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 06 — Build Plan |
-| Version | 1.3 |
-| Date | 2026-10-29 |
+| Version | 1.4 |
+| Date | 2026-11-09 |
 | Author | Keti Vrtunić (planned with "Nindza Tigar", Build Lead persona) |
-| Traces to | Brief v1.8 · PRD v1.8 · Technical Constraints v1.8 · Design System v1.7 (37 screens) · API Contract v1.4 |
-| Status | Draft — no step executed yet |
+| Traces to | Brief v1.8 · PRD v1.8 · Technical Constraints v1.9 · Design System v1.8 (37 screens) · API Contract v1.5 |
+| Status | In progress — Steps 01 … 31 (incl. 28a–28c, 30a) done; Step 32 not started (see §3) |
 
 **Change log**
 
@@ -20,6 +20,7 @@
 | 1.1 | 2026-10-19 | Change requests CR-01 … CR-23 resolved upstream (PRD v1.6, TC v1.6, Design v1.5, API v1.2). Every pre-flight/blocker check that waited on a CR is replaced by a concrete instruction citing the fixed section (stop clauses kept). Preview deployments removed (TC ADR-10); Step 03 CI runs `supabase db push` on `main` before deploy. Step 04 adds `idempotency_keys`, `rate_limit_counters` and the cities seed (`scripts/fetch-cities.*` → `supabase/seed/cities.sql`, TC ADR-11). Step 08 schedules nightly occurrence generation. Step 11 creates the `lib/server/` foundation (TC ADR-16). Step 12 adds S30 `/privatnost`, S31 `/uslovi`, `lib/legal.ts` (`TERMS_VERSION`) and links registration to the terms. Step 17 adds the S10 → S11 edit link and the count badge; Step 18 the S12 "Uskoro dostupno" WhatsApp state; Step 23 S17 in the payments-coming-soon state with EP-44 and the provider-neutral EP-45 stub; Step 24 the S14 team-invitation variant; Step 27 the S03 vet suggestion block. Step 30 split into Step 30 (nightly jobs) and Step 30a (backups and data export archives). Dependencies fixed for Steps 12, 23, 24, 27, 28, 31, 32. New OQ-15 locks only Step 32 checklist item 4. New CR-24 (copy for emails that have no Design §9.1 template). Coverage matrix regenerated: 60 FRs, 72 EPs, 31 screens, 46 tables. |
 | 1.3 | 2026-10-29 | Step D1 (docs only): owner decisions OQ-11 (Paddle Billing as merchant of record) and OQ-03 (EUR prices, VAT added by Paddle) applied upstream (Brief v1.8, PRD v1.8 BR-62, TC v1.8 ADR-09, Design v1.7, API v1.4 incl. new EP-89). Step 31 unlocked: the lock notice is replaced by a complete step (migration for the neutral provider columns, provider price ids and seeded EUR prices; `lib/integrations/paddle.ts`; EP-45 Paddle.js overlay; EP-46 webhook; EP-48 / EP-49 / EP-51 / EP-52 Paddle parts; EP-89 S18 portal link; S17 breeder variant; local mode with empty `PADDLE_*`). §2 carried-forward OQs, §3 Step 31 row (⬜, nothing blocks it), §7, §9 coverage (EP-48, EP-51, EP-52, EP-89, S18, S20, FR-38, tables) and §12 updated; operation count 89. |
 | 1.2 | 2026-10-19 | CAP-08 "Šapa pomoći" (Brief v1.7, PRD v1.7 FR-61 … FR-72, TC v1.7 §5.10, Design v1.6 S32 … S37, API v1.3 EP-73 … EP-88). Three steps appended between Step 28 and Step 29: Step 28a (schema: six tables, CAP-08 columns, `message` preference, triggers, RLS), Step 28b (listings, public pages S32/S33/S37, S34, S35, S29 *Donacije*, EP-73 … EP-79, EP-87 daily job, EP-88, EP-13/EP-15 `listing_photo`), Step 28c (messaging S36, S12 *Poruke* card, report/block, S26 *Moderacija*, EP-80 … EP-86, new-message email + push, 30 messages/hour). Steps 01 … 28 unchanged; new ordering invariant 11 says where CAP-08 parts of shared contracts are built. Step 32 depends on Step 28c, quotes Release Criteria 1 and 6 as revised in PRD v1.7 and adds the e2e flow "give away an item and message the author" (`e2e/sapa-pomoci.spec.ts`). Carried-forward OQ-16 and OQ-17 (non-blocking; interim mappings of API v1.3). New CR-27 (route group for pages shown in both a signed-in and the public shell) and CR-28 (TC §5.10 error-code wording for `medicine_care`), both non-blocking. RISK-37 … RISK-39. Coverage matrix regenerated: 72 FRs, 88 EPs, 37 screens, 52 tables. |
+| 1.4 | 2026-11-09 | Step D2 (docs only): owner decisions and deviations from the Session logs and `docs/reports/F1-follow-ups.md` written into TC v1.9, Design v1.8 and API v1.5 (report: `docs/reports/D2-docs-sync.md`). §3 gains a table of off-plan steps R1, D1, F1, D2, L1 and FX. §12 CR-26 marked resolved (the owner pastes `supabase/seed/cities.sql` once into the production SQL editor; done 2026-10-29). |
 
 ---
 
@@ -97,6 +98,17 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | 30a | Backups & data export archives | ✅ | 30, 23 | — | 2026-10-29 |
 | 31 | Payments & pricing | ✅ | 30a | — (OQ-11, OQ-03 resolved 2026-10-29) | 2026-10-29 |
 | 32 | Release verification | ⬜ | 30a, 28c, 31 | — (checklist item 4 open until OQ-15) | |
+
+**Off-plan steps** (owner requests run outside the 36 plan steps; they do not change the plan steps above)
+
+| Step | Name | Status | Depends on | Blocked by | Done |
+|---|---|---|---|---|---|
+| R1 | Root route redirects to sign-in or the user home (QA fix; note in Step 27's Session log) | ✅ | 12 | — | 2026-10-28 |
+| D1 | Docs: Paddle Billing (OQ-11) and EUR prices (OQ-03) | ✅ | — | — | 2026-10-29 |
+| F1 | Follow-ups sweep from the Session logs (`docs/reports/F1-follow-ups.md`) | ✅ | 31 | — | 2026-10-29 |
+| D2 | Docs synced with the built app (`docs/reports/D2-docs-sync.md`) | ✅ | F1 | — | 2026-11-09 |
+| L1 | Owner-defined step outside this plan; not run yet | ⬜ | — | — | |
+| FX | Owner-defined step outside this plan; not run yet | ⬜ | — | — | |
 
 ---
 
@@ -6942,7 +6954,7 @@ _None recorded by the owner. Highest upstream ids are ASM-10 (Brief v1.7) and RI
 |---|---|---|---|
 | CR-24 | Design §9.1 | Copy and template ids for messages the API names but §9.1 does not cover: the Operator notification for a pending shelter (EP-41), the auto-renew confirmation (EP-48), the cancel-deletion confirmation (EP-51), the heir notification (EP-52), the organisation-admin emails on transfer accept/decline (EP-60) and on a new request/inquiry (EP-63), the web-push expiry notices (EP-49), and the RISK-14 Operator alert (EP-33 watchdog). Until added, those messages are not sent and each step logs them. | 12, 19, 23, 25, 30 |
 | CR-25 | TC ADR-17 | Name the toolchain packages that ADR-17 leaves implicit: ESLint and `eslint-config-next`, `@tailwindcss/postcss`, the `@types/*` packages create-next-app installs, `@testing-library/jest-dom` / `user-event` (under "Testing Library"), and the Supabase CLI as a dev dependency. Steps 01–02 install them as the ADR-01/ADR-14/ADR-15 toolchain; confirm by adding them to ADR-17. | 01, 02 |
-| CR-26 | TC ADR-11 / §8 | How `supabase/seed/cities.sql` reaches production: `supabase db push` on `main` applies migrations only, and the local seed must not run in production. Must be answered before the first production release. | 03, 04, 32 |
+| CR-26 | TC ADR-11 / §8 | How `supabase/seed/cities.sql` reaches production: `supabase db push` on `main` applies migrations only, and the local seed must not run in production. ✅ **Resolved 2026-10-29** (Step D2): the owner pastes `supabase/seed/cities.sql` once into the production Supabase SQL editor — done on 2026-10-29 (TC v1.9 §8). | 03, 04, 32 |
 
 **Change requests raised by v1.2** (non-blocking; the steps carry the stated interim rule; Step 32 records their status)
 
