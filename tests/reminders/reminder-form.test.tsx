@@ -256,3 +256,15 @@ describe("S11 — invalid fields on submit (QA Q1 shared form pattern)", () => {
     scroll.restore()
   })
 })
+
+describe("S11 — date picker (Step FX, Step 32 D-07 a/b)", () => {
+  it("clicking the selected day again keeps the required date and closes the calendar", async () => {
+    render(<ReminderFormClient pets={[...pets]} locale="sr" copy={copy("sr")} />)
+    const user = userEvent.setup()
+    await pickDay(user, "2026-10-26")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    await pickDay(user, "2026-10-26")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.getByRole("button", { name: /^Datum/ })).toHaveTextContent("26. 10. 2026.")
+  })
+})

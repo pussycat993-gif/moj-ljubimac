@@ -12,8 +12,25 @@ import {
   getDefaultClassNames,
   type DayButton,
 } from "react-day-picker"
+import { enGB } from "react-day-picker/locale/en-GB"
+import { srLatn } from "react-day-picker/locale/sr-Latn"
 
 import { Button, buttonVariants } from "@/components/ui/button"
+
+// Step FX (Step 32 D-07 c, FR-35): screen-reader names follow the UI language — an explicit `lang`, else the
+// page's <html lang> (set from the user's locale), else Serbian. Serbian navigation labels use the informal
+// voice of Design §9; day names come from react-day-picker's sr-Latn / en-GB locales.
+const SR_LABELS = {
+  labelNext: () => "Idi na sledeći mesec",
+  labelPrevious: () => "Idi na prethodni mesec",
+  labelMonthDropdown: () => "Izaberi mesec",
+  labelYearDropdown: () => "Izaberi godinu",
+}
+
+function calendarLanguage(lang: string | undefined): "sr" | "en" {
+  const value = lang ?? (typeof document !== "undefined" ? document.documentElement.lang : "")
+  return value.toLowerCase().startsWith("en") ? "en" : "sr"
+}
 
 function Calendar({
   className,
@@ -23,14 +40,20 @@ function Calendar({
   buttonVariant = "ghost",
   formatters,
   components,
+  labels,
+  lang,
   ...props
 }: React.ComponentProps<typeof DayPicker> & {
   buttonVariant?: React.ComponentProps<typeof Button>["variant"]
 }) {
   const defaultClassNames = getDefaultClassNames()
+  const language = calendarLanguage(lang)
 
   return (
     <DayPicker
+      lang={lang}
+      locale={language === "en" ? enGB : srLatn}
+      labels={language === "en" ? labels : { ...SR_LABELS, ...labels }}
       showOutsideDays={showOutsideDays}
       className={cn(
         "group/calendar bg-background p-3 [--cell-size:--spacing(8)] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
@@ -41,7 +64,7 @@ function Calendar({
       captionLayout={captionLayout}
       formatters={{
         formatMonthDropdown: (date) =>
-          date.toLocaleString("default", { month: "short" }),
+          date.toLocaleString(language === "en" ? "en-GB" : "sr-Latn", { month: "short" }),
         ...formatters,
       }}
       classNames={{

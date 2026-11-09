@@ -302,3 +302,31 @@ describe("S04 — invalid fields on submit (QA Q1 shared form pattern)", () => {
     scroll.restore()
   })
 })
+
+describe("S04 — date picker (Step FX, Step 32 D-07 a/b)", () => {
+  it("picking a day closes the calendar and returns focus to the field", async () => {
+    render(<VaccinationFormClient pet={luna} locale="sr" copy={copy("sr")} />)
+    const user = userEvent.setup()
+    await pickDay(user, "Datum sledeće doze", "2026-10-26")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.getByRole("button", { name: /^Datum sledeće doze/ })).toHaveTextContent("26. 10. 2026.")
+    expect(screen.getByRole("button", { name: /^Datum sledeće doze/ })).toHaveFocus()
+  })
+
+  it("clicking the already selected day keeps the required 'Datum davanja'", async () => {
+    render(<VaccinationFormClient pet={luna} locale="sr" copy={copy("sr")} />)
+    const user = userEvent.setup()
+    await pickDay(user, "Datum davanja", "2026-10-19")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.getByRole("button", { name: /^Datum davanja/ })).toHaveTextContent("19. 10. 2026.")
+  })
+
+  it("clicking the selected day of the optional next dose still clears it", async () => {
+    render(<VaccinationFormClient pet={luna} locale="sr" copy={copy("sr")} />)
+    const user = userEvent.setup()
+    await pickDay(user, "Datum sledeće doze", "2026-10-26")
+    await pickDay(user, "Datum sledeće doze", "2026-10-26")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.getByRole("button", { name: /^Datum sledeće doze/ })).toHaveTextContent("Izaberi datum")
+  })
+})

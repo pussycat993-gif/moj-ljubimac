@@ -327,3 +327,23 @@ describe("S22 — read_only, error, loading, English", () => {
     expect(screen.getByText("Male · 120,000 RSD")).toBeInTheDocument()
   })
 })
+
+describe("new litter date picker (Step FX, Step 32 D-07 a/b)", () => {
+  it("picking closes the calendar, and clicking the selected day again keeps the required born_on", async () => {
+    const user = userEvent.setup()
+    renderScreen({ ok: true, data: page([]) })
+    await user.click(screen.getByRole("button", { name: "Novo leglo" }))
+    const dialog = await screen.findByRole("dialog", { name: "Novo leglo" })
+    for (let i = 0; i < 2; i++) {
+      await user.click(within(dialog).getByRole("button", { name: /^Datum okota/ }))
+      const cell = await vi.waitFor(() => {
+        const found = document.querySelector<HTMLElement>(`[data-day="${today()}"] button`)
+        if (!found) throw new Error("no calendar day for today")
+        return found
+      })
+      await user.click(cell)
+      await vi.waitFor(() => expect(document.querySelector(`[data-day="${today()}"]`)).toBeNull())
+    }
+    expect(within(dialog).getByRole("button", { name: /^Datum okota/ })).not.toHaveTextContent("Izaberi datum")
+  })
+})

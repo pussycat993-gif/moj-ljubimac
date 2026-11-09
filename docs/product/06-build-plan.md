@@ -108,7 +108,7 @@ The build runs in 36 steps (Step 01 … Step 32 plus Steps 28a, 28b, 28c and 30a
 | F1 | Follow-ups sweep from the Session logs (`docs/reports/F1-follow-ups.md`) | ✅ | 31 | — | 2026-10-29 |
 | D2 | Docs synced with the built app (`docs/reports/D2-docs-sync.md`) | ✅ | F1 | — | 2026-11-09 |
 | L1 | Owner-defined step outside this plan; not run yet | ⬜ | — | — | |
-| FX | Owner-defined step outside this plan; not run yet | ⬜ | — | — | |
+| FX | Release fixes: Step 32 defects D-01 … D-08 fixed with tests; D-09 needs a product decision (`docs/reports/FX-fixes.md`) | ✅ | 32 | — | 2026-11-09 |
 
 ---
 

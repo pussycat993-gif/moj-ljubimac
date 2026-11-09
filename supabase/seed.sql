@@ -140,10 +140,14 @@ insert into public.weight_entries (pet_id, measured_on, value, note, created_by)
   ('c1000000-0000-4000-8000-000000000003', '2026-09-29', 1.7, null, 'a1000000-0000-4000-8000-000000000002'),
   ('c1000000-0000-4000-8000-000000000004', '2026-10-18', 6.1, null, 'a1000000-0000-4000-8000-000000000004');
 
+-- Luna's health dates are relative to today (Belgrade), so a fresh reset always leaves her with
+-- reminder occurrences inside the 60-day generation window (Step 32 D-01, fixed in Step FX):
+-- Besnilo is due in 17 days, Tobrex runs from 3 days ago to 6 days ahead, the vet follow-up is in
+-- 10 days. Purevax stays beyond the window (due in 123 days), FeLV has no next date.
 insert into public.vaccinations (pet_id, name, given_on, next_due_on, clinic, batch_number, created_by) values
-  ('c1000000-0000-4000-8000-000000000001', 'Besnilo — Rabisin', '2025-10-26', '2026-10-26',
+  ('c1000000-0000-4000-8000-000000000001', 'Besnilo — Rabisin', (now() at time zone 'Europe/Belgrade')::date - 348, (now() at time zone 'Europe/Belgrade')::date + 17,
    'Veterinarska ambulanta „Dr Vet”', 'RB-24-0917', 'a1000000-0000-4000-8000-000000000001'),
-  ('c1000000-0000-4000-8000-000000000001', 'Trovalentna — Purevax RCP', '2026-03-12', '2027-03-12',
+  ('c1000000-0000-4000-8000-000000000001', 'Trovalentna — Purevax RCP', (now() at time zone 'Europe/Belgrade')::date - 242, (now() at time zone 'Europe/Belgrade')::date + 123,
    'Veterinarska ambulanta „Dr Vet”', 'PX-26-1142', 'a1000000-0000-4000-8000-000000000001'),
   ('c1000000-0000-4000-8000-000000000001', 'Leukoza (FeLV) — Purevax FeLV', '2024-03-12', null,
    'Veterinarska ambulanta „Dr Vet”', 'FV-24-0310', 'a1000000-0000-4000-8000-000000000001');
@@ -153,21 +157,23 @@ insert into public.treatments (
 ) values (
   'c2000000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000001',
   'medication', 'Tobrex kapi za oči', '1 kap u svako oko', 12, 'hours',
-  '2026-10-15', '2026-10-25', 'a1000000-0000-4000-8000-000000000001'
+  (now() at time zone 'Europe/Belgrade')::date - 3, (now() at time zone 'Europe/Belgrade')::date + 6, 'a1000000-0000-4000-8000-000000000001'
 );
 
 insert into public.dose_logs (treatment_id, given_at, created_by) values
-  ('c2000000-0000-4000-8000-000000000001', '2026-10-18 06:10:00+00', 'a1000000-0000-4000-8000-000000000001'),
-  ('c2000000-0000-4000-8000-000000000001', '2026-10-18 18:05:00+00', 'a1000000-0000-4000-8000-000000000003');
+  ('c2000000-0000-4000-8000-000000000001', (((now() at time zone 'Europe/Belgrade')::date - 1) + time '06:10') at time zone 'UTC',
+   'a1000000-0000-4000-8000-000000000001'),
+  ('c2000000-0000-4000-8000-000000000001', (((now() at time zone 'Europe/Belgrade')::date - 1) + time '18:05') at time zone 'UTC',
+   'a1000000-0000-4000-8000-000000000003');
 
 insert into public.vet_visits (
   id, pet_id, visited_on, clinic, reason, findings, recommendations, cost_minor,
   follow_up_on, created_by
 ) values (
   'c3000000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000001',
-  '2026-10-02', 'Veterinarska ambulanta „Dr Vet”', 'Suzenje levog oka',
+  (now() at time zone 'Europe/Belgrade')::date - 4, 'Veterinarska ambulanta „Dr Vet”', 'Suzenje levog oka',
   'Blagi konjunktivitis, bez povrede rožnjače.',
-  'Tobrex kapi 10 dana, kontrola posle terapije.', 299000, '2026-10-30',
+  'Tobrex kapi 10 dana, kontrola posle terapije.', 299000, (now() at time zone 'Europe/Belgrade')::date + 10,
   'a1000000-0000-4000-8000-000000000001'
 );
 

@@ -143,6 +143,9 @@ select is((select array_agg(channel::text) from public.reminder_deliveries where
   array['push'], 'NFR-08: the newer delivery is kept');
 
 -- TC §5.9 — idempotency keys and rate-limit windows ---------------------------------------------------------
+-- Isolation (Step FX, D-02): rows left by e2e runs or earlier sessions would be purged too.
+delete from public.idempotency_keys;
+delete from public.rate_limit_counters;
 insert into public.idempotency_keys (user_id, key, operation, result, created_at) values
   ('a1000000-0000-4000-8000-000000000001', gen_random_uuid(), 'test.old', '{}'::jsonb, now() - interval '25 hours'),
   ('a1000000-0000-4000-8000-000000000001', gen_random_uuid(), 'test.new', '{}'::jsonb, now() - interval '1 hour');

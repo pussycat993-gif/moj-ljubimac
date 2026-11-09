@@ -51,7 +51,11 @@ async function check(page: Page, screen: Screen, testInfo: TestInfo) {
   await page.goto(screen.path);
   await screen.ready(page);
   await page.waitForLoadState("networkidle");
-  if (screen.open) await screen.open(page);
+  if (screen.open) {
+    await screen.open(page);
+    // Step FX: measure the opened dialog, not its fade-in (overlay and content animate their opacity).
+    await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))));
+  }
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   const summary = results.violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length, help: v.help }));
   await testInfo.attach(`axe ${screen.name}`, { body: JSON.stringify(summary, null, 2), contentType: "application/json" });

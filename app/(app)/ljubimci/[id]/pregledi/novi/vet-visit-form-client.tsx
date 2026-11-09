@@ -120,6 +120,7 @@ function costText(amountMinor: number, locale: Locale) {
 
 function DateField({
   id,
+  required = false,
   label,
   value,
   onChange,
@@ -130,6 +131,8 @@ function DateField({
   copy,
 }: {
   id: string
+  /** Step FX (Step 32 D-07 b): a required date is not cleared by clicking the selected day again. */
+  required?: boolean
   label: string
   value?: Date
   onChange: (d?: Date) => void
@@ -139,13 +142,15 @@ function DateField({
   locale: Locale
   copy: VetVisitFormCopy["petForm"]
 }) {
+  // Step FX (Step 32 D-07 a): the calendar closes once a day is picked; focus returns to the field.
+  const [open, setOpen] = useState(false)
   const monthNames = copy.calendarMonths.split(",")
   const weekdayNames = copy.calendarWeekdays.split(",")
   const describedBy = [helper ? `${id}-pomoc` : "", error ? `${id}-greska` : ""].filter(Boolean).join(" ") || undefined
   return (
     <div className="min-w-0 space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <Popover>
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
             id={id}
@@ -163,7 +168,10 @@ function DateField({
           <Calendar
             mode="single"
             selected={value}
-            onSelect={onChange}
+            onSelect={(d) => {
+              if (d || !required) onChange(d)
+              setOpen(false)
+            }}
             weekStartsOn={1}
             // EP-12: visited_on not in the future, follow_up_on after visited_on — invalid days cannot be picked (owner decision).
             disabled={disabled}
@@ -476,7 +484,7 @@ export function VetVisitFormClient({
           <h2 className="font-heading text-lg font-bold">{t.details}</h2>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <DateField
-              id="pregled-datum"
+              id="pregled-datum" required
               label={t.date}
               value={form.date}
               onChange={(d) => {

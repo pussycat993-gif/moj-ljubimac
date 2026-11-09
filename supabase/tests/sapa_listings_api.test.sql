@@ -109,7 +109,10 @@ update public.profiles set marketplace_suspended_at = null where id = 'a1000000-
 insert into public.listings (id, author_id, type, title, description, category, species, city_id, published_at)
 values ('f3000000-0000-4000-8000-000000000008', 'a1000000-0000-4000-8000-000000000005', 'giving',
   'Poklanjam štenećak ogradicu', 'Ograda za štence, 4 panela.', 'equipment_toys', 'dog',
-  (select id from city where name = 'Novi Sad'), now() - interval '4 days');
+  -- One day newer than the seeded f3…04 (5 days old at the reset), so the order does not depend on
+  -- how long ago the seed ran (Step FX, D-02).
+  (select id from city where name = 'Novi Sad'),
+  (select published_at + interval '1 day' from public.listings where id = 'f3000000-0000-4000-8000-000000000004'));
 
 select set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000003","role":"authenticated"}', true);
 set local role authenticated;

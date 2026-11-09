@@ -152,6 +152,9 @@ function NewLitterDialog({
   const [mother, setMother] = useState("")
   const [father, setFather] = useState("")
   const [date, setDate] = useState<Date | undefined>(undefined)
+  // Step FX (Step 32 D-07): the calendar closes once a day is picked, and clicking the selected day again
+  // does not clear the required born_on.
+  const [dateOpen, setDateOpen] = useState(false)
   const [count, setCount] = useState("4")
   const [submitted, setSubmitted] = useState(false)
   const [serverFields, setServerFields] = useState<Record<string, string>>({})
@@ -244,7 +247,7 @@ function NewLitterDialog({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="min-w-0 space-y-2">
               <Label htmlFor="litter-date">{t.bornOn}</Label>
-              <Popover>
+              <Popover open={dateOpen} onOpenChange={setDateOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     id="litter-date"
@@ -261,7 +264,10 @@ function NewLitterDialog({
                   <Calendar
                     mode="single"
                     selected={date}
-                    onSelect={setDate}
+                    onSelect={(d) => {
+                      if (d) setDate(d)
+                      setDateOpen(false)
+                    }}
                     weekStartsOn={1}
                     // EP-61: born_on not in the future — future days cannot be picked (owner decision).
                     disabled={{ after: new Date() }}

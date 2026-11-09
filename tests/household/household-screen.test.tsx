@@ -325,3 +325,37 @@ describe("S13 EP-36 / EP-37", () => {
     expect(toast).toHaveBeenCalledWith("Nešto nije u redu. Pokušaj ponovo.")
   })
 })
+
+describe("S13 invite Dialog — focus return (Step FX, Step 32 D-05, WCAG 2.4.3)", () => {
+  it("Escape after sending returns focus to 'Pozovi člana'", async () => {
+    createHouseholdInvitation.mockResolvedValue({
+      ok: true,
+      data: { invitation: { household_id: HH }, invite_url: "https://mojljubimac.rs/poziv/hh_x.y" },
+    })
+    renderScreen(household())
+    const user = userEvent.setup()
+    const trigger = screen.getByRole("button", { name: "Pozovi člana" })
+    trigger.focus()
+    await user.keyboard("{Enter}")
+    const dialog = await screen.findByRole("dialog")
+    await user.type(within(dialog).getByLabelText("Mejl adresa"), "sara@mojljubimac.test")
+    await user.click(within(dialog).getByRole("button", { name: "Pošalji poziv" }))
+    expect(await within(dialog).findByText("Poziv je poslat na sara@mojljubimac.test.")).toBeInTheDocument()
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole("button", { name: "Pozovi člana" })).toHaveFocus())
+  })
+
+  it("opened from the empty state, Escape returns focus to that button", async () => {
+    renderScreen(household({ members: [household().members[0]], member_count: 1 }))
+    const user = userEvent.setup()
+    const buttons = screen.getAllByRole("button", { name: "Pozovi člana" })
+    const fromEmpty = buttons[buttons.length - 1]
+    fromEmpty.focus()
+    await user.keyboard("{Enter}")
+    await screen.findByRole("dialog")
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    await waitFor(() => expect(fromEmpty).toHaveFocus())
+  })
+})

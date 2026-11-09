@@ -32,6 +32,11 @@ set local role anon;
 select throws_ok($$select public.get_me()$$, '42501', null, 'anon cannot call get_me');
 reset role;
 
+-- Isolation (Step FX, D-02): pin Ivana's period to one month from now, so the check does not
+-- depend on how long ago the seed ran.
+update public.subscriptions set current_period_end = now() + interval '1 month'
+where user_id = 'a1000000-0000-4000-8000-000000000001' and status = 'active';
+
 -- Premium seed user (Ivana) ---------------------------------------------------------------------
 select set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000001","role":"authenticated"}', true);
 set local role authenticated;

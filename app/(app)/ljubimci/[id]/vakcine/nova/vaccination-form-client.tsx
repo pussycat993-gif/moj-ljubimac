@@ -65,6 +65,7 @@ function parseIsoDate(value: string | null) {
 
 function DateField({
   id,
+  required = false,
   label,
   value,
   onChange,
@@ -75,6 +76,8 @@ function DateField({
   copy,
 }: {
   id: string
+  /** Step FX (Step 32 D-07 b): a required date is not cleared by clicking the selected day again. */
+  required?: boolean
   label: string
   value?: Date
   onChange: (d?: Date) => void
@@ -84,13 +87,15 @@ function DateField({
   locale: Locale
   copy: VaccinationFormCopy["petForm"]
 }) {
+  // Step FX (Step 32 D-07 a): the calendar closes once a day is picked; focus returns to the field.
+  const [open, setOpen] = useState(false)
   const monthNames = copy.calendarMonths.split(",")
   const weekdayNames = copy.calendarWeekdays.split(",")
   const describedBy = [helper ? `${id}-pomoc` : "", error ? `${id}-greska` : ""].filter(Boolean).join(" ") || undefined
   return (
     <div className="min-w-0 space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <Popover>
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
             id={id}
@@ -108,7 +113,10 @@ function DateField({
           <Calendar
             mode="single"
             selected={value}
-            onSelect={onChange}
+            onSelect={(d) => {
+              if (d || !required) onChange(d)
+              setOpen(false)
+            }}
             weekStartsOn={1}
             // EP-09: given_on not in the future, next_due_on after given_on — invalid days cannot be picked (owner decision).
             disabled={disabled}
@@ -294,7 +302,7 @@ export function VaccinationFormClient({
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <DateField
-              id="vakcina-datum"
+              id="vakcina-datum" required
               label={t.givenOn}
               value={form.given}
               onChange={(d) => {

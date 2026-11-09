@@ -279,7 +279,7 @@ describe("S02 — QA Q1 fixes", () => {
 
     await user.selectOptions(year, "2015")
     await user.selectOptions(month, "5")
-    await user.click(screen.getByRole("button", { name: /June 10th, 2015/ }))
+    await user.click(screen.getByRole("button", { name: /10\. jun 2015\./ })) // Serbian day names since Step FX (D-07 c)
     expect(screen.getByRole("button", { name: /Datum rođenja/ })).toHaveTextContent("10. 6. 2015.")
   })
 
@@ -489,5 +489,21 @@ describe("EP-03 / EP-04 server actions", () => {
     supabase.current = client
     expect((await actions.updatePet(LUNA_ID, { weight_unit: "g" })).ok).toBe(true)
     expect(client.writes[0]).toEqual({ op: "update", row: { weight_unit: "g" } })
+  })
+})
+
+describe("S02 — birth date picker (Step FX, Step 32 D-07 a)", () => {
+  it("picking a day closes the calendar and shows the date", async () => {
+    const user = userEvent.setup()
+    render(<PetFormClient locale="sr" copy={copy("sr")} />)
+    await user.click(screen.getByRole("button", { name: /^Datum rođenja/ }))
+    const popover = await screen.findByRole("dialog")
+    const now = new Date()
+    const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+    const cell = popover.querySelector<HTMLElement>(`[data-day="${day}"] button`)
+    if (!cell) throw new Error(`no calendar day ${day}`)
+    await user.click(cell)
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.getByRole("button", { name: /^Datum rođenja/ })).not.toHaveTextContent("Izaberi datum")
   })
 })

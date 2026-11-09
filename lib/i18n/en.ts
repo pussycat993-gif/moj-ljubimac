@@ -1519,6 +1519,7 @@ export const en: Dictionary = {
     download: "Download ZIP",
     pendingTitle: "Your account will be deleted on {date}",
     pendingBody: "Request sent on {date}. Your account is deactivated — reminders don't arrive and Premium won't renew.",
+    pendingBodyFree: "Request sent on {date}. Your account is deactivated — reminders don't arrive.",
     pendingDays_one: "{n} day left to change your mind",
     pendingDays_few: "{n} days left to change your mind",
     pendingDays_other: "{n} days left to change your mind",

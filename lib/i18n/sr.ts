@@ -1604,6 +1604,8 @@ export const sr = {
     download: "Preuzmi ZIP",
     pendingTitle: "Nalog će biti obrisan {date}",
     pendingBody: "Zahtev je poslat {date} Nalog je deaktiviran — podsetnici ne stižu, a Premium se neće obnoviti.",
+    // Step FX (Step 32 D-08): the same line without the Premium clause, for accounts without Premium.
+    pendingBodyFree: "Zahtev je poslat {date} Nalog je deaktiviran — podsetnici ne stižu.",
     pendingDays_one: "Još {n} dan da se predomisliš",
     pendingDays_few: "Još {n} dana da se predomisliš",
     pendingDays_other: "Još {n} dana da se predomisliš",

@@ -433,3 +433,13 @@ describe("S27 — invalid fields on submit (QA Q1 shared form pattern)", () => {
     scroll.restore()
   })
 })
+
+describe("S27 — date picker (Step FX, Step 32 D-07 a/b)", () => {
+  it("clicking the selected start day keeps the required date and closes the calendar", async () => {
+    render(<TreatmentFormClient pet={luna} locale="sr" copy={copy("sr")} />)
+    const user = userEvent.setup()
+    await pickDay(user, "Datum početka", "2026-10-19")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.getByRole("button", { name: /^Datum početka/ })).toHaveTextContent("19. 10. 2026.")
+  })
+})

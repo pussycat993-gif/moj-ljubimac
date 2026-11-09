@@ -58,12 +58,17 @@ select is((select r -> 'memorial' from rec), 'null'::jsonb, 'memorial null while
 select is((select jsonb_array_length(r -> 'vaccinations') from rec), 3, 'vaccinations: all 3');
 select is(
   (select array_agg(v ->> 'given_on') from rec, jsonb_array_elements(r -> 'vaccinations') v),
-  array['2026-03-12', '2025-10-26', '2024-03-12'],
+  -- The seed's Purevax and Besnilo dates are relative to the reset day (Step FX, D-01).
+  array[
+    (select given_on::text from public.vaccinations where name = 'Trovalentna — Purevax RCP'),
+    (select given_on::text from public.vaccinations where name = 'Besnilo — Rabisin'),
+    '2024-03-12'
+  ],
   'vaccinations ordered given_on desc'
 );
 select is(
   (select (v ->> 'days_until_due')::int from rec, jsonb_array_elements(r -> 'vaccinations') v where v ->> 'name' = 'Besnilo — Rabisin'),
-  ('2026-10-26'::date - (now() at time zone 'Europe/Belgrade')::date),
+  ((select next_due_on from public.vaccinations where name = 'Besnilo — Rabisin') - (now() at time zone 'Europe/Belgrade')::date),
   'days_until_due = next_due_on − today (Belgrade)'
 );
 select is(

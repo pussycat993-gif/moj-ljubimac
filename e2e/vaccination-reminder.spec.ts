@@ -37,7 +37,7 @@ async function pickDay(page: Page, field: RegExp, days: number) {
   const { iso, nextMonth } = dayFromToday(days);
   await page.getByRole("button", { name: field }).click();
   const dialog = page.getByRole("dialog");
-  if (nextMonth) await dialog.getByRole("button", { name: "Go to the Next Month" }).click();
+  if (nextMonth) await dialog.getByRole("button", { name: "Idi na sledeći mesec" }).click();
   await dialog.locator(`[data-day="${iso}"] button`).click();
 }
 

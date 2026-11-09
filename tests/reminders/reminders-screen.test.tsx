@@ -234,3 +234,42 @@ describe("S10 — paging, empty, loading, error", () => {
     expect(screen.getAllByRole("button", { name: "Done" })).toHaveLength(2)
   })
 })
+
+describe("S10 — focus after 'Urađeno' (Step FX, Step 32 D-04, WCAG 2.4.3)", () => {
+  it("focus moves to the next row's 'Urađeno' instead of being lost to <body>", async () => {
+    markOccurrenceDone.mockResolvedValue({
+      ok: true,
+      data: { ...obrok, status: "done", display_status: "done", done_at: "2026-10-19T08:15:00Z", done_by: "u1", done_by_name: "Ivana Petrović", can_mark_done: false },
+    })
+    renderScreen()
+    const user = userEvent.setup()
+    const first = screen.getByText("Obrok — Luna").closest("li")!
+    await user.click(within(first).getByRole("button", { name: "Urađeno" }))
+    expect(screen.queryByText("Obrok — Luna")).not.toBeInTheDocument()
+    const next = screen.getByRole("link", { name: "Kupi seno za Kiki" }).closest("li")!
+    await vi.waitFor(() => expect(within(next).getByRole("button", { name: "Urađeno" })).toHaveFocus())
+  })
+
+  it("the last row done → focus goes to the row before it", async () => {
+    markOccurrenceDone.mockResolvedValue({
+      ok: true,
+      data: { ...kupi, status: "done", display_status: "done", done_at: "2026-10-19T08:15:00Z", done_by: "u1", done_by_name: "Ivana Petrović", can_mark_done: false },
+    })
+    renderScreen()
+    const user = userEvent.setup()
+    const last = screen.getByRole("link", { name: "Kupi seno za Kiki" }).closest("li")!
+    await user.click(within(last).getByRole("button", { name: "Urađeno" }))
+    const previous = screen.getByText("Obrok — Luna").closest("li")!
+    await vi.waitFor(() => expect(within(previous).getByRole("button", { name: "Urađeno" })).toHaveFocus())
+  })
+
+  it("the only row done → focus goes to the tab panel", async () => {
+    const only = occurrence("o31", { title: "Jedini podsetnik" })
+    markOccurrenceDone.mockResolvedValue({ ok: true, data: { ...only, status: "done", display_status: "done", can_mark_done: false } })
+    renderScreen({ lists: lists({ today: list([only]) }) })
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Urađeno" }))
+    await vi.waitFor(() => expect(screen.getByRole("tabpanel")).toHaveFocus())
+    expect(document.activeElement).not.toBe(document.body)
+  })
+})

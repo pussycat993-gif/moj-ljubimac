@@ -308,6 +308,7 @@ function AttachmentChip({
 
 function DateField({
   id,
+  required = false,
   label,
   value,
   onChange,
@@ -315,18 +316,22 @@ function DateField({
   copy,
 }: {
   id: string
+  /** Step FX (Step 32 D-07 b): a required date is not cleared by clicking the selected day again. */
+  required?: boolean
   label: string
   value?: Date
   onChange: (d?: Date) => void
   locale: Locale
   copy: PetRecordCopy["petForm"]
 }) {
+  // Step FX (Step 32 D-07 a): the calendar closes once a day is picked; focus returns to the field.
+  const [open, setOpen] = useState(false)
   const monthNames = copy.calendarMonths.split(",")
   const weekdayNames = copy.calendarWeekdays.split(",")
   return (
     <div className="min-w-0 space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <Popover>
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
             id={id}
@@ -342,7 +347,10 @@ function DateField({
           <Calendar
             mode="single"
             selected={value}
-            onSelect={onChange}
+            onSelect={(d) => {
+              if (d || !required) onChange(d)
+              setOpen(false)
+            }}
             weekStartsOn={1}
             // EP-08: measured_on is not in the future — later days cannot be picked (owner decision, Step 14).
             disabled={{ after: new Date() }}
@@ -1470,7 +1478,7 @@ export function PetRecordClient({
           ) : (
             <div className="space-y-4">
               <DateField
-                id="uspomena-datum"
+                id="uspomena-datum" required
                 label={t.date}
                 value={memDate}
                 onChange={setMemDate}
@@ -1560,7 +1568,7 @@ export function PetRecordClient({
             <DialogDescription>{format(t.weightDescription, { unit })}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <DateField id="tezina-datum" label={t.date} value={wDate} onChange={setWDate} locale={locale} copy={copy.petForm} />
+            <DateField id="tezina-datum" required label={t.date} value={wDate} onChange={setWDate} locale={locale} copy={copy.petForm} />
             <div className="space-y-2">
               <Label htmlFor="tezina-vrednost">{format(t.weightValue, { unit })}</Label>
               <Input

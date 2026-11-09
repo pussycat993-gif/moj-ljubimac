@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Bell, Plus, Settings } from "lucide-react"
@@ -217,6 +217,21 @@ export function RemindersClient({
   )
   const [loadingMore, setLoadingMore] = useState<TabKey | null>(null)
   const labels = reminderRowLabels(t)
+  // Step FX (Step 32 D-04, WCAG 2.4.3): after "Urađeno" the row leaves the list, so focus moves to the row that
+  // took its place (or the one before it), else to the tab panel — never to <body>.
+  const panelRefs = useRef<Partial<Record<TabKey, HTMLDivElement | null>>>({})
+  const focusAfterDone = useRef<{ key: TabKey; index: number } | null>(null)
+  useEffect(() => {
+    const pending = focusAfterDone.current
+    if (!pending) return
+    focusAfterDone.current = null
+    const panel = panelRefs.current[pending.key]
+    if (!panel) return
+    const rows = panel.querySelectorAll<HTMLLIElement>("li")
+    const row = rows.length > 0 ? rows[Math.min(pending.index, rows.length - 1)] : undefined
+    const target = row?.querySelector<HTMLElement>("button") ?? row?.querySelector<HTMLElement>("a[href]") ?? panel
+    target.focus()
+  }, [data])
 
   if (!data) {
     return (
@@ -257,6 +272,7 @@ export function RemindersClient({
       return
     }
     const done = result.data
+    focusAfterDone.current = { key, index: Math.max(0, data![key].items.findIndex((i) => i.id === id)) }
     setData((prev) => {
       if (!prev) return prev
       const from = prev[key]
@@ -292,7 +308,14 @@ export function RemindersClient({
         {TABS.map((x) => {
           const { items, total } = data[x.key]
           return (
-            <TabsContent key={x.key} value={x.key} className="mt-4">
+            <TabsContent
+              key={x.key}
+              value={x.key}
+              className="mt-4"
+              ref={(el) => {
+                panelRefs.current[x.key] = el
+              }}
+            >
               {items.length === 0 ? (
                 <EmptyState
                   icon={Bell}

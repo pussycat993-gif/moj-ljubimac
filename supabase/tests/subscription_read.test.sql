@@ -15,6 +15,11 @@ select has_function('public', 'set_auto_renew', array['boolean'], 'EP-48 functio
 select ok(not has_function_privilege('anon', 'public.get_my_subscription()', 'execute'), 'a Visitor cannot read a subscription');
 select ok(not has_function_privilege('anon', 'public.set_auto_renew(boolean)', 'execute'), 'a Visitor cannot change a subscription');
 
+-- Isolation (Step FX, D-02): pin Ivana's period to one month from now, so the check does not
+-- depend on how long ago the seed ran.
+update public.subscriptions set current_period_end = now() + interval '1 month'
+where user_id = 'a1000000-0000-4000-8000-000000000001' and status = 'active';
+
 create temp table ivana_before on commit drop as
   select id, current_period_end from public.subscriptions where user_id = 'a1000000-0000-4000-8000-000000000001';
 

@@ -309,3 +309,26 @@ describe("EP-08 action rules (lib/actions/weights.ts)", () => {
     expect(result.ok && result.data.id).toBe("w-new")
   })
 })
+
+describe("weight dialog date picker (Step FX, Step 32 D-07 a/b)", () => {
+  it("clicking the selected day (today) keeps the required date and closes the calendar", async () => {
+    renderRecord(record({ weights: [] }))
+    const user = await openWeightTab()
+    await user.click(screen.getByRole("button", { name: "Dodaj merenje" }))
+    const dialog = screen.getByRole("dialog", { name: "Novo merenje — Luna" })
+    const field = within(dialog).getByRole("button", { name: /^Datum/ })
+    const before = field.textContent
+    await user.click(field)
+    const now = new Date()
+    const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+    const cell = await vi.waitFor(() => {
+      const found = document.querySelector<HTMLElement>(`[data-day="${day}"] button`)
+      if (!found) throw new Error(`no calendar day ${day}`)
+      return found
+    })
+    await user.click(cell)
+    await vi.waitFor(() => expect(document.querySelector(`[data-day="${day}"]`)).toBeNull())
+    expect(within(dialog).getByRole("button", { name: /^Datum/ }).textContent).toBe(before)
+    expect(before).not.toContain("Izaberi datum")
+  })
+})

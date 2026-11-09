@@ -401,3 +401,16 @@ describe("S05 — invalid fields on submit (QA Q1 shared form pattern)", () => {
     scroll.restore()
   })
 })
+
+describe("S05 — date picker (Step FX, Step 32 D-07 a/b)", () => {
+  it("clicking the selected visit day keeps the required date; picking closes the calendar", async () => {
+    renderNew()
+    const user = userEvent.setup()
+    await pickDay(user, "Datum \\*", "2026-10-19")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.getByRole("button", { name: /^Datum \*/ })).toHaveTextContent("19. 10. 2026.")
+    await pickDay(user, "Datum kontrole", "2026-10-30")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.getByRole("button", { name: /^Datum kontrole/ })).toHaveTextContent("30. 10. 2026.")
+  })
+})

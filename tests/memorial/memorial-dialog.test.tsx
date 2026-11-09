@@ -228,3 +228,15 @@ describe("EP-06 — Premesti u Uspomene", () => {
     expect(screen.queryByRole("button", { name: /Izvezi PDF/ })).not.toBeInTheDocument()
   })
 })
+
+describe("memorial date picker (Step FX, Step 32 D-07 a/b)", () => {
+  it("picking closes the calendar, and clicking the selected day again keeps the required date", async () => {
+    renderRecord(record())
+    const user = await openMemorialDialog()
+    await pickDay(user, "2026-10-18")
+    await vi.waitFor(() => expect(document.querySelector('[data-day="2026-10-18"]')).toBeNull())
+    await pickDay(user, "2026-10-18")
+    await vi.waitFor(() => expect(document.querySelector('[data-day="2026-10-18"]')).toBeNull())
+    expect(screen.getByRole("button", { name: /^Datum \*/ })).toHaveTextContent("18. 10. 2026.")
+  })
+})

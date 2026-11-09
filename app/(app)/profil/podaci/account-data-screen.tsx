@@ -181,7 +181,10 @@ export function AccountDataScreen({
   actions,
 }: {
   /** EP-43 — email and the deletion fields (the read is exempt from the pending-deletion gate). */
-  me: Pick<Me, "email" | "deletion_requested_at" | "deletion_due_at" | "deletion_days_left">
+  me: Pick<Me, "email" | "deletion_requested_at" | "deletion_due_at" | "deletion_days_left"> & {
+    /** EP-43 entitlements — the "Premium won't renew" lines show only with Premium (Step FX, Step 32 D-08). */
+    entitlements?: Pick<Me["entitlements"], "premium">
+  }
   /** EP-50 getMyDataOverview, or null when it failed (or answered 403 account_pending_deletion). */
   overview: DataOverview | null
   locale: Locale
@@ -236,6 +239,7 @@ export function AccountDataScreen({
   const error = !deletion && !overview
   const petNames = overview?.summary.pet_names ?? []
   const heir = overview?.deletion.heir_full_name ?? null
+  const hasPremium = me.entitlements?.premium === true
 
   return (
     <div className="space-y-6">
@@ -261,7 +265,7 @@ export function AccountDataScreen({
             <div className="min-w-0">
               <h2 className="font-heading text-lg font-bold">{format(t.pendingTitle, { date: formatDate(deletion.due_at, locale) })}</h2>
               <p className="text-sm text-muted-foreground">
-                {format(t.pendingBody, { date: formatDate(deletion.requested_at, locale) })}
+                {format(hasPremium ? t.pendingBody : t.pendingBodyFree, { date: formatDate(deletion.requested_at, locale) })}
               </p>
             </div>
           </div>
@@ -327,7 +331,7 @@ export function AccountDataScreen({
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>{t.dialogPremium}</li>
+                {hasPremium && <li>{t.dialogPremium}</li>}
                 {heir && <li>{format(t.dialogHeir, { heir })}</li>}
                 <li>{t.dialogTip}</li>
               </ul>

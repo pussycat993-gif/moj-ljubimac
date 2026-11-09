@@ -202,3 +202,35 @@ describe("S19 account deletion (FR-40)", () => {
     expect(screen.queryByText(/Nalog će biti obrisan/)).not.toBeInTheDocument()
   })
 })
+
+describe("S19 Premium lines only for Premium (Step FX, Step 32 D-08)", () => {
+  const free = { entitlements: { premium: false } }
+  const premium = { entitlements: { premium: true } }
+
+  it("a Free user's delete dialog does not say that Premium won't renew", async () => {
+    const user = userEvent.setup()
+    renderScreen({ ...noDeletion, ...free } as never, overview())
+    await user.click(screen.getByRole("button", { name: "Obriši nalog" }))
+    const dialog = screen.getByRole("alertdialog", { name: "Obrisati nalog?" })
+    expect(within(dialog).queryByText("Premium pretplata se neće obnoviti.")).not.toBeInTheDocument()
+    expect(within(dialog).getByText(/^Savet: pre brisanja/)).toBeInTheDocument()
+  })
+
+  it("a Premium user's delete dialog keeps the line", async () => {
+    const user = userEvent.setup()
+    renderScreen({ ...noDeletion, ...premium } as never, overview())
+    await user.click(screen.getByRole("button", { name: "Obriši nalog" }))
+    const dialog = screen.getByRole("alertdialog", { name: "Obrisati nalog?" })
+    expect(within(dialog).getByText("Premium pretplata se neće obnoviti.")).toBeInTheDocument()
+  })
+
+  it("a Free user's pending card drops the Premium clause; a Premium user's keeps it", () => {
+    const { unmount } = renderScreen({ ...pendingMe, ...free } as never, null)
+    const freeCard = screen.getByRole("status")
+    expect(within(freeCard).getByText("Zahtev je poslat 19. 10. 2026. Nalog je deaktiviran — podsetnici ne stižu.")).toBeInTheDocument()
+    expect(freeCard).not.toHaveTextContent("Premium")
+    unmount()
+    renderScreen({ ...pendingMe, ...premium } as never, null)
+    expect(screen.getByRole("status")).toHaveTextContent("a Premium se neće obnoviti.")
+  })
+})

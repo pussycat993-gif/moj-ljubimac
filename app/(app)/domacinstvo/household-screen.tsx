@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type MouseEvent } from "react"
+import { useRef, useState, type MouseEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Bell, Check, Copy, Link2, LogOut, Mail, Trash2, UserPlus, Users } from "lucide-react"
@@ -131,6 +131,13 @@ export function HouseholdScreen({
 
   // Invite dialog
   const [inviteOpen, setInviteOpen] = useState(false)
+  // Step FX (Step 32 D-05, WCAG 2.4.3): the Dialog is opened from two buttons without a DialogTrigger, so it
+  // remembers the button that opened it and gives focus back to it on close.
+  const inviteOpener = useRef<HTMLElement | null>(null)
+  function openInvite() {
+    inviteOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setInviteOpen(true)
+  }
   const [householdName, setHouseholdName] = useState("")
   const [nameError, setNameError] = useState<string | null>(null)
   const [inviteEmail, setInviteEmail] = useState("")
@@ -350,7 +357,7 @@ export function HouseholdScreen({
           </p>
         </div>
         {isOwner && canEdit && !full && view !== "G" && (
-          <Button className="h-11 md:h-9" onClick={() => setInviteOpen(true)}>
+          <Button className="h-11 md:h-9" onClick={openInvite}>
             <UserPlus className="size-5" aria-hidden />
             {t.invite}
           </Button>
@@ -368,7 +375,7 @@ export function HouseholdScreen({
           title={t.emptyTitle}
           description={t.emptyDescription}
           action={t.invite}
-          onAction={() => setInviteOpen(true)}
+          onAction={openInvite}
         />
       ) : (
         <ul className="space-y-2">
@@ -601,7 +608,15 @@ export function HouseholdScreen({
 
       {/* Invite (FR-26) */}
       <Dialog open={inviteOpen} onOpenChange={closeInvite}>
-        <DialogContent>
+        <DialogContent
+          onCloseAutoFocus={(e) => {
+            const opener = inviteOpener.current
+            if (opener?.isConnected) {
+              e.preventDefault()
+              opener.focus()
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{t.inviteTitle}</DialogTitle>
             <DialogDescription>{t.inviteDescription}</DialogDescription>

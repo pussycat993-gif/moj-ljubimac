@@ -21,6 +21,10 @@ select col_default_is('public', 'rate_limit_counters', 'count', '0', 'count defa
 select col_is_unique('public', 'rate_limit_counters', array['user_id', 'operation', 'window_start'],
   'unique (user_id, operation, window_start)');
 
+-- Isolation (Step FX, D-02): rows left by e2e runs or earlier sessions would be counted too.
+delete from public.idempotency_keys;
+delete from public.rate_limit_counters;
+
 -- idempotency_keys RLS -----------------------------------------------------------------------------
 select set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000001","role":"authenticated"}', true);
 set local role authenticated;

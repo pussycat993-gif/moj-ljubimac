@@ -7,6 +7,8 @@ create extension if not exists pgtap with schema extensions;
 select plan(41);
 
 -- Setup (as postgres): Marko and Petar join Ivana's household; one pending invitation.
+-- Isolation (Step FX, D-02): invitations left by e2e runs would be counted too.
+delete from public.household_invitations where household_id = 'b1000000-0000-4000-8000-000000000001';
 insert into auth.users (id, email) values ('c6000000-0000-4000-8000-000000000001', 'petar@mojljubimac.test');
 insert into public.profiles (id, account_type, email, terms_accepted_at, terms_version)
 values ('c6000000-0000-4000-8000-000000000001', 'owner', 'x', now(), 'seed');

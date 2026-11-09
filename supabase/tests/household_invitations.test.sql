@@ -24,6 +24,8 @@ select ok(not has_function_privilege('anon', 'public.create_household_invitation
 select ok(has_function_privilege('authenticated', 'public.create_household_invitation(uuid, text, text, text)', 'execute'), 'signed-in users call EP-35');
 
 -- Setup (as postgres): two extra owner accounts.
+-- Isolation (Step FX, D-02): invitations left by e2e runs would be listed too.
+delete from public.household_invitations where household_id = 'b1000000-0000-4000-8000-000000000001';
 insert into auth.users (id, email) values
   ('c7000000-0000-4000-8000-000000000001', 'petar@mojljubimac.test'),
   ('c7000000-0000-4000-8000-000000000002', 'sara@mojljubimac.test'),

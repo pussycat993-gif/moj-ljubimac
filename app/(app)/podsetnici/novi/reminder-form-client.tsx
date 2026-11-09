@@ -341,8 +341,11 @@ export function ReminderFormClient({
                       formatWeekdayName: (d: Date) => weekdayNames[d.getDay()],
                     }}
                     onSelect={(d) => {
-                      setDate(d)
-                      setErrors((er) => ({ ...er, date: d ? undefined : er.date }))
+                      // Step FX (Step 32 D-07 b): clicking the selected day again does not clear the required date.
+                      if (d) {
+                        setDate(d)
+                        setErrors((er) => ({ ...er, date: undefined }))
+                      }
                       setDateOpen(false)
                     }}
                   />

@@ -32,7 +32,7 @@ test("an owner marks a reminder done on S10 and sees it under Urađeno with time
   const iso = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
   await page.getByRole("button", { name: /^Datum/ }).click();
   const dialog = page.getByRole("dialog");
-  if (tomorrow.getMonth() !== new Date().getMonth()) await dialog.getByRole("button", { name: "Go to the Next Month" }).click();
+  if (tomorrow.getMonth() !== new Date().getMonth()) await dialog.getByRole("button", { name: "Idi na sledeći mesec" }).click();
   await dialog.locator(`[data-day="${iso}"] button`).click();
   await page.getByRole("button", { name: "Sačuvaj podsetnik" }).click();
   await expect(page.getByText(`Podsetnik „${title}“ je sačuvan`)).toBeVisible();
