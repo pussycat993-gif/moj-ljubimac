@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -406,5 +406,30 @@ describe("EP-10 action rules (lib/actions/treatments.ts)", () => {
       rpc: async () => ({ data: null, error: { code: "P0001", message: "household_read_only", details: null } }),
     }
     expect(await actions.logDose({ treatment_id: "t1" })).toMatchObject({ ok: false, error: { code: "household_read_only" } })
+  })
+})
+
+describe("S27 — invalid fields on submit (QA Q1 shared form pattern)", () => {
+  function spyScroll() {
+    Element.prototype.scrollIntoView ??= () => {}
+    const scrolled: Element[] = []
+    const spy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+      scrolled.push(this)
+    })
+    return { scrolled, restore: () => spy.mockRestore() }
+  }
+
+  it("marks the invalid field, scrolls it into view and focuses it", async () => {
+    const scroll = spyScroll()
+    render(<TreatmentFormClient pet={luna} locale="sr" copy={copy("sr")} />)
+    const user = userEvent.setup()
+    
+    await user.click(screen.getByRole("button", { name: "Sačuvaj terapiju" }))
+    const field = screen.getByLabelText("Naziv *")
+    expect(field).toHaveAttribute("aria-invalid", "true")
+    await waitFor(() => expect(field).toHaveFocus())
+    expect(scroll.scrolled).toContain(field)
+    expect(screen.getByText("Upiši naziv leka ili preparata.")).toBeInTheDocument()
+    scroll.restore()
   })
 })

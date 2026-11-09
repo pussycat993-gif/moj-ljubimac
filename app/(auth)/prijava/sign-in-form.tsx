@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { PasswordInput } from "@/components/app/password-input"
 import {
   requestPasswordReset,
   resendVerification,
@@ -23,7 +24,15 @@ import { sr } from "@/lib/i18n/sr"
 // same page (/prijava?view=reset); a valid request always shows the sent state.
 
 type View = "sign-in" | "reset" | "reset-sent"
-type SignInError = "credentials" | "not_verified" | "unexpected"
+type SignInError = "credentials" | "not_verified" | "rate_limited" | "unexpected"
+
+/** An action error code → the message the screen shows; the server's English `message` is never rendered. */
+function toSignInError(code: string): SignInError {
+  if (code === "unauthenticated") return "credentials"
+  if (code === "email_not_verified") return "not_verified"
+  if (code === "rate_limited") return "rate_limited"
+  return "unexpected"
+}
 
 function validateEmail(value: string, message: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? undefined : message
@@ -76,13 +85,7 @@ export function SignInForm({
     }
     setPending(false)
     setResent(false)
-    setError(
-      result.error.code === "unauthenticated"
-        ? "credentials"
-        : result.error.code === "email_not_verified"
-          ? "not_verified"
-          : "unexpected",
-    )
+    setError(toSignInError(result.error.code))
   }
 
   async function onGoogle() {
@@ -101,7 +104,7 @@ export function SignInForm({
     const result = await resendVerification({ email })
     setPending(false)
     if (result.ok) setResent(true)
-    else setError("unexpected")
+    else setError(result.error.code === "rate_limited" ? "rate_limited" : "unexpected")
   }
 
   async function onResetSubmit(ev: FormEvent) {
@@ -110,8 +113,13 @@ export function SignInForm({
     setEmailError(err)
     if (err) return
     setPending(true)
-    await requestPasswordReset({ email })
+    setError(null)
+    const result = await requestPasswordReset({ email })
     setPending(false)
+    if (!result.ok && result.error.code === "rate_limited") {
+      setError("rate_limited")
+      return
+    }
     setView("reset-sent")
   }
 
@@ -130,6 +138,15 @@ export function SignInForm({
             </p>
           )}
         </div>
+
+      {view === "reset" && error === "rate_limited" && (
+        <div role="alert" className="flex items-start gap-3 rounded-sm bg-foreground/5 p-3">
+          <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+          <div className="min-w-0 space-y-1">
+            <p className="text-sm font-medium text-destructive">{t.rateLimited}</p>
+          </div>
+        </div>
+      )}
 
         {view === "reset" && (
           <form className="space-y-4" noValidate onSubmit={onResetSubmit}>
@@ -211,6 +228,15 @@ export function SignInForm({
         </div>
       )}
 
+      {error === "rate_limited" && (
+        <div role="alert" className="flex items-start gap-3 rounded-sm bg-foreground/5 p-3">
+          <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+          <div className="min-w-0 space-y-1">
+            <p className="text-sm font-medium text-destructive">{t.rateLimited}</p>
+          </div>
+        </div>
+      )}
+
       {error === "unexpected" && (
         <div role="alert" className="flex items-start gap-3 rounded-sm bg-foreground/5 p-3">
           <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
@@ -260,12 +286,12 @@ export function SignInForm({
               {t.forgot}
             </Link>
           </div>
-          <Input
+          <PasswordInput
             id="signin-password"
-            type="password"
             autoComplete="current-password"
             value={password}
             aria-invalid={isError}
+            labels={{ show: dict.common.showPassword, hide: dict.common.hidePassword }}
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>

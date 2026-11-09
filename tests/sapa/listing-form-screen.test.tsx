@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react"
+import { fireEvent, render, screen, within, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Listing, MarketplaceStatus } from "@/lib/actions/listings"
@@ -468,5 +468,30 @@ describe("S34 edit — FR-64", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Edit listing" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument()
     expect(screen.getByRole("combobox", { name: "Category *" })).toHaveTextContent("Carriers")
+  })
+})
+
+describe("S34 — invalid fields on submit (QA Q1 shared form pattern)", () => {
+  function spyScroll() {
+    Element.prototype.scrollIntoView ??= () => {}
+    const scrolled: Element[] = []
+    const spy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+      scrolled.push(this)
+    })
+    return { scrolled, restore: () => spy.mockRestore() }
+  }
+
+  it("marks the invalid field, scrolls it into view and focuses it", async () => {
+    const scroll = spyScroll()
+    renderForm()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText("Naslov *"), "Poklanjam grebalicu za mačke")
+    await user.click(screen.getByRole("button", { name: "Objavi oglas" }))
+    const field = screen.getByLabelText("Opis *")
+    expect(field).toHaveAttribute("aria-invalid", "true")
+    await waitFor(() => expect(field).toHaveFocus())
+    expect(scroll.scrolled).toContain(field)
+    expect(saveListing).not.toHaveBeenCalled()
+    scroll.restore()
   })
 })

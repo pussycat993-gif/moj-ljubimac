@@ -90,6 +90,16 @@ Ne radi još (scenariji postoje, ali se ne izvršavaju ili je ponašanje „oče
 
 Ostale napomene: noćni poslovi rade u 03:00 i 03:30 po beogradskom vremenu (lokalno ih pokreće programer — fajl 12); bez R2 podešavanja brisanje fajlova se preskače; Viber je napravljen, ali isključen dok ga operater ne uključi.
 
+## Odgovori na pitanja iz QA (6.11.2026.)
+
+**Zašto se prijava „zaključa“ posle više pokušaja?** Ograničenje dolazi iz Supabase Auth-a, ne iz aplikacije: dozvoljeno je **30 zahteva za prijavu i registraciju u 5 minuta po IP adresi** (ne po nalogu). Kad se limit pređe, Supabase vraća 429 (`over_request_rate_limit`) za sve naloge sa te IP adrese, dok ne prođe 5 minuta.
+
+- **Gde se menja:** Supabase Dashboard → Authentication → Rate Limits (lokalno: `supabase/config.toml`, `[auth.rate_limit]` → `sign_in_sign_ups = 30`).
+- **Testovi opterećenja:** za njih je potrebno ili privremeno povećati limit u Dashboard-u (i vratiti ga posle testa), ili slati zahteve sa više različitih IP adresa — sa jedne adrese limit se brzo potroši.
+- **Šta korisnik vidi:** aplikacija više ne prikazuje opštu grešku niti englesku poruku servera. Na prijavi, slanju linka za novu lozinku i ponovnom slanju linka za potvrdu piše „Previše pokušaja prijave. Sačekaj nekoliko minuta i pokušaj ponovo.“, a na registraciji „Previše pokušaja. Sačekaj nekoliko minuta i pokušaj ponovo.“ (na engleskom „Too many sign-in attempts. Wait a few minutes and try again.“ / „Too many attempts. Wait a few minutes and try again.“).
+
+Ostale ispravke iz istog kruga (prikaz lozinke, izbor godine, polje „Koja vrsta?“, fokus na prvo neispravno polje) opisane su u [docs/reports/Q1-qa-fixes.md](../reports/Q1-qa-fixes.md).
+
 ## Kontakt
 
 **Ivana (vlasnica proizvoda)** — sva pitanja o tome kako nešto treba da radi, nejasni zahtevi, pristup okruženjima i odobrenja. Ako dokumentacija i aplikacija kažu različito, ne pretpostavljaj — prijavi kao pitanje ili grešku i označi Ivanu.

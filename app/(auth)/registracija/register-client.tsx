@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useRef, useState, type FormEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Building2, Info, Mail, PawPrint, Sprout } from "lucide-react"
@@ -8,11 +8,13 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { PasswordInput } from "@/components/app/password-input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
+import { useFocusFirstInvalid } from "@/lib/forms/focus-first-invalid"
 import { resendVerification, signInWithGoogle } from "@/lib/actions/auth"
 import {
   completeRegistration,
@@ -62,6 +64,9 @@ export function RegisterClient({
   const [errors, setErrors] = useState<Errors>({})
   const [pending, setPending] = useState(false)
   const [resent, setResent] = useState(false)
+  const [resendError, setResendError] = useState<string | null>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+  const focusFirstInvalid = useFocusFirstInvalid(formRef)
   const t = copy[lang].register
   const common = copy[lang].common
   const isOrg = accountType === "shelter" || accountType === "breeder"
@@ -98,7 +103,10 @@ export function RegisterClient({
     const e = validate()
     setErrors(e)
     setPibInvalid(false)
-    if (Object.keys(e).length > 0) return
+    if (Object.keys(e).length > 0) {
+      focusFirstInvalid()
+      return
+    }
 
     const registration = {
       account_type: accountType,
@@ -132,7 +140,8 @@ export function RegisterClient({
     if (error.code === "validation_failed" && error.fields) {
       setErrors(fieldErrors(error.fields))
       setPibInvalid(!!error.fields.tax_id)
-    } else setErrors({ form: common.error })
+      focusFirstInvalid()
+    } else setErrors({ form: error.code === "rate_limited" ? t.rateLimited : common.error })
   }
 
   async function onGoogle() {
@@ -143,7 +152,7 @@ export function RegisterClient({
       return
     }
     setPending(false)
-    setErrors({ form: common.error })
+    setErrors({ form: result.error.code === "rate_limited" ? t.rateLimited : common.error })
   }
 
   async function onResend() {
@@ -151,6 +160,7 @@ export function RegisterClient({
     const result = await resendVerification({ email })
     setPending(false)
     setResent(result.ok)
+    setResendError(result.ok ? null : result.error.code === "rate_limited" ? t.rateLimited : common.error)
   }
 
   const langSwitch = (
@@ -223,6 +233,11 @@ export function RegisterClient({
               {interpolate(t.resent, { email: <span className="font-medium text-foreground">{email}</span> })}
             </p>
           )}
+          {resendError && (
+            <p role="alert" className="text-sm text-destructive">
+              {resendError}
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">{t.spam}</p>
         </Card>
       ) : (
@@ -235,7 +250,7 @@ export function RegisterClient({
             {langSwitch}
           </div>
 
-          <form className="space-y-6" noValidate onSubmit={onSubmit}>
+          <form ref={formRef} className="space-y-6" noValidate onSubmit={onSubmit}>
             <fieldset className="space-y-3">
               <legend className="mb-2 text-xs font-medium">{t.accountType}</legend>
               <RadioGroup value={accountType} onValueChange={(v) => setAccountType(v as AccountType)} className="gap-2">
@@ -390,9 +405,9 @@ export function RegisterClient({
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="reg-password">{t.password}</Label>
-                    <Input
+                    <PasswordInput
                       id="reg-password"
-                      type="password"
+                      labels={{ show: common.showPassword, hide: common.hidePassword }}
                       autoComplete="new-password"
                       value={password}
                       aria-invalid={!!errors.password}

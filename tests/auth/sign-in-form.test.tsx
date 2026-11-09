@@ -20,7 +20,8 @@ const { SignInForm } = await import("@/app/(auth)/prijava/sign-in-form")
 function fakeSupabase({
   signIn = "ok" as "ok" | "invalid_credentials" | "email_not_confirmed" | "over_request_rate_limit",
   profile = { id: USER_ID, deletion_requested_at: null } as Row | null,
-  resetError = false,
+  resetError = false as false | "rate_limited" | "other",
+  resendError = false,
 } = {}) {
   const tables: Record<string, Row[]> = { profiles: profile ? [profile] : [], organisation_memberships: [] }
   const client = {
@@ -38,11 +39,17 @@ function fakeSupabase({
         error: null,
       })),
       resetPasswordForEmail: vi.fn(async () =>
-        resetError
-          ? { data: null, error: { name: "AuthApiError", status: 429, code: "over_email_send_rate_limit", message: "x" } }
+        resetError === "rate_limited"
+          ? { data: null, error: { name: "AuthApiError", status: 429, code: "over_email_send_rate_limit", message: "Email rate limit exceeded" } }
+          : resetError === "other"
+            ? { data: null, error: { name: "AuthApiError", status: 500, code: "unexpected_failure", message: "x" } }
+            : { data: {}, error: null },
+      ),
+      resend: vi.fn(async () =>
+        resendError
+          ? { data: null, error: { name: "AuthApiError", status: 429, code: "over_email_send_rate_limit", message: "Email rate limit exceeded" } }
           : { data: {}, error: null },
       ),
-      resend: vi.fn(async () => ({ data: {}, error: null })),
     },
     from(table: string) {
       const filters: ((r: Row) => boolean)[] = []
@@ -138,13 +145,69 @@ describe("S16 sign-in (FR-34, EP-42)", () => {
     expect(screen.queryByRole("button", { name: "Pošalji link ponovo" })).not.toBeInTheDocument()
   })
 
-  it("other failures (e.g. 429) show the generic error, not wrong credentials", async () => {
+  it("429 over_request_rate_limit shows the rate-limit message, never the server's English text (QA Q1)", async () => {
     fakeSupabase({ signIn: "over_request_rate_limit" })
     render(<SignInForm initialView="sign-in" next={null} />)
 
     await signIn()
 
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Previše pokušaja prijave. Sačekaj nekoliko minuta i pokušaj ponovo.",
+    )
+    expect(screen.getByRole("alert")).not.toHaveTextContent("over_request_rate_limit")
+    expect(screen.queryByText("Pogrešan mejl ili lozinka.")).not.toBeInTheDocument()
+  })
+
+  it("429 in English shows the English rate-limit message (QA Q1)", async () => {
+    fakeSupabase({ signIn: "over_request_rate_limit" })
+    const { dictionaries } = await import("@/lib/i18n")
+    render(
+      <SignInForm initialView="sign-in" next={null} dict={{ signIn: dictionaries.en.signIn, common: dictionaries.en.common }} />,
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText("Email address"), "ivana.petrovic@gmail.com")
+    await user.type(screen.getByLabelText("Password"), "lunaimaks2026")
+    await user.click(screen.getByRole("button", { name: "Sign in" }))
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Too many sign-in attempts. Wait a few minutes and try again.")
+  })
+
+  it("a 429 on the verification resend shows the rate-limit message (QA Q1)", async () => {
+    fakeSupabase({ signIn: "email_not_confirmed", resendError: true })
+    render(<SignInForm initialView="sign-in" next={null} />)
+
+    const user = await signIn()
+    await user.click(screen.getByRole("button", { name: "Pošalji link ponovo" }))
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Previše pokušaja prijave. Sačekaj nekoliko minuta i pokušaj ponovo.",
+    )
+  })
+
+  it("other unexpected failures show the generic error", async () => {
+    const client = fakeSupabase()
+    client.auth.signInWithPassword.mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: { name: "AuthApiError", code: "unexpected_failure", status: 500, message: "boom" },
+    } as never)
+    render(<SignInForm initialView="sign-in" next={null} />)
+
+    await signIn()
+
     expect(screen.getByRole("alert")).toHaveTextContent("Nešto nije u redu. Pokušaj ponovo.")
+    expect(screen.getByRole("alert")).not.toHaveTextContent("boom")
+  })
+
+  it("the password field has a show/hide toggle (QA Q1)", async () => {
+    fakeSupabase()
+    render(<SignInForm initialView="sign-in" next={null} />)
+    const user = userEvent.setup()
+    const field = screen.getByLabelText("Lozinka")
+    expect(field).toHaveAttribute("type", "password")
+
+    await user.click(screen.getByRole("button", { name: "Prikaži lozinku" }))
+    expect(field).toHaveAttribute("type", "text")
+    expect(screen.getByRole("button", { name: "Sakrij lozinku" })).toHaveAttribute("aria-pressed", "true")
   })
 
   it("Google starts OAuth on the server with redirectTo /auth/callback and goes to the provider", async () => {
@@ -195,8 +258,8 @@ describe("S16 reset view (FR-34, EP-42 resetPasswordForEmail)", () => {
     )
   })
 
-  it("a reset request always shows success, even when Supabase refuses (no account enumeration)", async () => {
-    fakeSupabase({ resetError: true })
+  it("a reset request shows success even when Supabase refuses (no account enumeration)", async () => {
+    fakeSupabase({ resetError: "other" })
     render(<SignInForm initialView="reset" next={null} />)
     const user = userEvent.setup()
 
@@ -204,6 +267,21 @@ describe("S16 reset view (FR-34, EP-42 resetPasswordForEmail)", () => {
     await user.click(screen.getByRole("button", { name: "Pošalji link" }))
 
     expect(screen.getByRole("status")).toHaveTextContent("Ako nalog sa adresom nepoznat@example.com postoji")
+  })
+
+  it("a 429 on the reset request shows the rate-limit message instead of the sent state (QA Q1)", async () => {
+    fakeSupabase({ resetError: "rate_limited" })
+    render(<SignInForm initialView="reset" next={null} />)
+    const user = userEvent.setup()
+
+    await user.type(screen.getByLabelText("Mejl adresa"), "ivana.petrovic@gmail.com")
+    await user.click(screen.getByRole("button", { name: "Pošalji link" }))
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Previše pokušaja prijave. Sačekaj nekoliko minuta i pokušaj ponovo.",
+    )
+    expect(screen.getByRole("alert")).not.toHaveTextContent("Email rate limit exceeded")
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
   })
 
   it("an invalid email in the reset view is an inline error and nothing is sent", async () => {

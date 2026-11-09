@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -229,5 +229,30 @@ describe("S11 — edit variant (/podsetnici/[id])", () => {
     expect(screen.queryByRole("button", { name: "Delete reminder" })).not.toBeInTheDocument()
     expect(screen.getByRole("heading", { level: 1, name: "New reminder" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Save reminder" })).toBeInTheDocument()
+  })
+})
+
+describe("S11 — invalid fields on submit (QA Q1 shared form pattern)", () => {
+  function spyScroll() {
+    Element.prototype.scrollIntoView ??= () => {}
+    const scrolled: Element[] = []
+    const spy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+      scrolled.push(this)
+    })
+    return { scrolled, restore: () => spy.mockRestore() }
+  }
+
+  it("marks the invalid field, scrolls it into view and focuses it", async () => {
+    const scroll = spyScroll()
+    render(<ReminderFormClient pets={[...pets]} locale="sr" copy={copy("sr")} />)
+    const user = userEvent.setup()
+    
+    await user.click(screen.getByRole("button", { name: "Sačuvaj podsetnik" }))
+    const field = screen.getByLabelText("Naslov *")
+    expect(field).toHaveAttribute("aria-invalid", "true")
+    await waitFor(() => expect(field).toHaveFocus())
+    expect(scroll.scrolled).toContain(field)
+    expect(screen.getByText("Upiši naslov podsetnika.")).toBeInTheDocument()
+    scroll.restore()
   })
 })

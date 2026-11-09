@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useRef, useState, type FormEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Bell, CalendarDays } from "lucide-react"
@@ -20,6 +20,7 @@ import { PetAvatar, type PetSpecies } from "@/components/app/pet-avatar"
 import type { PetSummary } from "@/lib/actions/pets"
 import { createTreatment, updateTreatment, type Treatment, type TreatmentType } from "@/lib/actions/treatments"
 import { format, type Dictionary, type Locale } from "@/lib/i18n"
+import { useFocusFirstInvalid } from "@/lib/forms/focus-first-invalid"
 
 // S27 — Nova terapija · /ljubimci/[id]/terapije/nova (EP-01 header with the id filter, EP-10 insert)
 // and its edit route /ljubimci/[id]/terapije/[terapijaId] (EP-02 preload, EP-10 update; owner
@@ -254,6 +255,8 @@ export function TreatmentFormClient({
   const isEdit = treatment !== null
   const [form, setForm] = useState<FormData>(() => initialForm(treatment))
   const [errors, setErrors] = useState<Errors>({})
+  const formRef = useRef<HTMLFormElement>(null)
+  const focusFirstInvalid = useFocusFirstInvalid(formRef)
   const [saveFailed, setSaveFailed] = useState(false)
   const [pending, setPending] = useState(false)
 
@@ -273,7 +276,10 @@ export function TreatmentFormClient({
     ev.preventDefault()
     const e = validate(form, t)
     setErrors(e)
-    if (Object.values(e).some(Boolean)) return
+    if (Object.values(e).some(Boolean)) {
+      focusFirstInvalid()
+      return
+    }
 
     setPending(true)
     setSaveFailed(false)
@@ -296,8 +302,10 @@ export function TreatmentFormClient({
       setPending(false)
       const { code, fields } = result.error
       const inline = code === "validation_failed" && fields ? fieldErrors(fields, form, t) : null
-      if (inline) setErrors(inline)
-      else setSaveFailed(true)
+      if (inline) {
+        setErrors(inline)
+        focusFirstInvalid()
+      } else setSaveFailed(true)
       return
     }
 
@@ -333,7 +341,7 @@ export function TreatmentFormClient({
         <ErrorState message={t.saveError} labels={{ retry: copy.common.retry }} onRetry={() => setSaveFailed(false)} />
       )}
 
-      <form noValidate onSubmit={submit} className="space-y-6">
+      <form ref={formRef} noValidate onSubmit={submit} className="space-y-6">
         <Card className="gap-4 p-4 md:p-6">
           <h2 className="font-heading text-lg font-bold">{t.details}</h2>
 

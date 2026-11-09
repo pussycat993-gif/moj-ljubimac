@@ -9,6 +9,9 @@ export const sr = {
     premiumTitle: "Dostupno u Premiumu",
     premiumCta: "Probaj 7 dana besplatno",
     premium: "Premium",
+    // PasswordInput toggle (QA Q1)
+    showPassword: "Prikaži lozinku",
+    hidePassword: "Sakrij lozinku",
   },
   shell: {
     app: {
@@ -69,6 +72,8 @@ export const sr = {
     resetSent: "Ako nalog sa adresom {email} postoji, poslali smo link za novu lozinku. Proveri i spam folder.",
     sendLink: "Pošalji link",
     backToSignIn: "Nazad na prijavu",
+    // 429 rate_limited from Supabase Auth (QA Q1)
+    rateLimited: "Previše pokušaja prijave. Sačekaj nekoliko minuta i pokušaj ponovo.",
   },
   // S28 Nova lozinka
   newPassword: {
@@ -90,6 +95,7 @@ export const sr = {
     mismatch: "Lozinke se ne poklapaju. Upiši istu lozinku dva puta.",
     submit: "Sačuvaj novu lozinku",
     backToSignIn: "Nazad na prijavu",
+    rateLimited: "Previše pokušaja. Sačekaj nekoliko minuta i pokušaj ponovo.",
   },
   // S15 Registracija (register.tsx)
   register: {
@@ -136,6 +142,7 @@ export const sr = {
     pibHint: "Nije obavezno. Upiši ako je organizacija registrovana.",
     errOrgName: "Upiši naziv organizacije.",
     errCity: "Izaberi grad.",
+    rateLimited: "Previše pokušaja. Sačekaj nekoliko minuta i pokušaj ponovo.",
   },
   // S18 Profil (name, city, language part — profile.tsx)
   profile: {
@@ -300,7 +307,10 @@ export const sr = {
     birthDateHelper: "Napravićemo podsetnik za rođendan.",
     pickDate: "Izaberi datum",
     birthYear: "Okvirna godina rođenja",
-    birthYearPlaceholder: "npr. 2021",
+    birthYearPlaceholder: "Izaberi godinu",
+    // Calendar caption dropdowns (QA Q1)
+    calendarMonth: "Mesec",
+    calendarYear: "Godina",
     appearance: "Izgled",
     colour: "Boja i oznake",
     colourPlaceholder: "npr. crn sa belom šapom",

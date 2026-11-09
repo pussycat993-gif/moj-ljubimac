@@ -27,6 +27,7 @@ import { ListingTypeTag } from "@/components/app/listing-type-tag"
 import { PremiumLock } from "@/components/app/premium-lock"
 import { cn } from "@/lib/utils"
 import { format, type Dictionary, type Locale } from "@/lib/i18n"
+import { useFocusFirstInvalid } from "@/lib/forms/focus-first-invalid"
 import type {
   Listing,
   ListingCategory,
@@ -227,6 +228,8 @@ export function ListingFormClient({
   )
   const [listingId, setListingId] = useState<string | null>(listing?.id ?? null)
   const [errors, setErrors] = useState<Errors>({})
+  const formRef = useRef<HTMLFormElement>(null)
+  const focusFirstInvalid = useFocusFirstInvalid(formRef)
   const [photoError, setPhotoError] = useState(false)
   const [failed, setFailed] = useState(false)
   const [locked, setLocked] = useState(!isEdit && limit !== null && marketplace.active_listings >= limit)
@@ -273,7 +276,10 @@ export function ListingFormClient({
     ev.preventDefault()
     const e = validate(form, t)
     setErrors(e)
-    if (Object.keys(e).length > 0) return
+    if (Object.keys(e).length > 0) {
+      focusFirstInvalid()
+      return
+    }
 
     setPending(true)
     setFailed(false)
@@ -300,11 +306,15 @@ export function ListingFormClient({
       const error = result?.error
       if (error?.code === "premium_required") setLocked(true)
       else if (error?.code === "marketplace_suspended") setSuspended(true)
-      else if (error?.code === "category_not_allowed") setErrors({ category: t.errors.categoryNotAllowed })
-      else {
+      else if (error?.code === "category_not_allowed") {
+        setErrors({ category: t.errors.categoryNotAllowed })
+        focusFirstInvalid()
+      } else {
         const inline = error?.code === "validation_failed" && error.fields ? serverErrors(error.fields, t) : null
-        if (inline) setErrors(inline)
-        else setFailed(true)
+        if (inline) {
+          setErrors(inline)
+          focusFirstInvalid()
+        } else setFailed(true)
       }
       return
     }
@@ -367,7 +377,7 @@ export function ListingFormClient({
     usage = format(t.usageFree, { active: locked ? Math.max(marketplace.active_listings, limit) : marketplace.active_listings, limit })
 
   const fields = (
-    <form noValidate onSubmit={submit} className="space-y-6">
+    <form ref={formRef} noValidate onSubmit={submit} className="space-y-6">
       <Card className="gap-4 p-4 md:p-6">
         <h2 className="font-heading text-lg font-bold">{t.typeSection}</h2>
         <RadioGroup

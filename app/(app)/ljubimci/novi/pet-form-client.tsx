@@ -29,6 +29,7 @@ import {
 } from "@/lib/actions/pets"
 import { confirmUpload, requestUpload } from "@/lib/actions/uploads"
 import { format, type Dictionary, type Locale } from "@/lib/i18n"
+import { useFocusFirstInvalid } from "@/lib/forms/focus-first-invalid"
 
 // S02 — Dodaj / izmeni ljubimca · /ljubimci/novi (EP-03) and /ljubimci/[id]/izmena (EP-02 preload,
 // EP-04 save) · FR-01, FR-02, FR-03, FR-09. The photo goes through EP-13 after the pet exists.
@@ -62,6 +63,16 @@ const species: PetSpeciesValue[] = [
 ]
 
 const PHOTO_TYPES = "image/jpeg,image/png,image/webp,image/heic"
+
+/** Earliest birth year the form offers (date picker and approximate year, QA Q1). */
+const FIRST_BIRTH_YEAR = 1990
+
+/** This year down to 1990 — the approximate birth year choices. */
+function birthYears(now = new Date()) {
+  const years: string[] = []
+  for (let y = now.getFullYear(); y >= FIRST_BIRTH_YEAR; y--) years.push(String(y))
+  return years
+}
 
 const intlLocale = (locale: Locale) => (locale === "en" ? "en-GB" : "sr-Latn")
 
@@ -103,6 +114,7 @@ function DateField({
 }) {
   const monthNames = copy.calendarMonths.split(",")
   const weekdayNames = copy.calendarWeekdays.split(",")
+  const today = new Date()
   return (
     <div className="min-w-0 space-y-2">
       <Label htmlFor={id}>{label}</Label>
@@ -125,11 +137,21 @@ function DateField({
             selected={value}
             onSelect={onChange}
             weekStartsOn={1}
+            // QA Q1: month and year dropdowns in the caption, years 1990 → this year.
+            captionLayout="dropdown"
+            startMonth={new Date(FIRST_BIRTH_YEAR, 0)}
+            endMonth={new Date(today.getFullYear(), today.getMonth())}
+            defaultMonth={value ?? today}
             // EP-03: birth_date is not in the future — later days cannot be picked (owner decision, Step 13).
-            disabled={{ after: new Date() }}
+            disabled={{ after: today }}
             formatters={{
               formatCaption: (d: Date) => `${monthNames[d.getMonth()]} ${d.getFullYear()}`,
+              formatMonthDropdown: (d: Date) => monthNames[d.getMonth()],
               formatWeekdayName: (d: Date) => weekdayNames[d.getDay()],
+            }}
+            labels={{
+              labelMonthDropdown: () => copy.calendarMonth,
+              labelYearDropdown: () => copy.calendarYear,
             }}
           />
         </PopoverContent>
@@ -309,6 +331,11 @@ export function PetFormClient({
   const [pending, setPending] = useState(false)
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+  const speciesOtherInput = useRef<HTMLInputElement>(null)
+  // Set when "Ostalo" is chosen: the Select hands focus to "Koja vrsta?" instead of its trigger.
+  const focusSpeciesOther = useRef(false)
+  const focusFirstInvalid = useFocusFirstInvalid(formRef)
 
   function set<K extends keyof FormData>(key: K, value: FormData[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -323,7 +350,10 @@ export function PetFormClient({
     ev.preventDefault()
     const e = validate(form, t)
     setErrors(e)
-    if (Object.keys(e).length > 0) return
+    if (Object.keys(e).length > 0) {
+      focusFirstInvalid()
+      return
+    }
 
     setPending(true)
     setSaveFailed(false)
@@ -339,8 +369,10 @@ export function PetFormClient({
         return
       }
       const inline = code === "validation_failed" && fields ? fieldErrors(fields, t) : null
-      if (inline) setErrors(inline)
-      else setSaveFailed(true)
+      if (inline) {
+        setErrors(inline)
+        focusFirstInvalid()
+      } else setSaveFailed(true)
       return
     }
 
@@ -379,7 +411,7 @@ export function PetFormClient({
         <PremiumLock title={copy.common.premiumTitle} description={copy.petsHome.lockDescription} cta={copy.common.premiumCta} ctaHref="/premium" />
       )}
 
-      <form noValidate onSubmit={submit} className="space-y-6">
+      <form ref={formRef} noValidate onSubmit={submit} className="space-y-6">
         {/* Osnovno */}
         <Card className="gap-4 p-4 md:p-6">
           <h2 className="font-heading text-lg font-bold">{t.basics}</h2>
@@ -422,7 +454,9 @@ export function PetFormClient({
                 value={form.species}
                 onValueChange={(v) => {
                   set("species", v as PetSpeciesValue)
-                  setErrors((prev) => ({ ...prev, species: undefined }))
+                  focusSpeciesOther.current = v === "other"
+                  // "Upiši koja je vrsta." waits for a submit or a blur of the empty field (QA Q1).
+                  setErrors((prev) => ({ ...prev, species: undefined, speciesOther: undefined }))
                 }}
               >
                 <SelectTrigger
@@ -433,7 +467,14 @@ export function PetFormClient({
                 >
                   <SelectValue placeholder={t.speciesPlaceholder} />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent
+                  onCloseAutoFocus={(ev) => {
+                    if (!focusSpeciesOther.current) return
+                    focusSpeciesOther.current = false
+                    ev.preventDefault()
+                    setTimeout(() => speciesOtherInput.current?.focus(), 0)
+                  }}
+                >
                   {species.map((s) => (
                     <SelectItem key={s} value={s}>
                       {copy.pet.species[s]}
@@ -442,25 +483,26 @@ export function PetFormClient({
                 </SelectContent>
               </Select>
               <FieldError id="vrsta-greska" message={errors.species} />
+              {/* QA Q1: "Koja vrsta?" sits right under the species control, grouped with it. */}
+              {form.species === "other" && (
+                <div data-testid="vrsta-ostalo-grupa" className="min-w-0 space-y-2 border-l-2 border-primary pl-3">
+                  <Label htmlFor="vrsta-ostalo">{t.speciesOther}</Label>
+                  <Input
+                    ref={speciesOtherInput}
+                    id="vrsta-ostalo"
+                    className="h-11 md:h-9"
+                    value={form.speciesOther}
+                    maxLength={60}
+                    onChange={(e) => set("speciesOther", e.target.value)}
+                    onBlur={() => blurCheck("speciesOther")}
+                    aria-invalid={!!errors.speciesOther}
+                    aria-describedby={errors.speciesOther ? "vrsta-ostalo-greska" : undefined}
+                    placeholder={t.speciesOtherPlaceholder}
+                  />
+                  <FieldError id="vrsta-ostalo-greska" message={errors.speciesOther} />
+                </div>
+              )}
             </div>
-
-            {form.species === "other" && (
-              <div className="min-w-0 space-y-2 md:col-span-2">
-                <Label htmlFor="vrsta-ostalo">{t.speciesOther}</Label>
-                <Input
-                  id="vrsta-ostalo"
-                  className="h-11 md:h-9"
-                  value={form.speciesOther}
-                  maxLength={60}
-                  onChange={(e) => set("speciesOther", e.target.value)}
-                  onBlur={() => blurCheck("speciesOther")}
-                  aria-invalid={!!errors.speciesOther}
-                  aria-describedby={errors.speciesOther ? "vrsta-ostalo-greska" : undefined}
-                  placeholder={t.speciesOtherPlaceholder}
-                />
-                <FieldError id="vrsta-ostalo-greska" message={errors.speciesOther} />
-              </div>
-            )}
 
             <div className="min-w-0 space-y-2">
               <Label htmlFor="rasa">{t.breed}</Label>
@@ -533,17 +575,30 @@ export function PetFormClient({
               ) : (
                 <div className="min-w-0 space-y-2">
                   <Label htmlFor="okvirna-godina">{t.birthYear}</Label>
-                  <Input
-                    id="okvirna-godina"
-                    inputMode="numeric"
-                    className="h-11 md:h-9"
+                  {/* QA Q1: a Select of years (this year down to 1990) instead of a free number. */}
+                  <Select
                     value={form.birthYear}
-                    onChange={(e) => set("birthYear", e.target.value)}
-                    onBlur={() => blurCheck("birthYear")}
-                    aria-invalid={!!errors.birthYear}
-                    aria-describedby={errors.birthYear ? "godina-greska" : undefined}
-                    placeholder={t.birthYearPlaceholder}
-                  />
+                    onValueChange={(v) => {
+                      set("birthYear", v)
+                      setErrors((prev) => ({ ...prev, birthYear: undefined }))
+                    }}
+                  >
+                    <SelectTrigger
+                      id="okvirna-godina"
+                      className="h-11 w-full md:h-9"
+                      aria-invalid={!!errors.birthYear}
+                      aria-describedby={errors.birthYear ? "godina-greska" : undefined}
+                    >
+                      <SelectValue placeholder={t.birthYearPlaceholder} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {birthYears().map((y) => (
+                        <SelectItem key={y} value={y}>
+                          {y}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FieldError id="godina-greska" message={errors.birthYear} />
                 </div>
               )}

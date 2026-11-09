@@ -6,8 +6,8 @@
 |---|---|
 | Product | Moj Ljubimac ("My Pet") — web application |
 | Document | 02 — Product Requirements Document |
-| Version | 1.8 |
-| Date | 2026-10-29 |
+| Version | 1.9 |
+| Date | 2026-11-09 |
 | Author | Keti Vrtunić (interview facilitated by "Đura", Senior PM persona) |
 | Traces to | `01-product-brief.md` v1.8 (2026-10-29); downstream: Technical Constraints v1.7 · Design System v1.6 · API Contract v1.3 |
 | Status | Draft — awaiting owner review |
@@ -25,6 +25,7 @@
 | 1.6 | 2026-10-19 | Owner-approved change requests from the Build Plan review: CR-23 requirement count corrected to 60 (FR-01 … FR-60) in §1, §11 and Release Criterion 1; CR-18 BR-53 — a person invited to an organisation team keeps their own account type. |
 | 1.7 | 2026-10-19 | New EPIC-08 / CAP-08 "Šapa pomoći" (Brief v1.7): FR-61 … FR-72, UC-11 … UC-13, BR-54 … BR-61, E-28 … E-35, NFR-11, OQ-16; six new domain entities (Listing, ListingPhoto, Conversation, Message, UserBlock, Report). Requirement count now 72 (§1, §11, Release Criterion 1); Release Criterion 6 includes moderation. |
 | 1.8 | 2026-10-29 | Owner decision: OQ-03 resolved (Brief v1.8) — plan prices in EUR, VAT added by the payment provider (Paddle Billing, merchant of record; Technical Constraints OQ-11). New BR-62 records the prices; §2 and §15 updated. Requirements FR-37 and FR-42 are unchanged. |
+| 1.9 | 2026-11-09 | QA fixes (Step Q1, owner-approved): FR-01 names the species choice for a free-text species "Ostalo" (the app label), not "drugo"/"other"; the free-text field sits right under it and its required message shows after a submit or when the empty field loses focus. No change to the requirement itself. |
 
 ---
 
@@ -155,10 +156,10 @@ All requirements are **P0** (see §11).
 
 **FR-01 — Create a pet profile**
 *As a Pet Owner, I want to create a profile for my pet, so that its health history has a home.*
-Fields: name\*, species\* (dog, cat, rabbit, hamster, guinea pig, chinchilla, ferret, bird, fish, turtle, lizard, snake, or "other" with free text), breed, sex\*, date of birth or approximate year, colour/markings, microchip number, passport number, spayed/neutered (yes / no / unknown), photo, "my vet" (name and phone), note.
+Fields: name\*, species\* (dog, cat, rabbit, hamster, guinea pig, chinchilla, ferret, bird, fish, turtle, lizard, snake, or "Ostalo" (other) with free text), breed, sex\*, date of birth or approximate year, colour/markings, microchip number, passport number, spayed/neutered (yes / no / unknown), photo, "my vet" (name and phone), note.
 - Given a Free user with no active pet, When they save a profile with all required fields, Then the pet appears as active.
 - Given a Free user who already has one active pet, When they try to create another, Then creation is blocked and a Premium offer is shown.
-- Given the species "other", When saving without the free-text species, Then saving is blocked with a message.
+- Given the species "Ostalo", When saving without the free-text species, Then saving is blocked with a message.
 
 **FR-02 — Edit a pet profile**
 *As a Pet Owner, I want to edit my pet's profile, so that it stays accurate.*

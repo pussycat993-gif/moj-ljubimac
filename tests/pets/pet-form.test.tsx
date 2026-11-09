@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -137,7 +137,8 @@ describe("S02 create — FR-01", () => {
     await fillRequired(user, "Ostalo")
     await user.type(screen.getByLabelText("Koja vrsta? *"), "degu")
     await user.click(screen.getByRole("radio", { name: "Znam okvirnu godinu" }))
-    await user.type(screen.getByLabelText("Okvirna godina rođenja"), "2021")
+    await user.click(screen.getByRole("combobox", { name: "Okvirna godina rođenja" }))
+    await user.click(await screen.findByRole("option", { name: "2021" }))
     await user.click(screen.getByRole("button", { name: "Sačuvaj ljubimca" }))
     expect(createPet).toHaveBeenCalledWith({
       name: "Luna",
@@ -244,6 +245,105 @@ describe("S02 create — FR-01", () => {
     expect(confirmUpload).toHaveBeenCalledWith({ upload_token: "up_x.y" })
     expect(toast.error).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
+  })
+})
+
+describe("S02 — QA Q1 fixes", () => {
+  const thisYear = new Date().getFullYear()
+
+  it("approximate birth year is a Select of years: this year down to 1990, nothing in the future", async () => {
+    const user = userEvent.setup()
+    render(<PetFormClient locale="sr" copy={copy("sr")} />)
+    await user.click(screen.getByRole("radio", { name: "Znam okvirnu godinu" }))
+    const trigger = screen.getByRole("combobox", { name: "Okvirna godina rođenja" })
+    expect(trigger).toHaveTextContent("Izaberi godinu")
+    await user.click(trigger)
+    const years = (await screen.findAllByRole("option")).map((o) => o.textContent)
+    expect(years[0]).toBe(String(thisYear))
+    expect(years.at(-1)).toBe("1990")
+    expect(years).toHaveLength(thisYear - 1990 + 1)
+    expect(years).not.toContain(String(thisYear + 1))
+  })
+
+  it("the birth date picker has month and year dropdowns (1990 → this year) and no future days", async () => {
+    const user = userEvent.setup()
+    render(<PetFormClient locale="sr" copy={copy("sr")} />)
+    await user.click(screen.getByRole("button", { name: /Datum rođenja/ }))
+    const month = await screen.findByRole("combobox", { name: "Mesec" })
+    const year = screen.getByRole("combobox", { name: "Godina" })
+    expect(within(month).getAllByRole("option").map((o) => o.textContent)).toContain("januar")
+    const years = within(year).getAllByRole("option").map((o) => o.textContent)
+    expect(years[0]).toBe("1990")
+    expect(years.at(-1)).toBe(String(thisYear))
+    expect(years).not.toContain(String(thisYear + 1))
+
+    await user.selectOptions(year, "2015")
+    await user.selectOptions(month, "5")
+    await user.click(screen.getByRole("button", { name: /June 10th, 2015/ }))
+    expect(screen.getByRole("button", { name: /Datum rođenja/ })).toHaveTextContent("10. 6. 2015.")
+  })
+
+  it("'Koja vrsta?' appears right under the species control, grouped with it", async () => {
+    const user = userEvent.setup()
+    render(<PetFormClient locale="sr" copy={copy("sr")} />)
+    await user.click(screen.getByRole("combobox", { name: "Vrsta *" }))
+    await user.click(await screen.findByRole("option", { name: "Ostalo" }))
+    const group = screen.getByTestId("vrsta-ostalo-grupa")
+    const other = screen.getByLabelText("Koja vrsta? *")
+    expect(group).toContainElement(other)
+    // Same field container as the species Select, directly after it.
+    const speciesField = screen.getByRole("combobox", { name: "Vrsta *" }).closest("div.space-y-2")
+    expect(speciesField).toContainElement(group)
+    // The message waits for a submit or a blur: none right after choosing "Ostalo".
+    expect(screen.queryByText("Upiši koja je vrsta.")).not.toBeInTheDocument()
+    expect(other).toHaveAttribute("aria-invalid", "false")
+  })
+
+  it("choosing 'Ostalo' moves focus into 'Koja vrsta?' without showing its error", async () => {
+    const user = userEvent.setup()
+    render(<PetFormClient locale="sr" copy={copy("sr")} />)
+    await user.click(screen.getByRole("combobox", { name: "Vrsta *" }))
+    await user.click(await screen.findByRole("option", { name: "Ostalo" }))
+    await waitFor(() => expect(screen.getByLabelText("Koja vrsta? *")).toHaveFocus())
+    expect(screen.queryByText("Upiši koja je vrsta.")).not.toBeInTheDocument()
+  })
+
+  it("'Upiši koja je vrsta.' shows once the empty field loses focus", async () => {
+    const user = userEvent.setup()
+    render(<PetFormClient locale="sr" copy={copy("sr")} />)
+    await fillRequired(user, "Ostalo")
+    await user.click(screen.getByLabelText("Koja vrsta? *"))
+    await user.tab()
+    expect(screen.getByText("Upiši koja je vrsta.")).toBeInTheDocument()
+  })
+
+  it("on submit the first invalid field is marked, scrolled into view and focused", async () => {
+    Element.prototype.scrollIntoView ??= () => {}
+    const scrolled: Element[] = []
+    const spy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+      scrolled.push(this)
+    })
+    const user = userEvent.setup()
+    render(<PetFormClient locale="sr" copy={copy("sr")} />)
+    await user.click(screen.getByRole("button", { name: "Sačuvaj ljubimca" }))
+    const name = screen.getByLabelText("Ime *")
+    expect(name).toHaveAttribute("aria-invalid", "true")
+    expect(screen.getByRole("combobox", { name: "Vrsta *" })).toHaveAttribute("aria-invalid", "true")
+    await waitFor(() => expect(name).toHaveFocus())
+    expect(scrolled).toContain(name)
+    spy.mockRestore()
+  })
+
+  it("only the sex is missing: the radio group is focused", async () => {
+    const user = userEvent.setup()
+    render(<PetFormClient locale="sr" copy={copy("sr")} />)
+    await user.type(screen.getByLabelText("Ime *"), "Luna")
+    await user.click(screen.getByRole("combobox", { name: "Vrsta *" }))
+    await user.click(await screen.findByRole("option", { name: "Mačka" }))
+    await user.click(screen.getByRole("button", { name: "Sačuvaj ljubimca" }))
+    expect(screen.getByText("Izaberi pol.")).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Ženka" })).toHaveFocus())
+    expect(createPet).not.toHaveBeenCalled()
   })
 })
 

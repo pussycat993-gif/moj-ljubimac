@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react"
+import { render, screen, within, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -374,5 +374,30 @@ describe("Izmeni pregled — edit route (owner decision, Step 15)", () => {
     await user.click(screen.getByRole("button", { name: "Sačuvaj izmene" }))
     expect(updateVetVisit).toHaveBeenCalledWith(VISIT, expect.objectContaining({ cost_minor: 299000, follow_up_on: "2026-10-30" }))
     expect(createVetVisit).not.toHaveBeenCalled()
+  })
+})
+
+describe("S05 — invalid fields on submit (QA Q1 shared form pattern)", () => {
+  function spyScroll() {
+    Element.prototype.scrollIntoView ??= () => {}
+    const scrolled: Element[] = []
+    const spy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+      scrolled.push(this)
+    })
+    return { scrolled, restore: () => spy.mockRestore() }
+  }
+
+  it("marks the invalid field, scrolls it into view and focuses it", async () => {
+    const scroll = spyScroll()
+    renderNew()
+    const user = userEvent.setup()
+    
+    await user.click(screen.getByRole("button", { name: "Sačuvaj pregled" }))
+    const field = screen.getByLabelText("Razlog *")
+    expect(field).toHaveAttribute("aria-invalid", "true")
+    await waitFor(() => expect(field).toHaveFocus())
+    expect(scroll.scrolled).toContain(field)
+    expect(createVetVisit).not.toHaveBeenCalled()
+    scroll.restore()
   })
 })

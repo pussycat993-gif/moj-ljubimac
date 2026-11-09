@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type ChangeEvent, type FormEvent } from "react"
+import { useRef, useState, type ChangeEvent, type FormEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Bell, CalendarDays, FileText, ImageIcon, Paperclip, X } from "lucide-react"
@@ -33,6 +33,7 @@ import { deleteAttachment } from "@/lib/actions/attachments"
 import { confirmUpload, requestUpload } from "@/lib/actions/uploads"
 import { createVetVisit, updateVetVisit, type Attachment, type VetVisit } from "@/lib/actions/vet-visits"
 import { format, type Dictionary, type Locale } from "@/lib/i18n"
+import { useFocusFirstInvalid } from "@/lib/forms/focus-first-invalid"
 
 // S05 — Novi pregled · /ljubimci/[id]/pregledi/novi (EP-01 header with the id filter, EP-12 insert,
 // then EP-13 per file) and its edit route /ljubimci/[id]/pregledi/[pregledId] (EP-02 preload, EP-12
@@ -272,6 +273,8 @@ export function VetVisitFormClient({
         },
   )
   const [errors, setErrors] = useState<Errors>({})
+  const formRef = useRef<HTMLFormElement>(null)
+  const focusFirstInvalid = useFocusFirstInvalid(formRef)
   const [savedVisitId, setSavedVisitId] = useState<string | null>(visit?.id ?? null)
   const [confirmed, setConfirmed] = useState<Attachment[]>(visit?.attachments ?? [])
   const [files, setFiles] = useState<PendingFile[]>([])
@@ -363,7 +366,10 @@ export function VetVisitFormClient({
     ev.preventDefault()
     const e = validate(form, t, locale)
     setErrors(e)
-    if (Object.keys(e).length > 0) return
+    if (Object.keys(e).length > 0) {
+      focusFirstInvalid()
+      return
+    }
 
     setPending(true)
     setSaveFailed(false)
@@ -385,8 +391,10 @@ export function VetVisitFormClient({
       setPending(false)
       const { code, fields } = result.error
       const inline = code === "validation_failed" && fields ? fieldErrors(fields, t) : null
-      if (inline) setErrors(inline)
-      else setSaveFailed(true)
+      if (inline) {
+        setErrors(inline)
+        focusFirstInvalid()
+      } else setSaveFailed(true)
       return
     }
     const visitId = result.data.id
@@ -463,7 +471,7 @@ export function VetVisitFormClient({
         <ErrorState message={t.saveError} labels={{ retry: copy.common.retry }} onRetry={() => setSaveFailed(false)} />
       )}
 
-      <form noValidate onSubmit={submit} className="space-y-6">
+      <form ref={formRef} noValidate onSubmit={submit} className="space-y-6">
         <Card className="gap-4 p-4 md:p-6">
           <h2 className="font-heading text-lg font-bold">{t.details}</h2>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

@@ -14,7 +14,7 @@ const { default: NewPasswordPage } = await import("@/app/(auth)/prijava/nova-loz
 
 // The server client: a session opened by a reset link carries amr "recovery";
 // signOut ends it, as the real client does.
-function fakeSupabase({ session = "recovery" as "recovery" | "password" | null, updateError = false } = {}) {
+function fakeSupabase({ session = "recovery" as "recovery" | "password" | null, updateError = false as boolean | "rate_limited" } = {}) {
   const state = { session }
   const client = {
     state,
@@ -28,7 +28,9 @@ function fakeSupabase({ session = "recovery" as "recovery" | "password" | null, 
           : { data: null, error: null },
       ),
       updateUser: vi.fn(async () =>
-        updateError
+        updateError === "rate_limited"
+          ? { data: { user: null }, error: { name: "AuthApiError", status: 429, code: "over_request_rate_limit", message: "Request rate limit reached" } }
+          : updateError
           ? { data: { user: null }, error: { name: "AuthApiError", status: 500, code: "unexpected_failure", message: "x" } }
           : { data: { user: {} }, error: null },
       ),
@@ -142,5 +144,29 @@ describe("S28 new password (FR-34, EP-42 updateUser)", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("Nešto nije u redu. Pokušaj ponovo.")
     expect(screen.getByLabelText("Nova lozinka")).toBeInTheDocument()
+  })
+
+  it("a 429 shows the rate-limit message, not the server's English text (QA Q1)", async () => {
+    fakeSupabase({ updateError: "rate_limited" })
+    render(<NewPasswordForm email="ivana.petrovic@gmail.com" />)
+
+    await fill("lunaimaks2026", "lunaimaks2026")
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Previše pokušaja. Sačekaj nekoliko minuta i pokušaj ponovo.")
+    expect(screen.getByRole("alert")).not.toHaveTextContent("Request rate limit reached")
+  })
+
+  it("both password fields have their own show/hide toggle (QA Q1)", async () => {
+    fakeSupabase()
+    render(<NewPasswordForm email="ivana.petrovic@gmail.com" />)
+    const user = userEvent.setup()
+    const toggles = screen.getAllByRole("button", { name: "Prikaži lozinku" })
+    expect(toggles).toHaveLength(2)
+    toggles.forEach((b) => expect(b).toHaveAttribute("aria-pressed", "false"))
+
+    await user.click(toggles[1])
+    expect(screen.getByLabelText("Ponovi lozinku")).toHaveAttribute("type", "text")
+    expect(screen.getByLabelText("Nova lozinka")).toHaveAttribute("type", "password")
+    expect(screen.getByRole("button", { name: "Sakrij lozinku" })).toHaveAttribute("aria-pressed", "true")
   })
 })

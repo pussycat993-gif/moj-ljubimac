@@ -10,6 +10,8 @@ export const en: Dictionary = {
     premiumTitle: "Available in Premium",
     premiumCta: "Try 7 days free",
     premium: "Premium",
+    showPassword: "Show password",
+    hidePassword: "Hide password",
   },
   shell: {
     app: {
@@ -69,6 +71,7 @@ export const en: Dictionary = {
     resetSent: "If an account with {email} exists, we've sent a link to set a new password. Check your spam folder too.",
     sendLink: "Send link",
     backToSignIn: "Back to sign in",
+    rateLimited: "Too many sign-in attempts. Wait a few minutes and try again.",
   },
   newPassword: {
     expiredTitle: "The link has expired",
@@ -88,6 +91,7 @@ export const en: Dictionary = {
     mismatch: "The passwords don't match. Enter the same password twice.",
     submit: "Save new password",
     backToSignIn: "Back to sign in",
+    rateLimited: "Too many attempts. Wait a few minutes and try again.",
   },
   register: {
     title: "Create an account",
@@ -133,6 +137,7 @@ export const en: Dictionary = {
     pibHint: "Optional. Enter it if the organisation is registered.",
     errOrgName: "Enter the organisation name.",
     errCity: "Choose a city.",
+    rateLimited: "Too many attempts. Wait a few minutes and try again.",
   },
   profile: {
     title: "Profile",
@@ -288,7 +293,9 @@ export const en: Dictionary = {
     birthDateHelper: "We'll create a birthday reminder.",
     pickDate: "Pick a date",
     birthYear: "Approximate year of birth",
-    birthYearPlaceholder: "e.g. 2021",
+    birthYearPlaceholder: "Choose a year",
+    calendarMonth: "Month",
+    calendarYear: "Year",
     appearance: "Appearance",
     colour: "Colour and markings",
     colourPlaceholder: "e.g. black with a white paw",

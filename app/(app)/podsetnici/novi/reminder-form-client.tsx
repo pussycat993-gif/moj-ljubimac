@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, CalendarDays, Trash2 } from "lucide-react"
@@ -35,6 +35,7 @@ import {
   type Reminder,
 } from "@/lib/actions/reminders"
 import { format, interpolate, type Dictionary, type Locale } from "@/lib/i18n"
+import { useFocusFirstInvalid } from "@/lib/forms/focus-first-invalid"
 
 // S11 — Novi / izmeni podsetnik · /podsetnici/novi (EP-27 create) and /podsetnici/[id] (EP-27 get
 // prefill, update, "Obriši podsetnik" → AlertDialog → delete) · FR-21, BR-18 (linked to a pet or
@@ -141,6 +142,8 @@ export function ReminderFormClient({
     reminder && reminder.recurrence !== "hourly_interval" ? reminder.recurrence : "none",
   )
   const [errors, setErrors] = useState<Errors>({})
+  const formRef = useRef<HTMLFormElement>(null)
+  const focusFirstInvalid = useFocusFirstInvalid(formRef)
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -167,7 +170,10 @@ export function ReminderFormClient({
       e.date = t.errInPast
     }
     setErrors(e)
-    if (Object.keys(e).length > 0) return
+    if (Object.keys(e).length > 0) {
+      focusFirstInvalid()
+      return
+    }
 
     const petId = forWhom === "me" ? null : forWhom
     const input: Partial<ManualReminderInput> = { title: title.trim(), pet_id: petId, recurrence: repeat }
@@ -194,6 +200,7 @@ export function ReminderFormClient({
         else unmapped = true
       }
       setErrors(inline)
+      if (Object.keys(inline).length > 0) focusFirstInvalid()
       // Any other failure (and an unmapped field code) → the X error state (owner decision, Step 17).
       if (unmapped) setFailed(true)
       return
@@ -236,6 +243,7 @@ export function ReminderFormClient({
 
       <Card className="gap-6 p-4 md:p-6">
         <form
+          ref={formRef}
           noValidate
           className="space-y-6"
           onSubmit={(e) => {

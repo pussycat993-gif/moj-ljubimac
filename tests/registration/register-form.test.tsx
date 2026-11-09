@@ -30,17 +30,18 @@ const copy = {
 }
 
 // The server client behind lib/actions/registration.ts and lib/actions/auth.ts.
-function fakeSupabase({ taken = false, signedIn = false } = {}) {
+function fakeSupabase({ taken = false, signedIn = false, rateLimited = false, resendRateLimited = false } = {}) {
   const inserts: { table: string; row: Record<string, unknown> }[] = []
   const client = {
     inserts,
     auth: {
-      signUp: vi.fn(async () => ({
-        data: { user: { id: USER_ID, identities: taken ? [] : [{}] }, session: null },
-        error: null,
-      })),
+      signUp: vi.fn(async () =>
+        rateLimited
+          ? { data: { user: null, session: null }, error: { name: "AuthApiError", status: 429, code: "over_request_rate_limit", message: "Request rate limit reached" } }
+          : { data: { user: { id: USER_ID, identities: taken ? [] : [{}] }, session: null }, error: null },
+      ),
       signInWithOAuth: vi.fn(async () => ({ data: { provider: "google", url: "https://accounts.google.example/o" }, error: null })),
-      resend: vi.fn(async () => ({ data: {}, error: null })),
+      resend: vi.fn(async () => (resendRateLimited ? { data: null, error: { name: "AuthApiError", status: 429, code: "over_request_rate_limit", message: "Request rate limit reached" } } : { data: {}, error: null })),
       getUser: vi.fn(async () => ({
         data: { user: signedIn ? { id: USER_ID, email: "google@gmail.com", email_confirmed_at: "2026-10-22T10:00:00Z" } : null },
         error: null,
@@ -139,6 +140,70 @@ describe("S15 Registracija (FR-33)", () => {
     expect(screen.getByText("Lozinka mora imati najmanje 8 znakova.")).toBeInTheDocument()
     expect(screen.getByText("Potrebno je da prihvatiš uslove.")).toBeInTheDocument()
     expect(client.auth.signUp).not.toHaveBeenCalled()
+  })
+
+  it("on submit the first invalid field is marked, scrolled into view and focused (QA Q1)", async () => {
+    const user = userEvent.setup()
+    fakeSupabase()
+    const scrolled: Element[] = []
+    const spy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+      scrolled.push(this)
+    })
+    renderForm()
+    await user.type(screen.getByLabelText("Lozinka"), "maks")
+    await user.click(screen.getByRole("button", { name: "Napravi nalog" }))
+    const email = screen.getByLabelText("Mejl adresa")
+    expect(email).toHaveAttribute("aria-invalid", "true")
+    expect(screen.getByLabelText("Lozinka")).toHaveAttribute("aria-invalid", "true")
+    expect(screen.getByRole("checkbox")).toHaveAttribute("aria-invalid", "true")
+    expect(email).toHaveFocus()
+    expect(scrolled).toContain(email)
+    spy.mockRestore()
+  })
+
+  it("429 on sign-up shows the rate-limit message, never the server's English text (QA Q1)", async () => {
+    const user = userEvent.setup()
+    fakeSupabase({ rateLimited: true })
+    renderForm()
+    await fillOwner(user)
+    await user.click(screen.getByRole("button", { name: "Napravi nalog" }))
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("Previše pokušaja. Sačekaj nekoliko minuta i pokušaj ponovo.")
+    expect(alert).not.toHaveTextContent("Request rate limit reached")
+  })
+
+  it("429 on sign-up in English shows the English message (QA Q1)", async () => {
+    const user = userEvent.setup()
+    fakeSupabase({ rateLimited: true })
+    render(<RegisterClient initialLocale="en" copy={copy} cities={[CITY]} />)
+    await user.type(screen.getByLabelText("Email address"), "ivana.petrovic@gmail.com")
+    await user.type(screen.getByLabelText("Password"), "dugalozinka")
+    await user.click(screen.getByRole("checkbox"))
+    await user.click(screen.getByRole("button", { name: "Create account" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("Too many attempts. Wait a few minutes and try again.")
+  })
+
+  it("Proveri mejl: a 429 on resend shows the rate-limit message (QA Q1)", async () => {
+    const user = userEvent.setup()
+    fakeSupabase({ resendRateLimited: true })
+    renderForm()
+    await fillOwner(user)
+    await user.click(screen.getByRole("button", { name: "Napravi nalog" }))
+    await user.click(await screen.findByRole("button", { name: "Pošalji link ponovo" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("Previše pokušaja. Sačekaj nekoliko minuta i pokušaj ponovo.")
+  })
+
+  it("the password field has a show/hide toggle (QA Q1)", async () => {
+    const user = userEvent.setup()
+    fakeSupabase()
+    renderForm()
+    const field = screen.getByLabelText("Lozinka")
+    expect(field).toHaveAttribute("type", "password")
+    const toggle = screen.getByRole("button", { name: "Prikaži lozinku" })
+    expect(toggle).toHaveAttribute("aria-pressed", "false")
+    await user.click(toggle)
+    expect(field).toHaveAttribute("type", "text")
+    expect(screen.getByRole("button", { name: "Sakrij lozinku" })).toHaveAttribute("aria-pressed", "true")
   })
 
   it.each([

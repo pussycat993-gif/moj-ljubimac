@@ -5,8 +5,8 @@ import Link from "next/link"
 import { CircleAlert, CircleCheck, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { PasswordInput } from "@/components/app/password-input"
 import { setNewPassword } from "@/lib/actions/auth"
 import { format, interpolate, type Dictionary } from "@/lib/i18n"
 import { sr } from "@/lib/i18n/sr"
@@ -36,7 +36,8 @@ export function NewPasswordForm({
   const [repeat, setRepeat] = useState("")
   const [errors, setErrors] = useState<Errors>({})
   const [pending, setPending] = useState(false)
-  const [failed, setFailed] = useState(false)
+  const [failed, setFailed] = useState<false | "rate_limited" | "unexpected">(false)
+  const toggleLabels = { show: dict.common.showPassword, hide: dict.common.hidePassword }
 
   function validate(): Errors {
     const e: Errors = {}
@@ -59,7 +60,7 @@ export function NewPasswordForm({
     else if (result.error.code === "invalid_action_token" || result.error.code === "unauthenticated") setView("expired")
     else if (result.error.code === "validation_failed")
       setErrors({ password: tooShort })
-    else setFailed(true)
+    else setFailed(result.error.code === "rate_limited" ? "rate_limited" : "unexpected")
   }
 
   if (view === "expired") {
@@ -118,7 +119,9 @@ export function NewPasswordForm({
         <div role="alert" className="flex items-start gap-3 rounded-sm bg-foreground/5 p-3">
           <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
           <div className="min-w-0 space-y-1">
-            <p className="text-sm font-medium text-destructive">{dict.common.error}</p>
+            <p className="text-sm font-medium text-destructive">
+              {failed === "rate_limited" ? t.rateLimited : dict.common.error}
+            </p>
           </div>
         </div>
       )}
@@ -126,9 +129,9 @@ export function NewPasswordForm({
       <form className="space-y-4" noValidate onSubmit={onSubmit}>
         <div className="space-y-2">
           <Label htmlFor="new-password">{t.label}</Label>
-          <Input
+          <PasswordInput
             id="new-password"
-            type="password"
+            labels={toggleLabels}
             autoComplete="new-password"
             value={password}
             aria-invalid={!!errors.password}
@@ -150,9 +153,9 @@ export function NewPasswordForm({
 
         <div className="space-y-2">
           <Label htmlFor="repeat-password">{t.repeat}</Label>
-          <Input
+          <PasswordInput
             id="repeat-password"
-            type="password"
+            labels={toggleLabels}
             autoComplete="new-password"
             value={repeat}
             aria-invalid={!!errors.repeat}

@@ -49,14 +49,19 @@ export async function signInWithGoogle(input: { next?: string | null } = {}): Pr
   return ok({ url: data.url });
 }
 
-/** EP-42 password reset — always succeeds for a valid email (no account enumeration). */
+/** EP-42 password reset — succeeds for any valid email (no account enumeration); 429 → rate_limited. */
 export async function requestPasswordReset(input: { email: string }): Promise<ActionResult<null>> {
   if (!EMAIL_PATTERN.test(input.email)) return fail("validation_failed", { fields: { email: "invalid" } });
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(input.email, {
     redirectTo: callbackUrl(await siteOrigin(), RECOVERY_PATH),
   });
-  if (error) console.error("[actions/auth] resetPasswordForEmail:", error.message);
+  if (error) {
+    // A 429 is not account-specific (Supabase limits per IP), so it can be shown without enumeration.
+    const mapped = fromAuthError(error);
+    if (mapped.code === "rate_limited") return { ok: false, error: mapped };
+    console.error("[actions/auth] resetPasswordForEmail:", error.message);
+  }
   return ok(null);
 }
 
